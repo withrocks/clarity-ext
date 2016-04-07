@@ -1,0 +1,13 @@
+*.pyc
+cache.sqlite
+*.egg-info
+.ipynb_checkpoints
+runs/
+.idea/*
+.idea/*/
+!.idea/runConfigurations
+run-test/
+*.swp
+int_tests/
+.virtualenv
+
