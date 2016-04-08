@@ -90,9 +90,6 @@ class RobotDeckPositioner:
 
 PLATE_TYPE_96_WELL = 1
 
-PlateDimensions = {
-    PLATE_TYPE_96_WELL: {"rows": 12, "cols": 8}
-}
 
 class DilutionScheme:
     """Creates a dilution scheme, given input and output analytes."""

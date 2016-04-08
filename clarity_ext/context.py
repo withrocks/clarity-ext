@@ -3,19 +3,23 @@ from genologics.lims import Lims
 from genologics.entities import *
 import requests
 import os
-from clarity_ext.utils import lazyprop
 from clarity_ext.dilution import *
+import re
+import shutil
 
 
-# TODO: Use the same extension context for all extensions, throwing an exception if
-# a particular feature is not available
 class ExtensionContext:
     """
     Defines context objects for extensions.
     """
-    def __init__(self, current_step, logger=None):
-        # TODO: Add the lims property to "advanced" so that it won't be accessed accidentally?
-        # TODO: These don't need to be provided in most cases
+    def __init__(self, current_step, logger=None, cache=False):
+        """
+        Initializes the context.
+
+        :param current_step: The step from which the extension is running
+        :param logger: A logger instance
+        :param cache: Set to True to use the cache folder (.cache) for downloaded files
+        """
         lims = Lims(BASEURI, USERNAME, PASSWORD)
         lims.check_version()
 
@@ -23,6 +27,7 @@ class ExtensionContext:
         self.current_step = Process(lims, id=current_step)
         self.logger = logger or logging.getLogger(__name__)
         self._local_shared_files = []
+        self.cache = cache
 
     def local_shared_file(self, file_name):
         """
@@ -36,49 +41,47 @@ class ExtensionContext:
 
         # Ensure that the user is only sending in a "name" (alphanumerical or spaces)
         # File paths are not allowed
-        import re
         if not re.match(r"[\w ]+", file_name):
             raise ValueError("File name can only contain alphanumeric characters, underscores and spaces")
-        local_path = os.path.abspath(file_name.replace(" ", "_"))
+        local_file_name = file_name.replace(" ", "_")
+        local_path = os.path.abspath(local_file_name)
         local_path = os.path.abspath(local_path)
+        cache_directory = os.path.abspath(".cache")
+        cache_path = os.path.join(cache_directory, local_file_name)
 
-        if not os.path.exists(local_path):
-            by_name = [shared_file for shared_file in self.shared_files
-                       if shared_file.name == file_name]
-            assert len(by_name) == 1
-            artifact = by_name[0]
-            assert len(artifact.files) == 1
-            file = artifact.files[0]
-            self.logger.info("Downloading file {} (artifact={} '{}')"
-                             .format(file.id, artifact.id, artifact.name))
+        if self.cache and os.path.exists(cache_path):
+            self.logger.info("Fetching cached artifact from '{}'".format(cache_path))
+            shutil.copy(cache_path, ".")
+        else:
+            if not os.path.exists(local_path):
+                by_name = [shared_file for shared_file in self.shared_files
+                           if shared_file.name == file_name]
+                assert len(by_name) == 1
+                artifact = by_name[0]
+                assert len(artifact.files) == 1
+                file = artifact.files[0]
+                self.logger.info("Downloading file {} (artifact={} '{}')"
+                                 .format(file.id, artifact.id, artifact.name))
 
-            # TODO: implemented in the genologics package?
-            response = self.advanced.get("files/{}/download".format(file.id))
-            with open(local_path, 'wb') as fd:
-                for chunk in response.iter_content():
-                    fd.write(chunk)
+                # TODO: implemented in the genologics package?
+                response = self.advanced.get("files/{}/download".format(file.id))
+                with open(local_path, 'wb') as fd:
+                    for chunk in response.iter_content():
+                        fd.write(chunk)
 
-            self.logger.info("Download completed, path='{}'".format(local_path))
+                self.logger.info("Download completed, path='{}'".format(local_path))
+
+                if self.cache:
+                    if not os.path.exists(cache_directory):
+                        os.mkdir(cache_directory)
+                    self.logger.info("Copying artifact to cache directory, {}=>{}".format(local_path, cache_directory))
+                    shutil.copy(local_path, cache_directory)
 
         # Add to this list for cleanup:
         if local_path not in self._local_shared_files:
             self._local_shared_files.append(local_path)
 
         return local_path
-
-    @lazyprop
-    def plate2(self):
-        self.logger.debug("Getting current plate (lazy property)")
-        # TODO: Assumes 96 well plate only
-        plate = Plate()
-        for input, output in self.current_step.input_output_maps:
-            if output['output-generation-type'] == "PerInput":
-                # Process
-                artifact = output['uri']
-                location = artifact.location
-                well = location[1]
-                plate.set_well(well, artifact.name)
-        return plate
 
     def _get_input_analytes(self, plate):
         # Get an unique set of input analytes
@@ -189,8 +192,8 @@ class Advanced:
         self.lims = lims
 
     def get(self, endpoint):
-        """Executes a GET via the REST interface. One should rather use the lims property.
-        The endpoint is the part after /api/v2/ in the API URI.
+        """Executes a GET via the REST interface. One should rather use the lims attribute if possible.
+        The endpoint is the part after /api/<version>/ in the API URI.
         """
         url = "{}/api/v2/{}".format(BASEURI, endpoint)
         return requests.get(url, auth=(USERNAME, PASSWORD))
