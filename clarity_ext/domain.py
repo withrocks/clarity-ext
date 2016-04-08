@@ -166,9 +166,6 @@ class Plate:
         self.wells[well_id].artifact_name = artifact_name
         self.wells[well_id].artifact_id = artifact_id
 
-    def well_key_to_tuple(self, key):
-        return key.split(":")
-
 
 class ValidationType:
     ERROR = 1
