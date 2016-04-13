@@ -6,6 +6,7 @@ import os
 from clarity_ext.dilution import *
 import re
 import shutil
+import clarity_ext.utils as utils
 
 
 class ExtensionContext:
@@ -56,7 +57,10 @@ class ExtensionContext:
             if not os.path.exists(local_path):
                 by_name = [shared_file for shared_file in self.shared_files
                            if shared_file.name == file_name]
-                assert len(by_name) == 1
+                if len(by_name) != 1:
+                    files = ", ".join(map(lambda x: x.name, self.shared_files))
+                    raise ValueError("Expected 1 shared file, got {}.\nFile: '{}'\nFiles: {}".format(
+                        len(by_name), file_name, files))
                 artifact = by_name[0]
                 assert len(artifact.files) == 1
                 file = artifact.files[0]
@@ -97,7 +101,7 @@ class ExtensionContext:
         # TODO: Seems like overkill to have a type for matching analytes, why not a gen. function?
         matched_analytes = MatchedAnalytes(input_analytes,
                                            self.current_step, self.advanced, plate)
-        # TODO: The caller needs to provide these parameters,
+        # TODO: The caller needs to provide these arguments
         return DilutionScheme(matched_analytes, "Hamilton", plate)
 
     @lazyprop
@@ -116,25 +120,35 @@ class ExtensionContext:
         return artifacts
 
     @lazyprop
-    def plate(self):
-        self.logger.debug("Getting current plate (lazy property)")
-        # TODO: Assumes 96 well plate only
-        self.logger.debug("Fetching plate")
+    def _extended_input_artifacts(self):
         artifacts = []
-
-        # TODO: Should we use this or .all_outputs?
         for input, output in self.current_step.input_output_maps:
             if output['output-generation-type'] == "PerInput":
                 artifacts.append(output['uri'])
 
         # Batch fetch the details about these:
         artifacts_ex = self.advanced.lims.get_batch(artifacts)
-        plate = Plate()
-        for artifact in artifacts_ex:
-            well_id = artifact.location[1]
-            plate.set_well(well_id, artifact.name, artifact.id)
+        return artifacts_ex
 
-        return plate
+    @lazyprop
+    def _extended_input_containers(self):
+        """
+        Returns a list with all input containers, where each container has been extended with the attribute
+        `artifacts`, containing all artifacts in the container
+        """
+        containers = {artifact.container.id: artifact.container
+                      for artifact in self._extended_input_artifacts}
+        ret = []
+        for container_res in containers.values():
+            artifacts_res = [artifact for artifact in self._extended_input_artifacts
+                             if artifact.container.id == container_res.id]
+            ret.append(Container.create_from_rest_resource(container_res, artifacts_res))
+        return ret
+
+    @lazyprop
+    def input_container(self):
+        """Returns the input container. If there are more than one, an error is raised"""
+        return utils.single(self._extended_input_containers)
 
     def cleanup(self):
         """Cleans up any downloaded resources. This method will be automatically
@@ -143,7 +157,7 @@ class ExtensionContext:
         for path in self._local_shared_files:
             if os.path.exists(path):
                 self.logger.info("Local shared file '{}' will be removed to ensure "
-                                 "that it won't be uploaded again")
+                                 "that it won't be uploaded again".format(path))
                 # TODO: Handle exception
                 os.remove(path)
 

@@ -20,8 +20,8 @@ class Extension(DriverFileExtension):
     def content(self):
         """Yields the lines to be written to the file"""
         yield "well,sample"
-        for well in self.context.plate.list_wells(self.context.plate.RIGHT_FIRST):
-            yield "{}:{},{}".format(well.row, well.col, well.artifact_name or "0")
+        for well in self.context.input_container.list_wells(self.context.input_container.RIGHT_FIRST):
+            yield "{},{}".format(well.position, well.artifact_name or "0")
 
     def integration_tests(self):
         """Returns metadata for one or more integration test to run against the server"""
