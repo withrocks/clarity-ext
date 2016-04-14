@@ -10,12 +10,12 @@ class Extension(GeneralExtension):
           * 10 pages skipped
           * Samples in the order A1, B1 (DOWN_FIRST), one sample per page
         """
-        # The context has access to a local version of the in file (actually downloaded if needed):
+        # The context has access to a local version of the in file (downloaded if needed):
         page = 10  # Start on page 10 (zero indexed)
         splitter = PdfSplitter(self.context.local_shared_file("Fragment Analyzer PDF File"))
 
         # Go through each well in the plate, splitting
-        for well in self.context.plate.enumerate_wells(order=Plate.DOWN_FIRST):
+        for well in self.context.input_container.enumerate_wells(order=Plate.DOWN_FIRST):
             if well.artifact_id:
                 self.logger.debug("{} is on page {}".format(well, page + 1))
                 filename = "{}_{}.pdf".format(well.artifact_id, well.get_key().replace(":", "_"))

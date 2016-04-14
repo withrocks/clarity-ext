@@ -1,5 +1,5 @@
 <component name="ProjectRunConfigurationManager">
-  <configuration default="false" name="create_hamilton_dilution - test" type="PythonConfigurationType" factoryName="Python">
+  <configuration default="false" name="tapestation/generate_pdf_images" type="PythonConfigurationType" factoryName="Python" folderName="tapestation">
     <option name="INTERPRETER_OPTIONS" value="" />
     <option name="PARENT_ENVS" value="true" />
     <envs>
@@ -15,7 +15,7 @@
     <module name="clarity-ext" />
     <EXTENSION ID="PythonCoverageRunConfigurationExtension" enabled="false" sample_coverage="true" runner="coverage.py" />
     <option name="SCRIPT_NAME" value="$PROJECT_DIR$/clarity_ext/cli.py" />
-    <option name="PARAMETERS" value="extension clarity_ext_scripts.dilution.create_hamilton_dilution test" />
+    <option name="PARAMETERS" value="extension clarity_ext_scripts.tapestation.generate_pdf_images test" />
     <option name="SHOW_COMMAND_LINE" value="false" />
     <method />
   </configuration>
