@@ -10,6 +10,9 @@ import logging
 import difflib
 import re
 from clarity_ext.utils import lazyprop
+from genologics.config import BASEURI, USERNAME, PASSWORD
+from genologics.lims import Lims
+from clarity_ext.context import ClarityService
 
 
 # Defines all classes that are expected to be extended. These are
@@ -104,6 +107,9 @@ class ExtensionService:
                     module, self.RUN_MODE_FREEZE))
 
             for run_arguments in run_arguments_list:
+                step_prefix = "24-"
+                if not run_arguments["pid"].startswith(step_prefix):
+                    run_arguments["pid"] = "{}{}".format(step_prefix, run_arguments["pid"])
                 path = self._run_path(run_arguments, module, mode, config)
                 frozen_path = self._run_path(run_arguments, module, self.RUN_MODE_FREEZE, config)
 
@@ -136,7 +142,8 @@ class ExtensionService:
 
                 self.logger.info("Executing at {}".format(path))
 
-                context = ExtensionContext(run_arguments["pid"], cache=cache_artifacts)
+                clarity_svc = ClarityService(Lims(BASEURI, USERNAME, PASSWORD), run_arguments["pid"])
+                context = ExtensionContext(cache=cache_artifacts, clarity_svc=clarity_svc)
 
                 if issubclass(extension, DriverFileExtension):
                     instance = extension(context)

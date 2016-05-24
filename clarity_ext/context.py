@@ -1,5 +1,4 @@
 from genologics.config import BASEURI, USERNAME, PASSWORD
-from genologics.lims import Lims
 from genologics.entities import *
 import requests
 import os
@@ -7,32 +6,38 @@ from clarity_ext.dilution import *
 import re
 import shutil
 import clarity_ext.utils as utils
+from lxml import objectify
+from clarity_ext import UnitConversion
+from clarity_ext.result_file import ResultFile
+from clarity_ext.utils import lazyprop
 
 
 class ExtensionContext:
     """
     Defines context objects for extensions.
     """
-    def __init__(self, current_step, logger=None, cache=False):
+    def __init__(self, logger=None, cache=False, clarity_svc=None):
         """
         Initializes the context.
 
-        :param current_step: The step from which the extension is running
         :param logger: A logger instance
         :param cache: Set to True to use the cache folder (.cache) for downloaded files
+        :param clarity_svc: A LimsService object, encapsulates connections to the Clarity application server
         """
-        lims = Lims(BASEURI, USERNAME, PASSWORD)
-        lims.check_version()
 
-        self.advanced = Advanced(lims)
-        self.current_step = Process(lims, id=current_step)
+        self.advanced = Advanced(clarity_svc.api)
         self.logger = logger or logging.getLogger(__name__)
         self._local_shared_files = []
         self.cache = cache
 
-    def local_shared_file(self, file_name):
+        self.units = UnitConversion(self.logger)
+        self._update_queue = []
+        self.current_step = clarity_svc.current_step
+
+    def local_shared_file(self, file_name, mode='r'):
         """
-        Downloads the local shared file and returns the path to it on the file system.
+        Downloads the local shared file and returns an open file-like object.
+
         If the file already exists, it will not be downloaded again.
 
         Details:
@@ -85,7 +90,7 @@ class ExtensionContext:
         if local_path not in self._local_shared_files:
             self._local_shared_files.append(local_path)
 
-        return local_path
+        return open(local_path, mode)
 
     def _get_input_analytes(self, plate):
         # Get an unique set of input analytes
@@ -161,6 +166,35 @@ class ExtensionContext:
                 # TODO: Handle exception
                 os.remove(path)
 
+    def local_shared_xml(self, name):
+        """
+        Returns a local copy of the xml file as a Python object
+        """
+        with self.local_shared_file(name, "r") as fs:
+            tree = objectify.parse(fs)
+            return tree.getroot()
+
+    def output_result_file_by_id(self, id):
+        """Returns the output result file by id"""
+        resource = [f for f in self.output_result_files if f.id == id][0]
+        return ResultFile(resource, self.units)
+
+    @property
+    def output_result_files(self):
+        for _, output in self.current_step.input_output_maps:
+            if output["output-type"] == "ResultFile":
+                yield output["uri"]
+
+    def update(self, obj):
+        """Add an object that has a commit method to the list of objects to update"""
+        self._update_queue.append(obj)
+
+    def commit(self):
+        """Commits all objects that have been added via the update method, using batch processing if possible"""
+        # TODO: Implement batch processing
+        for obj in self._update_queue:
+            obj.commit()
+
 
 class MatchedAnalytes:
     """ Provides a set of  matched input - output analytes for a process.
@@ -211,4 +245,12 @@ class Advanced:
         """
         url = "{}/api/v2/{}".format(BASEURI, endpoint)
         return requests.get(url, auth=(USERNAME, PASSWORD))
+
+
+class ClarityService:
+    """A wrapper around connections to the lims. Provided for testability"""
+    def __init__(self, api, current_step):
+        self.api = api
+        api.check_version()
+        self.current_step = Process(self.api, id=current_step)
 
