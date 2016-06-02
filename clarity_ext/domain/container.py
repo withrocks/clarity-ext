@@ -2,7 +2,7 @@ from collections import namedtuple
 from clarity_ext.utils import lazyprop
 
 
-class Well:
+class Well(object):
     """Encapsulates a well in a plate"""
     def __init__(self, position, plate, artifact_name=None, artifact_id=None):
         self.position = position
@@ -65,7 +65,7 @@ class PlateSize(namedtuple("PlateSize", ["height", "width"])):
     pass
 
 
-class Container:
+class Container(object):
     """Encapsulates a Container"""
 
     DOWN_FIRST = 1
@@ -154,7 +154,7 @@ class Container:
         self.wells[well_pos].artifact_id = artifact_id
 
 
-class Plate:
+class Plate(object):
     """Encapsulates a Plate"""
 
     DOWN_FIRST = 1

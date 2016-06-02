@@ -1,4 +1,4 @@
-class HamiltonReader:
+class HamiltonReader(object):
 
     def __init__(self, filecontents):
         self._delimiter = "\t"
@@ -14,7 +14,7 @@ class HamiltonReader:
         return len(self.matrix)
 
 
-class HamiltonColumnReference:
+class HamiltonColumnReference(object):
 
     def __init__(self):
         self.sample = 0
