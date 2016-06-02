@@ -16,23 +16,23 @@ class ExtensionContext(object):
     """
     Defines context objects for extensions.
     """
-    def __init__(self, logger=None, cache=False, clarity_svc=None):
+    def __init__(self, logger=None, cache=False, session=None):
         """
         Initializes the context.
 
         :param logger: A logger instance
         :param cache: Set to True to use the cache folder (.cache) for downloaded files
-        :param clarity_svc: A LimsService object, encapsulates connections to the Clarity application server
+        :param session: An object encapsulating the connection to Clarity
         """
-
-        self.advanced = Advanced(clarity_svc.api)
+        self.session = session
+        self.advanced = Advanced(session.api)
         self.logger = logger or logging.getLogger(__name__)
         self._local_shared_files = []
         self.cache = cache
 
         self.units = UnitConversion(self.logger)
         self._update_queue = []
-        self.current_step = clarity_svc.current_step
+        self.current_step = session.current_step
 
     def local_shared_file(self, file_name, mode='r'):
         """
@@ -245,12 +245,4 @@ class Advanced(object):
         """
         url = "{}/api/v2/{}".format(BASEURI, endpoint)
         return requests.get(url, auth=(USERNAME, PASSWORD))
-
-
-class ClarityService:
-    """A wrapper around connections to the lims. Provided for testability"""
-    def __init__(self, api, current_step):
-        self.api = api
-        api.check_version()
-        self.current_step = Process(self.api, id=current_step)
 
