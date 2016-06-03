@@ -16,13 +16,17 @@ class ExtensionContext(object):
     """
     Defines context objects for extensions.
     """
-    def __init__(self, logger=None, cache=False, session=None):
+    def __init__(self, logger=None, cache=False, session=None, step_input_output_repo=None):
         """
         Initializes the context.
 
         :param logger: A logger instance
         :param cache: Set to True to use the cache folder (.cache) for downloaded files
         :param session: An object encapsulating the connection to Clarity
+        :param step_input_output_repo: A repository for accessing input_output maps in the current step
+
+        TODO: The context should fetch everything through (easily mockable) repositories,
+        and not use the API directly, so the clarity_svc object can be removed
         """
         self.session = session
         self.advanced = Advanced(session.api)
@@ -33,6 +37,7 @@ class ExtensionContext(object):
         self.units = UnitConversion(self.logger)
         self._update_queue = []
         self.current_step = session.current_step
+        self.step_input_output_repo = step_input_output_repo
 
     def local_shared_file(self, file_name, mode='r'):
         """
@@ -92,22 +97,10 @@ class ExtensionContext(object):
 
         return open(local_path, mode)
 
-    def _get_input_analytes(self, plate):
-        # Get an unique set of input analytes
-        # Trust the fact that all inputs are analytes, always true?
-        resources = self.current_step.all_inputs(unique=True, resolve=True)
-        return [Analyte(resource, plate) for resource in resources]
-
     @lazyprop
     def dilution_scheme(self):
-        plate = Plate(plate_type=PLATE_TYPE_96_WELL)
-
-        input_analytes = self._get_input_analytes(plate)
-        # TODO: Seems like overkill to have a type for matching analytes, why not a gen. function?
-        matched_analytes = MatchedAnalytes(input_analytes,
-                                           self.current_step, self.advanced, plate)
-        # TODO: The caller needs to provide these arguments
-        return DilutionScheme(matched_analytes, "Hamilton", plate)
+        # TODO: The caller needs to provide the robot
+        return DilutionScheme(self.step_input_output_repo, "Hamilton")
 
     @lazyprop
     def shared_files(self):
@@ -194,44 +187,6 @@ class ExtensionContext(object):
         # TODO: Implement batch processing
         for obj in self._update_queue:
             obj.commit()
-
-
-class MatchedAnalytes:
-    """ Provides a set of  matched input - output analytes for a process.
-    When fetching these by the batch_get(), they come in random order
-    """
-    def __init__(self, input_analytes, current_step, advanced, plate):
-        self._input_analytes = input_analytes
-        self.advanced = advanced
-        self.current_step = current_step
-        self.input_analytes, self.output_analytes = self._match_analytes(plate)
-        self._iteritems = iter(zip(self.input_analytes, self.output_analytes))
-
-    def __iter__(self):
-        return self
-
-    def next(self):
-        input_analyte, output_analyte = self._iteritems.next()
-        if input_analyte and output_analyte:
-            return input_analyte, output_analyte
-        else:
-            raise StopIteration
-
-    def _get_output_analytes(self, plate):
-        analytes, info = self.current_step.analytes()
-        if not info == 'Output':
-            raise ValueError("No output analytes for this step!")
-        resources = self.advanced.lims.get_batch(analytes)
-        return [Analyte(resource, plate) for resource in resources]
-
-    def _match_analytes(self, plate):
-        """ Match input and output analytes with sample ids"""
-        input_dict = {_input.sample.id: _input
-                      for _input in self._input_analytes}
-        matched_analytes = [(input_dict[_output.sample.id], _output)
-                            for _output in self._get_output_analytes(plate)]
-        input_analytes, output_analytes = zip(*matched_analytes)
-        return list(input_analytes), list(output_analytes)
 
 
 class Advanced(object):

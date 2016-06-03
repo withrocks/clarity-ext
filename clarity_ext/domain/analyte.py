@@ -1,4 +1,4 @@
-from clarity_ext.domain.container import PlatePosition, Well
+from clarity_ext.domain.container import PlatePosition, Well, Container
 
 
 class Analyte(object):
@@ -8,9 +8,12 @@ class Analyte(object):
     Takes an analyte resource as input.
     """
 
-    def __init__(self, resource, plate):
+    def __init__(self, resource, container):
+        """
+        :resource: The API resource
+        """
         self.resource = resource
-        self.plate = plate
+        self.container = container
 
     # Mapped properties from the underlying resource
     @property
@@ -34,11 +37,7 @@ class Analyte(object):
     @property
     def well(self):
         pos = PlatePosition.create(self.resource.location[1])
-        return Well(pos, self.plate)
-
-    @property
-    def container(self):
-        return self.resource.location[0]
+        return Well(pos, self.container)
 
     @property
     def sample(self):
@@ -46,4 +45,10 @@ class Analyte(object):
 
     def __repr__(self):
         return "{} ({})".format(self.name, self.sample.id)
+
+    @staticmethod
+    def create_from_rest_resource(artifact):
+        container_resource = artifact.location[0]
+        container = Container.create_from_rest_resource(container_resource, [])
+        return Analyte(artifact, container)
 
