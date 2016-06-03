@@ -48,7 +48,6 @@ class Analyte(object):
 
     @staticmethod
     def create_from_rest_resource(artifact):
-        container_resource = artifact.location[0]
-        container = Container.create_from_rest_resource(container_resource, [])
+        container = Container.create_from_rest_resource(artifact.location[0], [])
         return Analyte(artifact, container)
 
