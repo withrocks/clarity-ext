@@ -7,12 +7,12 @@ class ClaritySession(object):
     """
     A wrapper around connections to Clarity.
     """
-    def __init__(self, api, current_step):
+    def __init__(self, api, current_step_id):
         self.api = api
         api.check_version()
-        self.current_step = Process(self.api, id=current_step)
+        self.current_step = Process(self.api, id=current_step_id)
 
     @staticmethod
-    def create(current_step):
-        return ClaritySession(Lims(BASEURI, USERNAME, PASSWORD), current_step)
+    def create(current_step_id):
+        return ClaritySession(Lims(BASEURI, USERNAME, PASSWORD), current_step_id)
 
