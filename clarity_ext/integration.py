@@ -7,7 +7,7 @@ from driverfile import DriverFileIntegrationTests
 
 # Creates an integration test config file based on convention
 # i.e. position and contents of the script classes themselves.
-class ConfigFromConventionProvider:
+class ConfigFromConventionProvider(object):
 
     @classmethod
     def _enumerate_modules(cls, root_name):
@@ -33,7 +33,7 @@ class ConfigFromConventionProvider:
             yield entry
 
 
-class IntegrationTestService:
+class IntegrationTestService(object):
     CACHE_NAME = "test_run_cache"
 
     def __init__(self, logger=None):

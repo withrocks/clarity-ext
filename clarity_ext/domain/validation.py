@@ -3,7 +3,7 @@ class ValidationType:
     WARNING = 2
 
 
-class ValidationException:
+class ValidationException(object):
     def __init__(self, msg, validation_type=ValidationType.ERROR):
         self.msg = msg
         self.type = validation_type

@@ -1,4 +1,4 @@
-class ResultFile:
+class ResultFile(object):
     """Encapsulates a ResultFile in Clarity"""
     def __init__(self, api_resource, units):
         self.api_resource = api_resource

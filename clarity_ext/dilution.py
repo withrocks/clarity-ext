@@ -1,7 +1,7 @@
 from domain import *
 
 
-class Dilute:
+class Dilute(object):
     # Enclose sample data, user input and derived variables for a
     # single row in a dilution
     def __init__(self, input_analyte, output_analyte):
@@ -22,7 +22,7 @@ class Dilute:
         self.has_to_evaporate = None
 
 
-class RobotDeckPositioner:
+class RobotDeckPositioner(object):
     """
     Handle plate positions on the robot deck (target and source)
     as well as well indexing
@@ -87,7 +87,7 @@ class RobotDeckPositioner:
 PLATE_TYPE_96_WELL = 1
 
 
-class DilutionScheme:
+class DilutionScheme(object):
     """Creates a dilution scheme, given input and output analytes."""
 
     def __init__(self, matched_analytes, robot_name, plate):

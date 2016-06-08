@@ -5,7 +5,7 @@ from genologics.epp import attach_file
 from genologics.entities import *
 
 
-class DriverFileService:
+class DriverFileService(object):
     def __init__(self, extension, result_path, logger=None):
         self.logger = logger or logging.getLogger(__name__)
         self.extension = extension
@@ -71,7 +71,7 @@ class DriverFileService:
             print "---"
 
 
-class DriverFileIntegrationTests:
+class DriverFileIntegrationTests(object):
     @staticmethod
     def _locate_driver_file_pair(run_directory, frozen_directory, test):
         def locate_driver_file(path):

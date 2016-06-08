@@ -21,7 +21,7 @@ from clarity_ext.context import ClarityService
 # TODO: use Python 3 and add typing hints
 
 
-class ExtensionService:
+class ExtensionService(object):
 
     RUN_MODE_TEST = "test"
     RUN_MODE_FREEZE = "freeze"
@@ -194,7 +194,7 @@ class ResultsDifferFromFrozenData(Exception):
     pass
 
 
-class RunDirectoryInfo:
+class RunDirectoryInfo(object):
     """
     Provides methods to query a particular result directory for its content
 
@@ -246,7 +246,7 @@ class RunDirectoryInfo:
                 yield ("uploaded", key, "".join(diff[0:10]))
 
 
-class GeneralExtension:
+class GeneralExtension(object):
     """
     An extension that must implement the `execute` method
     """
@@ -303,7 +303,7 @@ class DriverFileExtension(GeneralExtension):
             raise ValueError("Validation errors: ".format(os.path.sep.join(report)))
 
 
-class ExtensionTest:
+class ExtensionTest(object):
     def __init__(self, pid):
         self.pid = pid
 

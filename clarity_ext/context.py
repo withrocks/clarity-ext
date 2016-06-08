@@ -12,7 +12,7 @@ from clarity_ext.result_file import ResultFile
 from clarity_ext.utils import lazyprop
 
 
-class ExtensionContext:
+class ExtensionContext(object):
     """
     Defines context objects for extensions.
     """
@@ -234,7 +234,7 @@ class MatchedAnalytes:
         return list(input_analytes), list(output_analytes)
 
 
-class Advanced:
+class Advanced(object):
     """Provides advanced features, should be avoided in extension scripts"""
     def __init__(self, lims):
         self.lims = lims

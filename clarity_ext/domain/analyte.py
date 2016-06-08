@@ -1,7 +1,7 @@
 from clarity_ext.domain.container import PlatePosition, Well
 
 
-class Analyte:
+class Analyte(object):
     """
     Describes an Analyte in the Clarity LIMS system, including custom UDFs.
 
