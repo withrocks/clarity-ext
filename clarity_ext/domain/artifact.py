@@ -2,9 +2,11 @@ from clarity_ext.domain import Analyte
 from clarity_ext.domain import Container
 
 
-class StepInputOutputMapRepository(object):
+class StepRepository(object):
     """
-    The REST API provides `Artifact`s. These are wrapped as other domain objects.
+    Provides access to data that's available through a current step.
+
+    All methods return the domain objects, wrapping the REST resources.
     """
     def __init__(self, session):
         self.session = session

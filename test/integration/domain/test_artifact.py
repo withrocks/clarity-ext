@@ -1,5 +1,5 @@
 import unittest
-from clarity_ext.domain.artifact import StepInputOutputMapRepository
+from clarity_ext.domain.artifact import StepRepository
 from clarity_ext.clarity import ClaritySession
 import itertools
 
@@ -24,7 +24,7 @@ class TestIntegrationAnalyteRepository(unittest.TestCase):
             - Plate2: A3, E9
         """
         session = ClaritySession.create("24-3643")
-        repo = StepInputOutputMapRepository(session)
+        repo = StepRepository(session)
         inputs, outputs = repo.all_analytes()
 
         self.assertEqual(len(outputs), len(inputs), "Expected same number of inputs and outputs")
