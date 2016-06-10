@@ -1,4 +1,4 @@
-from domain import *
+from clarity_ext.domain.validation import ValidationException, ValidationType
 
 
 class Dilute(object):
@@ -54,7 +54,6 @@ class RobotDeckPositioner(object):
         # regardless the robot type
         return plate_sorting * plate_base_number + dilute.source_well.index_down_first
 
-
     @staticmethod
     def _build_plate_position_map(plate_sorting_map, plate_pos_prefix):
         # Fetch an unique list of container names from input
@@ -79,27 +78,38 @@ class RobotDeckPositioner(object):
         return plate_position_numbers
 
     def __str__(self):
-        return "<{type} {robot} {rows}x{cols}>".format(type=self.__class__.__name__,
-                                                       robot=self.robot_name,
-                                                       rows=self.plate_size_y,
-                                                       cols=self.plate_size_x)
-
-PLATE_TYPE_96_WELL = 1
+        return "<{type} {robot} {height}x{width}>".format(type=self.__class__.__name__,
+                                                          robot=self.robot_name,
+                                                          height=self.plate.size.height,
+                                                          width=self.plate.size.width)
 
 
 class DilutionScheme(object):
     """Creates a dilution scheme, given input and output analytes."""
 
-    def __init__(self, matched_analytes, robot_name, plate):
-        """Calculates all derived values needed in dilute driver file """
+    def __init__(self, step_input_output_repo, robot_name):
+        """
+        Calculates all derived values needed in dilute driver file.
 
-        self.dilutes = self._init_dilutes(matched_analytes)
-        self.robot_deck_positioner = RobotDeckPositioner(
-            robot_name, self.dilutes, plate)
+        Input and output analytes must be in the same order.
+        """
+        input_analytes, output_analytes = step_input_output_repo.all_analytes()
+        assert len(input_analytes) == len(output_analytes), "There must be the same number of input and output analytes"
+
+        # TODO: Is it safe to just check for the container for the first output analyte?
+        container = output_analytes[0].container
+
+        self.dilutes = [Dilute(in_analyte, out_analyte)
+                        for in_analyte, out_analyte in
+                        zip(input_analytes, output_analytes)]
+
+        # TODO: Split these two actions up:
+        # 1) Position dilutes and sort (handled by robot_deck_positioner)
+        # 2) set volume etc. (handled here)
+        self.robot_deck_positioner = RobotDeckPositioner(robot_name, self.dilutes, container)
 
         for dilute in self.dilutes:
-            dilute.source_well_index = self.robot_deck_positioner.indexer(
-                dilute.source_well)
+            dilute.source_well_index = self.robot_deck_positioner.indexer(dilute.source_well)
             dilute.source_plate_pos = self.robot_deck_positioner.\
                 source_plate_position_map[dilute.source_container.id]
             dilute.sample_volume = \
@@ -140,13 +150,6 @@ class DilutionScheme(object):
 
         if any(dilute.has_to_evaporate for dilute in self.dilutes):
             yield ValidationException("Sample has to be evaporated", ValidationType.WARNING)
-
-    @staticmethod
-    def _init_dilutes(matched_analytes):
-        dilutes = []
-        for in_analyte, out_analyte in matched_analytes:
-            dilutes.append(Dilute(in_analyte, out_analyte))
-        return dilutes
 
     def __str__(self):
         return "<DilutionScheme positioner={}>".format(self.robot_deck_positioner)

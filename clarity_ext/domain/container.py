@@ -82,23 +82,26 @@ class Container(object):
         """
         self.mapping = mapping
         self.container_type = container_type
-        self.size = None
+        self.id = None
 
         if self.container_type == self.CONTAINER_TYPE_96_WELLS_PLATE:
             self.size = PlateSize(height=8, width=12)
         elif self.container_type == self.CONTAINER_TYPE_STRIP_TUBE:
             self.size = PlateSize(height=8, width=1)
         else:
-            self.size = None
+            raise ValueError("Unknown plate type '{}'".format(self.container_type))
 
     @classmethod
     def create_from_rest_resource(cls, resource, artifacts):
         """
-        Creates a container based on a resource from the REST API
+        Creates a container based on a resource from the REST API.
         """
         # TODO: This needs to be cleaned up, i.e. how exactly the rest resource and domain objects should interact
-        ret = Container()
-        ret.rest_resource = resource
+        if resource.type.name == "96 well plate":
+            ret = Container(container_type=Container.CONTAINER_TYPE_96_WELLS_PLATE)
+        else:
+            raise NotImplementedError("Resource type '{}' is not supported".format(resource.type.name))
+        ret.id = resource.id
         ret.size = PlateSize(width=resource.type.x_dimension["size"], height=resource.type.y_dimension["size"])
         for artifact in artifacts:
             ret.set_well(artifact.location[1], artifact.name, artifact.id)
