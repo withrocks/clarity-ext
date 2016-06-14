@@ -18,19 +18,19 @@ class TestDilutionScheme(unittest.TestCase):
         dilution_scheme = DilutionScheme(repo, "Hamilton")
 
         expected = [
-            ['art-name1', '36', 'DNA1', '14.9', '5.1', '34', 'END1'],
-            ['art-name2', '33', 'DNA2', '14.9', '5.1', '17', 'END2'],
-            ['art-name3', '50', 'DNA2', '14.9', '5.1', '44', 'END1'],
-            ['art-name4', '93', 'DNA2', '14.9', '5.1', '69', 'END2']]
+            ['art-name1', 36, 'DNA1', 14.9, 5.1, 34, 'END1'],
+            ['art-name2', 33, 'DNA2', 14.9, 5.1, 17, 'END2'],
+            ['art-name3', 50, 'DNA2', 14.9, 5.1, 44, 'END1'],
+            ['art-name4', 93, 'DNA2', 14.9, 5.1, 69, 'END2']]
 
         # Test:
         actual = [
             [dilute.sample_name,
-             "{}".format(dilute.source_well_index),
+             dilute.source_well_index,
              dilute.source_plate_pos,
-             "{:.1f}".format(dilute.sample_volume),
-             "{:.1f}".format(dilute.buffer_volume),
-             "{}".format(dilute.target_well_index),
+             round(dilute.sample_volume, 1),
+             round(dilute.buffer_volume, 1),
+             dilute.target_well_index,
              dilute.target_plate_pos] for dilute in dilution_scheme.dilutes
         ]
 
