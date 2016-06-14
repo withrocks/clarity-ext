@@ -58,3 +58,13 @@ def single(seq):
     if len(seq) != 1:
         raise Exception("Unexpected number of items in the list ({})".format(len(seq)))
     return seq[0]
+
+
+def get_and_apply(dictionary, key, default, fn):
+    """Fetches the value from the dictionary if it exists, applying the map function
+    only if the result is not None (similar to the get method on `dict`)"""
+    ret = dictionary.get(key, default)
+    if ret:
+        ret = fn(ret)
+    return ret
+

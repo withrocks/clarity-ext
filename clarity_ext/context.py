@@ -1,5 +1,4 @@
 from genologics.config import BASEURI, USERNAME, PASSWORD
-from genologics.entities import *
 import requests
 import os
 from clarity_ext.dilution import *
@@ -10,23 +9,22 @@ from lxml import objectify
 from clarity_ext import UnitConversion
 from clarity_ext.result_file import ResultFile
 from clarity_ext.utils import lazyprop
+import logging
+from clarity_ext.domain import Container
 
 
 class ExtensionContext(object):
     """
     Defines context objects for extensions.
     """
-    def __init__(self, logger=None, cache=False, session=None, step_input_output_repo=None):
+    def __init__(self, session, step_repository, cache=False, logger=None):
         """
         Initializes the context.
 
-        :param logger: A logger instance
-        :param cache: Set to True to use the cache folder (.cache) for downloaded files
         :param session: An object encapsulating the connection to Clarity
-        :param step_input_output_repo: A repository for accessing input_output maps in the current step
-
-        TODO: The context should fetch everything through (easily mockable) repositories,
-        and not use the API directly, so the clarity_svc object can be removed
+        :param step_repository: A repository for accessing data from the current step
+        :param cache: Set to True to use the cache folder (.cache) for downloaded files
+        :param logger: A logger instance
         """
         self.session = session
         self.advanced = Advanced(session.api)
@@ -37,7 +35,7 @@ class ExtensionContext(object):
         self.units = UnitConversion(self.logger)
         self._update_queue = []
         self.current_step = session.current_step
-        self.step_input_output_repo = step_input_output_repo
+        self.step_repository = step_repository
 
     def local_shared_file(self, file_name, mode='r'):
         """
@@ -100,7 +98,7 @@ class ExtensionContext(object):
     @lazyprop
     def dilution_scheme(self):
         # TODO: The caller needs to provide the robot
-        return DilutionScheme(self.step_input_output_repo, "Hamilton")
+        return DilutionScheme(self.step_repository, "Hamilton")
 
     @lazyprop
     def shared_files(self):

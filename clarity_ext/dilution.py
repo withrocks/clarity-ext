@@ -82,7 +82,7 @@ class RobotDeckPositioner(object):
         # Fetch an unique list of container names from input
         # Make a dictionary with container names and plate position sort numbers
         unique_containers = sorted(list(
-            {container.resource.id for container in containers}))
+            {container.id for container in containers}))
         positions = range(1, len(unique_containers) + 1)
         plate_position_numbers = dict(zip(unique_containers, positions))
         return plate_position_numbers

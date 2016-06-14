@@ -18,11 +18,7 @@ class Well(object):
         return "{}:{}".format(self.position.row, self.position.col)
 
     def __repr__(self):
-        return "{}:{}".format(self.position.row, self.position.col)
-
-    def __str__(self):
-        return "Well<{} name={}, id={}>".format(self.get_key(), self.artifact_name,
-                                                self.artifact_id)
+        return "<Well {}:{}>".format(self.position.row, self.position.col)
 
     @property
     def index_down_first(self):
@@ -90,9 +86,6 @@ class Container(object):
             self.size = PlateSize(height=8, width=1)
         else:
             raise ValueError("Unknown plate type '{}'".format(self.container_type))
-
-        if self.resource:
-            self.id = self.resource.id
 
     def __repr__(self):
         return "<Container id={}>".format(self.id)
