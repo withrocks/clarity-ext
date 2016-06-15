@@ -41,14 +41,14 @@ class Analyte(object):
 
 
 class Sample(object):
-    def __init__(self, **kwargs):
-        self.id = kwargs.get("id", None)
+    def __init__(self, sample_id):
+        self.id = sample_id
 
     def __repr__(self):
         return "<Sample id={}>".format(self.id)
 
     @staticmethod
     def create_from_rest_resource(resource):
-        sample = Sample(id=resource.id)
+        sample = Sample(resource.id)
         return sample
 

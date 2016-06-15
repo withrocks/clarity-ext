@@ -16,7 +16,7 @@ def fake_analyte(container_id, artifact_id, sample_id, analyte_name, well_key, *
     container.id = container_id
     pos = PlatePosition.create(well_key)
     well = Well(pos, container)
-    sample = Sample(id=sample_id)
+    sample = Sample(sample_id)
     analyte = Analyte(container, analyte_name, well, sample, **kwargs)
     analyte.id = artifact_id
     return analyte
