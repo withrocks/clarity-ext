@@ -18,11 +18,7 @@ class Well(object):
         return "{}:{}".format(self.position.row, self.position.col)
 
     def __repr__(self):
-        return "{}:{}".format(self.position.row, self.position.col)
-
-    def __str__(self):
-        return "{} name={}, id={}".format(self.get_key().ljust(5, ' '), self.artifact_name,
-                                          self.artifact_id)
+        return "<Well {}:{}>".format(self.position.row, self.position.col)
 
     @property
     def index_down_first(self):
@@ -74,7 +70,7 @@ class Container(object):
     CONTAINER_TYPE_96_WELLS_PLATE = 100
     CONTAINER_TYPE_STRIP_TUBE = 200
 
-    def __init__(self, mapping=None, container_type=None):
+    def __init__(self, mapping=None, container_type=None, resource=None):
         """
         :param mapping: A dictionary-like object containing mapping from well
         position to content. It can be non-complete.
@@ -91,18 +87,22 @@ class Container(object):
         else:
             raise ValueError("Unknown plate type '{}'".format(self.container_type))
 
+    def __repr__(self):
+        return "<Container id={}>".format(self.id)
+
     @classmethod
     def create_from_rest_resource(cls, resource, artifacts):
         """
         Creates a container based on a resource from the REST API.
         """
-        # TODO: This needs to be cleaned up, i.e. how exactly the rest resource and domain objects should interact
         if resource.type.name == "96 well plate":
             ret = Container(container_type=Container.CONTAINER_TYPE_96_WELLS_PLATE)
+            ret.size = PlateSize(width=resource.type.x_dimension["size"], height=resource.type.y_dimension["size"])
+            assert ret.size.height == 8 and ret.size.width == 12, "Unexpected container dimensions {}".format(ret.size)
         else:
             raise NotImplementedError("Resource type '{}' is not supported".format(resource.type.name))
         ret.id = resource.id
-        ret.size = PlateSize(width=resource.type.x_dimension["size"], height=resource.type.y_dimension["size"])
+
         for artifact in artifacts:
             ret.set_well(artifact.location[1], artifact.name, artifact.id)
         return ret

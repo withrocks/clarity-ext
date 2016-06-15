@@ -5,28 +5,38 @@ class Dilute(object):
     # Enclose sample data, user input and derived variables for a
     # single row in a dilution
     def __init__(self, input_analyte, output_analyte):
-        self.target_concentration = output_analyte.target_concentration
-        self.target_volume = output_analyte.target_volume
         self.source_well = input_analyte.well
         self.source_container = input_analyte.container
-        self.target_well = output_analyte.well
-        self.target_container = output_analyte.container
-        self.sample_name = output_analyte.name
         self.source_concentration = input_analyte.concentration
-        self.sample_volume = None
-        self.buffer_volume = None
         self.source_well_index = None
         self.source_plate_pos = None
+
+        self.target_concentration = output_analyte.target_concentration
+        self.target_volume = output_analyte.target_volume
+        self.target_well = output_analyte.well
+        self.target_container = output_analyte.container
+
+        self.sample_name = output_analyte.name
+        self.sample_volume = None
+        self.buffer_volume = None
         self.target_well_index = None
         self.target_plate_pos = None
         self.has_to_evaporate = None
+
+    def __str__(self):
+        source = "source(loc={}/{}, conc={}".format(self.source_container, self.source_well, self.source_concentration)
+        target = "target(loc={}/{}, vol={}".format(self.target_container, self.target_well, self.target_volume)
+        return "<Dilute: {} =>\n\t{}".format(source, target)
+
+    def __repr__(self):
+        return "<Dilute {}>".format(self.sample_name)
 
 
 class RobotDeckPositioner(object):
     """
     Handle plate positions on the robot deck (target and source)
     as well as well indexing
-     """
+    """
     def __init__(self, robot_name, dilutes, plate):
         self.robot_name = robot_name
         self.plate = plate
@@ -125,17 +135,8 @@ class DilutionScheme(object):
             dilute.has_to_evaporate = \
                 (dilute.target_volume - dilute.sample_volume) < 0
 
-        self._sort_dilutes(self.robot_deck_positioner)
-
-    def _sort_dilutes(self, robot_deck_positioner):
-        new_sorting = []
-        for dilute in self.dilutes:
-            sort_number = robot_deck_positioner.find_sort_number(dilute)
-            new_sorting.append((sort_number, dilute))
-
-        new_sorting = sorted(new_sorting)
-        (_, dilutes) = zip(*new_sorting)
-        self.dilutes = list(dilutes)
+        self.dilutes = sorted(self.dilutes,
+                              key=lambda curr_dil: self.robot_deck_positioner.find_sort_number(curr_dil))
 
     def validate(self):
         """Yields validation errors or warnings"""

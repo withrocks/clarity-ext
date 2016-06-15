@@ -1,5 +1,5 @@
 #!/bin/bash
-echo "Running unittests"
-echo "-----------------"
-nosetests
+
+source ./validate-unit.sh
+source ./validate-integration.sh
 

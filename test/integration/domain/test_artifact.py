@@ -26,7 +26,6 @@ class TestIntegrationAnalyteRepository(unittest.TestCase):
         session = ClaritySession.create("24-3643")
         repo = StepRepository(session)
         inputs, outputs = repo.all_analytes()
-
         self.assertEqual(len(outputs), len(inputs), "Expected same number of inputs and outputs")
         self.assertEqual([input.sample.id for input in inputs],
                          [output.sample.id for output in outputs],

@@ -1,5 +1,4 @@
 from clarity_ext.domain import Analyte
-from clarity_ext.domain import Container
 
 
 class StepRepository(object):
@@ -8,8 +7,16 @@ class StepRepository(object):
 
     All methods return the domain objects, wrapping the REST resources.
     """
-    def __init__(self, session):
+
+    def __init__(self, session, udf_map=None):
+        """
+        Creates a new StepRepository
+
+        :param session: A session object for connecting to Clarity
+        :param udf_map: A map between domain objects and user defined fields. See `DEFAULT_UDF_MAP` for details
+        """
         self.session = session
+        self.udf_map = udf_map or DEFAULT_UDF_MAP
 
     def all_analytes(self):
         """
@@ -46,6 +53,21 @@ class StepRepository(object):
         """
         for artifact in artifacts:
             if artifact.type == "Analyte":
-                yield Analyte.create_from_rest_resource(artifact)
+                yield Analyte.create_from_rest_resource(artifact, self.udf_map)
             else:
                 yield artifact
+
+"""
+The default UDF map. Certain features of the library depend on some fields existing on the domain
+objects that are only available through UDFs. To make the library usable without having to define
+exactly the same names in different implementations, a different UDF map can be provided for
+different setups. TODO: Make the UDF map configurable in the settings for the clarity-ext tool.
+"""
+DEFAULT_UDF_MAP = {
+    "Analyte": {
+        "concentration": "Concentration",
+        "target_concentration": "Target Concentration",
+        "target_volume": "Target Volume"
+    }
+}
+
