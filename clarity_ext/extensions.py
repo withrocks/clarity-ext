@@ -56,7 +56,7 @@ class ExtensionService(object):
             return in_argument.__dict__
 
     def execute(self, module, mode, run_arguments_list=None, config=None, artifacts_to_stdout=True,
-                print_help=True):
+                print_help=True, use_cache=None):
         """
         Given a module, finds the extension in it and runs all of its integration tests
         :param module:
@@ -67,6 +67,7 @@ class ExtensionService(object):
             A string of key value pairs can also be sent.
         :param config: A configuration directory with additional parameters, such as location of directories
         :param artifacts_to_stdout: Set to true if all artifacts created should be echoed to stdout
+        :param use_cache: True if the cache should be used. Defaults to true if running in test mode.
         :return:
         """
         if config is None:
@@ -75,7 +76,11 @@ class ExtensionService(object):
                 "frozen_root_path": "../clarity-ext-frozen",
                 "exec_root_path": "."
             }
-        if mode == self.RUN_MODE_TEST:
+
+        if use_cache is None:
+            use_cache = mode == self.RUN_MODE_TEST
+
+        if use_cache:
             self.logger.info("Using cache {}".format(self.CACHE_NAME))
             utils.use_requests_cache(self.CACHE_NAME)
 
