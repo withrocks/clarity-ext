@@ -1,5 +1,6 @@
 #!/bin/bash
 
-source ./validate-unit.sh
-source ./validate-integration.sh
 
+echo "Running all tests with coverage"
+echo "-------------------------"
+nosetests -v ./test --with-coverage --cover-html --cover-package=clarity_ext --cover-erase

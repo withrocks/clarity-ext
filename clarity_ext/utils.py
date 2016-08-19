@@ -13,13 +13,15 @@ def lazyprop(fn):
         return getattr(self, attr_name)
     return _lazyprop
 
-# Monkey patch the sqlite cache in requests_cache so that it
+# Monkey patch the sqlite cache in requests_cache so that it doesn't save
+# the AUTH_HEADER
 default_dbdict_set_item = requests_cache.backends.storage.dbdict.DbPickleDict.__setitem__
 default_dbdict_get_item = requests_cache.backends.storage.dbdict.DbPickleDict.__getitem__
 AUTH_HEADER = 'Authorization'
 
 
 def dbdict_set_item(self, key, item):
+    """Updates the AUTH_HEADER before caching the response"""
     store = item[0]
     if AUTH_HEADER in store.request.headers:
         store.request.headers[AUTH_HEADER] = '***'
@@ -27,6 +29,12 @@ def dbdict_set_item(self, key, item):
 
 
 def dbdict_get_item(self, key):
+    """
+    Fetches the AUTH_HEADER value, but asserts that the AUTH_HEADER hasn't been cached.
+
+    The AUTH_HEADER should not be saved by default (see dbdict_set_item). This patch
+    ensures that it will be detected early if that happens.
+    """
     item = default_dbdict_get_item(self, key)
     store = item[0]
     if AUTH_HEADER in store.request.headers and \
@@ -39,10 +47,13 @@ requests_cache.backends.storage.dbdict.DbPickleDict.__getitem__ = dbdict_get_ite
 
 
 def use_requests_cache(cache):
-    requests_cache.install_cache(cache, allowable_methods=('GET', 'POST', 'DELETE', 'PUT'))
+    """Turns on caching for the requests library"""
+    requests_cache.install_cache(
+        cache, allowable_methods=('GET', 'POST', 'DELETE', 'PUT'))
 
 
 def clean_directory(path, skip=[]):
+    """Helper method for cleaning a directory. Skips names in the skip list."""
     to_remove = (os.path.join(path, file_or_dir)
                  for file_or_dir in os.listdir(path)
                  if file_or_dir not in skip)
@@ -61,8 +72,10 @@ def single(seq):
 
 
 def get_and_apply(dictionary, key, default, fn):
-    """Fetches the value from the dictionary if it exists, applying the map function
-    only if the result is not None (similar to the get method on `dict`)"""
+    """
+    Fetches the value from the dictionary if it exists, applying the map function
+    only if the result is not None (similar to the get method on `dict`)
+    """
     ret = dictionary.get(key, default)
     if ret:
         ret = fn(ret)
