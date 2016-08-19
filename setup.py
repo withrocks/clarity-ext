@@ -5,7 +5,7 @@ from setuptools import find_packages, setup
 
 # Add that to the dev reqs file for now, since it's not needed when running
 dependencies = ['click', 'genologics', 'requests-cache', 'pyyaml', 'nose', 'PyPDF2',
-                'lxml']
+                'lxml', 'coverage', 'pep8radius']
 
 setup(
     name='clarity-ext',
