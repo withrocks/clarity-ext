@@ -2,7 +2,7 @@ from clarity_ext.domain.container import PlatePosition, Well, Container
 from clarity_ext.utils import get_and_apply
 
 
-class Analyte(object):
+class Analyte(Artifact):
     """
     Describes an Analyte in the Clarity LIMS system.
 
@@ -40,7 +40,7 @@ class Analyte(object):
         return Analyte(container, resource.name, well, sample, **kwargs)
 
 
-class Sample(object):
+class Sample(DomainObjectMixin):
     def __init__(self, sample_id):
         self.id = sample_id
 

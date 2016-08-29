@@ -2,8 +2,14 @@ from collections import namedtuple
 from clarity_ext.utils import lazyprop
 
 
-class Well(object):
-    """Encapsulates a well in a plate"""
+class Well(DomainObjectMixin):
+    """
+    Encapsulates a location in a container.
+
+    This could for example be a well in a plate, but could also be the single location in a tube.
+
+    # TODO: Rename class to Location?
+    """
     def __init__(self, position, plate, artifact_name=None, artifact_id=None):
         self.position = position
         self.plate = plate
@@ -61,7 +67,7 @@ class PlateSize(namedtuple("PlateSize", ["height", "width"])):
     pass
 
 
-class Container(object):
+class Container(DomainObjectMixin):
     """Encapsulates a Container"""
 
     DOWN_FIRST = 1
