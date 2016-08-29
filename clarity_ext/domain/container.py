@@ -1,5 +1,6 @@
 from collections import namedtuple
 from clarity_ext.utils import lazyprop
+from clarity_ext.domain.common import DomainObjectMixin
 
 
 class Well(DomainObjectMixin):
@@ -10,26 +11,26 @@ class Well(DomainObjectMixin):
 
     # TODO: Rename class to Location?
     """
-    def __init__(self, position, plate, artifact_name=None, artifact_id=None):
+
+    def __init__(self, position, container, artifact=None):
         self.position = position
-        self.plate = plate
-        self.artifact_name = artifact_name
-        self.artifact_id = artifact_id
+        self.container = container
+        self.artifact = artifact
 
     @property
     def is_empty(self):
-        return self.artifact_name is None
+        return self.artifact is None
 
     def get_key(self):
         return "{}:{}".format(self.position.row, self.position.col)
 
     def __repr__(self):
-        return "<Well {}:{}>".format(self.position.row, self.position.col)
+        return "{}:{}".format(self.position.row, self.position.col)
 
     @property
     def index_down_first(self):
         # The position is 1-indexed
-        return (self.position.col - 1) * self.plate.size.height + self.position.row
+        return (self.position.col - 1) * self.container.size.height + self.position.row
 
 
 class PlatePosition(namedtuple("PlatePosition", ["row", "col"])):
@@ -75,6 +76,7 @@ class Container(DomainObjectMixin):
 
     CONTAINER_TYPE_96_WELLS_PLATE = 100
     CONTAINER_TYPE_STRIP_TUBE = 200
+    CONTAINER_TYPE_TUBE = 300
 
     def __init__(self, mapping=None, container_type=None, resource=None):
         """
@@ -90,6 +92,8 @@ class Container(DomainObjectMixin):
             self.size = PlateSize(height=8, width=12)
         elif self.container_type == self.CONTAINER_TYPE_STRIP_TUBE:
             self.size = PlateSize(height=8, width=1)
+        elif self.container_type == self.CONTAINER_TYPE_TUBE:
+            self.size = PlateSize(height=1, width=1)
         else:
             raise ValueError("Unknown plate type '{}'".format(self.container_type))
 
@@ -97,20 +101,26 @@ class Container(DomainObjectMixin):
         return "<Container id={}>".format(self.id)
 
     @classmethod
-    def create_from_rest_resource(cls, resource, artifacts):
+    def create_from_rest_resource(cls, resource, artifacts=[]):
         """
         Creates a container based on a resource from the REST API.
         """
+        size = PlateSize(width=resource.type.x_dimension[
+                         "size"], height=resource.type.y_dimension["size"])
         if resource.type.name == "96 well plate":
-            ret = Container(container_type=Container.CONTAINER_TYPE_96_WELLS_PLATE)
-            ret.size = PlateSize(width=resource.type.x_dimension["size"], height=resource.type.y_dimension["size"])
-            assert ret.size.height == 8 and ret.size.width == 12, "Unexpected container dimensions {}".format(ret.size)
+            container_type = Container.CONTAINER_TYPE_96_WELLS_PLATE
+        elif resource.type.name == "Tube":
+            container_type = Container.CONTAINER_TYPE_TUBE
+        elif resource.type.name == "Strip Tube":
+            container_type = Container.CONTAINER_TYPE_STRIP_TUBE
         else:
-            raise NotImplementedError("Resource type '{}' is not supported".format(resource.type.name))
+            raise NotImplementedError(
+                "Resource type '{}' is not supported".format(resource.type.name))
+        ret = Container(container_type=container_type)
         ret.id = resource.id
-
+        ret.size = size
         for artifact in artifacts:
-            ret.set_well(artifact.location[1], artifact.name, artifact.id)
+            ret.set_well(artifact.location[1], artifact)
         return ret
 
     @lazyprop
@@ -143,7 +153,7 @@ class Container(DomainObjectMixin):
     def list_wells(self, order=DOWN_FIRST):
         return list(self.enumerate_wells(order))
 
-    def set_well(self, well_pos, artifact_name, artifact_id=None):
+    def set_well(self, well_pos, artifact_name=None, artifact_id=None, artifact=None):
         """
         well_pos should be a string in the format 'B:1'
         """
@@ -161,10 +171,10 @@ class Container(DomainObjectMixin):
 
         self.wells[well_pos].artifact_name = artifact_name
         self.wells[well_pos].artifact_id = artifact_id
+        # TODO: Accept only an artifact
+        self.wells[well_pos].artifact = artifact
 
+    def __repr__(self):
+        return "{}".format(self.id)
 
-
-
-
-        else:
 

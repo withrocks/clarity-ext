@@ -11,7 +11,8 @@ import difflib
 import re
 from clarity_ext.utils import lazyprop
 from clarity_ext import ClaritySession
-from clarity_ext.domain import StepRepository
+from clarity_ext.repository import StepRepository
+from clarity_ext.service import ArtifactService
 
 
 # Defines all classes that are expected to be extended. These are
@@ -137,13 +138,9 @@ class ExtensionService(object):
                 old_dir = os.getcwd()
                 os.chdir(path)
 
-                cache_artifacts = mode == self.RUN_MODE_TEST
-
                 self.logger.info("Executing at {}".format(path))
-
-                session = ClaritySession.create(run_arguments["pid"])
-                step_repository = StepRepository(session)
-                context = ExtensionContext(session=session, step_repository=step_repository, cache=cache_artifacts)
+                cache_artifacts = mode == self.RUN_MODE_TEST
+                context = ExtensionContext.create(run_arguments["pid"], cache=cache_artifacts)
 
                 if issubclass(extension, DriverFileExtension):
                     instance = extension(context)

@@ -2,6 +2,8 @@ import unittest
 from mock import MagicMock
 from clarity_ext.dilution import DilutionScheme
 from test.unit.clarity_ext.helpers import fake_analyte
+from test.unit.clarity_ext import helpers
+from clarity_ext.service import ArtifactService
 
 
 class TestDilutionScheme(unittest.TestCase):
@@ -13,9 +15,8 @@ class TestDilutionScheme(unittest.TestCase):
     def test_dilution_scheme_hamilton_expected_results(self):
         """Dilution scheme created by mocked analytes is correctly generated for Hamilton"""
         # Setup:
-        repo = MagicMock()
-        repo.all_analytes = all_analyte_test_set1
-        dilution_scheme = DilutionScheme(repo, "Hamilton")
+        svc = helpers.mock_two_containers_artifact_service()
+        dilution_scheme = DilutionScheme(svc, "Hamilton")
 
         expected = [
             ['art-name1', 36, 'DNA1', 14.9, 5.1, 34, 'END1'],
@@ -34,29 +35,45 @@ class TestDilutionScheme(unittest.TestCase):
              dilute.target_plate_pos] for dilute in dilution_scheme.dilutes
         ]
 
+        validation_results = list(dilution_scheme.validate())
+
         # Assert:
         self.assertEqual(expected, actual)
+        self.assertEqual(0, len(validation_results))
 
+    # TODO: Add a test for buffer volume validation
+    def test_dilution_scheme_too_high_sample_volume(self):
+        def invalid_analyte_set():
+            return [
+                (fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "D:5", True,
+                             concentration=100),
+                 fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "B:5", False,
+                             target_concentration=1000, target_volume=20))
+            ]
 
-def all_analyte_test_set1():
-    """
-    Returns a list of (inputs, outputs) fake analytes for a particular step.
+            return inputs, outputs
 
-    Analytes have been sorted, as they would be when queried from the repository.
-    """
-    inputs = [
-        fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "D:5", concentration=134),
-        fake_analyte("cont-id2", "art-id2", "sample2", "art-name2", "A:5", concentration=134),
-        fake_analyte("cont-id2", "art-id3", "sample3", "art-name3", "B:7", concentration=134),
-        fake_analyte("cont-id2", "art-id4", "sample4", "art-name4", "E:12", concentration=134)]
+        repo = MagicMock()
+        repo.all_artifacts = invalid_analyte_set
+        svc = ArtifactService(repo)
+        dilution_scheme = DilutionScheme(svc, "Hamilton")
+        expected = set(str(result) for result in dilution_scheme.validate())
+        actual = set(["Error: Too high sample volume: 4:5=>2:5", "Warning: Sample has to be evaporated: 4:5=>2:5"])
+        self.assertEqual(expected, actual)
 
-    outputs = [
-        fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "B:5", target_concentration=100, target_volume=20),
-        fake_analyte("cont-id2", "art-id2", "sample2", "art-name2", "A:3", target_concentration=100, target_volume=20),
-        fake_analyte("cont-id1", "art-id3", "sample3", "art-name3", "D:6", target_concentration=100, target_volume=20),
-        fake_analyte("cont-id2", "art-id4", "sample4", "art-name4", "E:9", target_concentration=100, target_volume=20)]
+    def test_dilution_scheme_too_low_sample_volume(self):
+        def invalid_analyte_set():
+            return [(fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "D:5",
+                        True, concentration=100),
+                    fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "B:5",
+                        False, target_concentration=2, target_volume=20))
+            ]
 
-    return inputs, outputs
+        svc = helpers.mock_artifact_service(invalid_analyte_set)
+        dilution_scheme = DilutionScheme(svc, "Hamilton")
+        actual = set(str(result) for result in dilution_scheme.validate())
+        expected = set(["Error: Too low sample volume: 4:5=>2:5"])
+        self.assertEqual(expected, actual)
 
 
 def create_real_repo(step_id):
@@ -65,7 +82,7 @@ def create_real_repo(step_id):
     in its early stages of development
     """
     from clarity_ext.clarity import ClaritySession
-    from clarity_ext.domain.artifact import StepRepository
+    from clarity_ext.repository.step_repository import StepRepository
     session = ClaritySession.create(step_id)
     return StepRepository(session)
 
