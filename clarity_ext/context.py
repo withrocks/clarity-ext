@@ -187,15 +187,3 @@ class ExtensionContext(object):
             obj.commit()
 
 
-class Advanced(object):
-    """Provides advanced features, should be avoided in extension scripts"""
-    def __init__(self, lims):
-        self.lims = lims
-
-    def get(self, endpoint):
-        """Executes a GET via the REST interface. One should rather use the lims attribute if possible.
-        The endpoint is the part after /api/<version>/ in the API URI.
-        """
-        url = "{}/api/v2/{}".format(BASEURI, endpoint)
-        return requests.get(url, auth=(USERNAME, PASSWORD))
-
