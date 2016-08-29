@@ -1,10 +1,10 @@
 import unittest
-from clarity_ext.domain import *
+from clarity_ext.domain import Container, PlatePosition, Well
 
 
 class WellTest(unittest.TestCase):
     def test_index_down_correct(self):
-        plate = Plate(plate_type=Plate.PLATE_TYPE_96_WELLS)
+        plate = Container(container_type=Container.CONTAINER_TYPE_96_WELLS_PLATE)
 
         def assert_well(location, expected):
             pos = PlatePosition.create(location)
