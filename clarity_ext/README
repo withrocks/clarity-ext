@@ -1,0 +1,13 @@
+domain:
+    Contains all domain objects. Users of this module (extension writers) generally
+    interact only with these objects and never with REST endpoints directly.
+
+repository:
+    Repository classes provide access to the underlying REST API and map from those resources
+    to the easier to use domain objects. These classes should do no special grouping or other
+    business logic, leave that to the service classes
+
+service:
+    Service classes use the repository and do some extra business logic on those. They might for example
+    group all artifacts into analytes.
+

@@ -49,7 +49,8 @@ def validate(module):
 @click.argument("module")
 @click.argument("mode")
 @click.option("--args")
-def extension(module, mode, args):
+@click.option("--cache", type=bool)
+def extension(module, mode, args, cache):
     """Loads the extension and executes the integration tests.
 
     :param mode: One of
@@ -57,9 +58,11 @@ def extension(module, mode, args):
         test: Test the code locally
         freeze: Freeze an already created test (move from test-run to test-frozen)
         validate: Test the code locally, then compare with the frozen directory
+    :param args: Dynamic parameters to the extension
+    :param cache: Specifies if the cache should be used. If None, the default for `mode` will be used.
     """
     extension_svc = ExtensionService()
-    extension_svc.execute(module, mode, args, config)
+    extension_svc.execute(module, mode, args, config, use_cache=cache)
 
 if __name__ == "__main__":
     main()

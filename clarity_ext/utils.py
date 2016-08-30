@@ -67,7 +67,8 @@ def clean_directory(path, skip=[]):
 def single(seq):
     """Returns the first element in a list, throwing an exception if there is an unexpected number of items"""
     if len(seq) != 1:
-        raise Exception("Unexpected number of items in the list ({})".format(len(seq)))
+        raise ValueError(
+            "Unexpected number of items in the list ({})".format(len(seq)))
     return seq[0]
 
 
@@ -81,3 +82,12 @@ def get_and_apply(dictionary, key, default, fn):
         ret = fn(ret)
     return ret
 
+
+def unique(items, fn):
+    """Returns unique items based on evaluation of `fn` on each item"""
+    seen = set()
+    for item in items:
+        key = fn(item)
+        if key not in seen:
+            seen.add(key)
+            yield item

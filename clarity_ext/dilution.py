@@ -24,9 +24,11 @@ class Dilute(object):
         self.has_to_evaporate = None
 
     def __str__(self):
-        source = "source(loc={}/{}, conc={}".format(self.source_container, self.source_well, self.source_concentration)
-        target = "target(loc={}/{}, vol={}".format(self.target_container, self.target_well, self.target_volume)
-        return "<Dilute: {} =>\n\t{}".format(source, target)
+        source = "source({}/{}, conc={})".format(self.source_container,
+                                                 self.source_well, self.source_concentration)
+        target = "target({}/{}, conc={}, vol={})".format(self.target_container, self.target_well,
+                                                         self.target_concentration, self.target_volume)
+        return "{} => {}".format(source, target)
 
     def __repr__(self):
         return "<Dilute {}>".format(self.sample_name)
@@ -97,21 +99,20 @@ class RobotDeckPositioner(object):
 class DilutionScheme(object):
     """Creates a dilution scheme, given input and output analytes."""
 
-    def __init__(self, step_input_output_repo, robot_name):
+    def __init__(self, artifact_service, robot_name):
         """
         Calculates all derived values needed in dilute driver file.
 
         Input and output analytes must be in the same order.
         """
-        input_analytes, output_analytes = step_input_output_repo.all_analytes()
-        assert len(input_analytes) == len(output_analytes), "There must be the same number of input and output analytes"
+        pairs = artifact_service.all_analyte_pairs()
 
-        # TODO: Is it safe to just check for the container for the first output analyte?
-        container = output_analytes[0].container
+        # TODO: Is it safe to just check for the container for the first output
+        # analyte?
+        container = pairs[0].output_artifact.container
 
-        self.dilutes = [Dilute(in_analyte, out_analyte)
-                        for in_analyte, out_analyte in
-                        zip(input_analytes, output_analytes)]
+        self.dilutes = [Dilute(pair.input_artifact, pair.output_artifact)
+                        for pair in pairs]
 
         # TODO: Split these two actions up:
         # 1) Position dilutes and sort (handled by robot_deck_positioner)
@@ -139,18 +140,23 @@ class DilutionScheme(object):
                               key=lambda curr_dil: self.robot_deck_positioner.find_sort_number(curr_dil))
 
     def validate(self):
-        """Yields validation errors or warnings"""
-        if any(dilute.sample_volume < 2 for dilute in self.dilutes):
-            yield ValidationException("Too low sample volume")
+        """
+        Yields validation errors or warnings
 
-        if any(dilute.sample_volume > 50 for dilute in self.dilutes):
-            yield ValidationException("Too high sample volume")
+        TODO: These validation errors should not be in clarity-ext (implementation specific)
+        """
+        def pos_str(dilute):
+            return "{}=>{}".format(dilute.source_well, dilute.target_well)
 
-        if any(dilute.buffer_volume > 50 for dilute in self.dilutes):
-            yield ValidationException("Too high buffer volume")
-
-        if any(dilute.has_to_evaporate for dilute in self.dilutes):
-            yield ValidationException("Sample has to be evaporated", ValidationType.WARNING)
+        for dilute in self.dilutes:
+            if dilute.sample_volume < 2:
+                yield ValidationException("Too low sample volume: " + pos_str(dilute))
+            elif dilute.sample_volume > 50:
+                yield ValidationException("Too high sample volume: " + pos_str(dilute))
+            if dilute.has_to_evaporate:
+                yield ValidationException("Sample has to be evaporated: " + pos_str(dilute), ValidationType.WARNING)
+            if dilute.buffer_volume > 50:
+                yield ValidationException("Too high buffer volume: " + pos_str(dilute))
 
     def __str__(self):
         return "<DilutionScheme positioner={}>".format(self.robot_deck_positioner)

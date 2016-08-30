@@ -1,8 +1,10 @@
-from clarity_ext.domain.container import PlatePosition, Well, Container
+from clarity_ext.domain.container import ContainerPosition, Well
 from clarity_ext.utils import get_and_apply
+from clarity_ext.domain.common import DomainObjectMixin
+from clarity_ext.domain.artifact import Artifact
 
 
-class Analyte(object):
+class Analyte(Artifact):
     """
     Describes an Analyte in the Clarity LIMS system.
 
@@ -10,15 +12,16 @@ class Analyte(object):
     in udf_map, so they can be overridden in different installations.
     """
 
-    def __init__(self, container, name=None, well=None, sample=None, **kwargs):
+    def __init__(self, name=None, well=None, sample=None, id=None, **kwargs):
         """
         Creates an analyte
         """
-        self.container = container
+        super(self.__class__, self).__init__()
         self.name = name
         self.well = well
+        self.container = well.container
         self.sample = sample
-
+        self.id = id
         self.concentration = get_and_apply(kwargs, "concentration", None, float)
         self.target_concentration = get_and_apply(kwargs, "target_concentration", None, float)
         self.target_volume = get_and_apply(kwargs, "target_volume", None, float)
@@ -27,20 +30,29 @@ class Analyte(object):
         return "{} ({})".format(self.name, self.sample.id)
 
     @staticmethod
-    def create_from_rest_resource(resource, udf_map):
-        container = Container.create_from_rest_resource(resource.location[0], [])
+    def create_from_rest_resource(resource, udf_map, container_repo):
+        """
+        Creates an Analyte from the rest resource. By default, the container
+        is created from the related container resource, except if one
+        already exists in the container map. This way, there will be created
+        only one container object for each id
+        """
+        container = container_repo.get_container(resource.location[0])
 
         # Map UDFs (which may be using different names in different Clarity setups)
         # to a key-value list with well-defined key names:
         analyte_udf_map = udf_map["Analyte"]
         kwargs = {key: resource.udf.get(analyte_udf_map[key], None) for key in analyte_udf_map}
-        pos = PlatePosition.create(resource.location[1])
+        pos = ContainerPosition.create(resource.location[1])
         well = Well(pos, container)
         sample = Sample.create_from_rest_resource(resource.samples[0])
-        return Analyte(container, resource.name, well, sample, **kwargs)
+        analyte = Analyte(resource.name, well, sample, resource.id, **kwargs)
+        analyte._resource = resource
+        well.artifact = analyte
+        return analyte
 
 
-class Sample(object):
+class Sample(DomainObjectMixin):
     def __init__(self, sample_id):
         self.id = sample_id
 

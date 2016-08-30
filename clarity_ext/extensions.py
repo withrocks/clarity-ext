@@ -11,7 +11,8 @@ import difflib
 import re
 from clarity_ext.utils import lazyprop
 from clarity_ext import ClaritySession
-from clarity_ext.domain import StepRepository
+from clarity_ext.repository import StepRepository
+from clarity_ext.service import ArtifactService
 
 
 # Defines all classes that are expected to be extended. These are
@@ -55,7 +56,7 @@ class ExtensionService(object):
             return in_argument.__dict__
 
     def execute(self, module, mode, run_arguments_list=None, config=None, artifacts_to_stdout=True,
-                print_help=True):
+                print_help=True, use_cache=None):
         """
         Given a module, finds the extension in it and runs all of its integration tests
         :param module:
@@ -66,6 +67,7 @@ class ExtensionService(object):
             A string of key value pairs can also be sent.
         :param config: A configuration directory with additional parameters, such as location of directories
         :param artifacts_to_stdout: Set to true if all artifacts created should be echoed to stdout
+        :param use_cache: True if the cache should be used. Defaults to true if running in test mode.
         :return:
         """
         if config is None:
@@ -74,7 +76,11 @@ class ExtensionService(object):
                 "frozen_root_path": "../clarity-ext-frozen",
                 "exec_root_path": "."
             }
-        if mode == self.RUN_MODE_TEST:
+
+        if use_cache is None:
+            use_cache = mode == self.RUN_MODE_TEST
+
+        if use_cache:
             self.logger.info("Using cache {}".format(self.CACHE_NAME))
             utils.use_requests_cache(self.CACHE_NAME)
 
@@ -137,13 +143,10 @@ class ExtensionService(object):
                 old_dir = os.getcwd()
                 os.chdir(path)
 
-                cache_artifacts = mode == self.RUN_MODE_TEST
-
                 self.logger.info("Executing at {}".format(path))
-
-                session = ClaritySession.create(run_arguments["pid"])
-                step_repository = StepRepository(session)
-                context = ExtensionContext(session=session, step_repository=step_repository, cache=cache_artifacts)
+                cache_artifacts = mode == self.RUN_MODE_TEST
+                context = ExtensionContext.create(
+                    run_arguments["pid"], cache=cache_artifacts)
 
                 if issubclass(extension, DriverFileExtension):
                     instance = extension(context)
