@@ -67,7 +67,8 @@ def clean_directory(path, skip=[]):
 def single(seq):
     """Returns the first element in a list, throwing an exception if there is an unexpected number of items"""
     if len(seq) != 1:
-        raise ValueError("Unexpected number of items in the list ({})".format(len(seq)))
+        raise ValueError(
+            "Unexpected number of items in the list ({})".format(len(seq)))
     return seq[0]
 
 

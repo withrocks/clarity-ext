@@ -27,4 +27,3 @@ class ClaritySession(object):
         """
         url = "{}/api/v2/{}".format(BASEURI, endpoint)
         return requests.get(url, auth=(USERNAME, PASSWORD))
-

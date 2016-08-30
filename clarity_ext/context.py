@@ -19,6 +19,7 @@ class ExtensionContext(object):
     limited by default to only a subset of functionality, while being
     able to access the underlying services if needed.
     """
+
     def __init__(self, session, artifact_service, file_service, cache=False, logger=None):
         """
         Initializes the context.
@@ -120,7 +121,6 @@ class ExtensionContext(object):
 
     @property
     def output_result_files(self):
-        # TODO: This does not belong here anymore, move to a lower level
         return self.artifact_service.all_output_files()
 
     def update(self, obj):

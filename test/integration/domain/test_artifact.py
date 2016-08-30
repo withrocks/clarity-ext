@@ -27,7 +27,7 @@ class TestIntegrationAnalyteRepository(unittest.TestCase):
         session = ClaritySession.create("24-3643")
         repo = StepRepository(session)
         pairs = filter(lambda pair: isinstance(pair[0], Analyte) and
-                                    isinstance(pair[1], Analyte), repo.all_artifacts())
+                       isinstance(pair[1], Analyte), repo.all_artifacts())
         # Of all the artifacts, we're only going to examine those that map from analytes
         # to analytes:
 
@@ -37,7 +37,8 @@ class TestIntegrationAnalyteRepository(unittest.TestCase):
 
         def group_analytes(analytes):
             keyfunc = lambda analyte: analyte.container.id
-            grouped = itertools.groupby(sorted(analytes, key=keyfunc), key=keyfunc)
+            grouped = itertools.groupby(
+                sorted(analytes, key=keyfunc), key=keyfunc)
             return {key: set(x.well.position.__repr__() for x in value) for key, value in grouped}
 
         inputs = [inp for inp, outp in pairs]

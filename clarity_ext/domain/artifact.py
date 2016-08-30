@@ -22,6 +22,7 @@ class ArtifactPair(DomainObjectMixin):
     """
     Represents an input/output pair of artifacts
     """
+
     def __init__(self, input_artifact, output_artifact):
         self.input_artifact = input_artifact
         self.output_artifact = output_artifact

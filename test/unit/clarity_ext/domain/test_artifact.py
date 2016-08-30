@@ -3,6 +3,7 @@ from clarity_ext.domain import Artifact
 
 
 class TestArtifact(unittest.TestCase):
+
     def test_two_identical_artifacts_equal(self):
         """A copy of an artifact should be equal to another"""
         artifacts = [Artifact(), Artifact()]
@@ -16,4 +17,3 @@ class TestArtifact(unittest.TestCase):
     def test_artifact_should_not_equal_non_artifact(self):
         artifact = Artifact()
         self.assertNotEqual(artifact, "string")
-

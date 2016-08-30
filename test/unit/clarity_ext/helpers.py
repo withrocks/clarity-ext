@@ -1,4 +1,4 @@
-from clarity_ext.domain import Container, Analyte, Well, PlatePosition, Sample, Artifact
+from clarity_ext.domain import Container, Analyte, Well, ContainerPosition, Sample, Artifact
 from mock import MagicMock
 from clarity_ext.service import ArtifactService, FileService
 
@@ -18,7 +18,7 @@ def fake_analyte(container_id=None, artifact_id=None, sample_id=None, analyte_na
     """
     container = Container(container_type=Container.CONTAINER_TYPE_96_WELLS_PLATE)
     container.id = container_id
-    pos = PlatePosition.create(well_key)
+    pos = ContainerPosition.create(well_key)
     well = Well(pos, container)
     sample = Sample(sample_id)
     analyte = Analyte(analyte_name, well, sample, **kwargs)
@@ -79,4 +79,3 @@ def two_containers_artifact_set():
                       target_concentration=100, target_volume=20))
     ]
     return ret
-

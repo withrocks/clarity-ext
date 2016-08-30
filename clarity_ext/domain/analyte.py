@@ -1,4 +1,4 @@
-from clarity_ext.domain.container import PlatePosition, Well
+from clarity_ext.domain.container import ContainerPosition, Well
 from clarity_ext.utils import get_and_apply
 from clarity_ext.domain.common import DomainObjectMixin
 from clarity_ext.domain.artifact import Artifact
@@ -43,7 +43,7 @@ class Analyte(Artifact):
         # to a key-value list with well-defined key names:
         analyte_udf_map = udf_map["Analyte"]
         kwargs = {key: resource.udf.get(analyte_udf_map[key], None) for key in analyte_udf_map}
-        pos = PlatePosition.create(resource.location[1])
+        pos = ContainerPosition.create(resource.location[1])
         well = Well(pos, container)
         sample = Sample.create_from_rest_resource(resource.samples[0])
         analyte = Analyte(resource.name, well, sample, resource.id, **kwargs)

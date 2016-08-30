@@ -53,6 +53,7 @@ class StepRepository(object):
             output['uri'] = artifacts_by_uri[output['uri'].uri]
 
         ret = []
+        # TODO: Ensure that the container repo fetches all containers in one batch call:
         container_repo = ContainerRepository()
         for input, output in input_output_maps:
             input, output = self._wrap_input_output(
@@ -80,7 +81,8 @@ class StepRepository(object):
         elif gen_type == "PerAllInputs":
             output.generation_type = Artifact.PER_ALL_INPUTS
         else:
-            raise NotImplementedError("Generation type {} is not implemented".format(gen_type))
+            raise NotImplementedError(
+                "Generation type {} is not implemented".format(gen_type))
 
         output_type = output_info["output-type"]
         if output_type == "ResultFile":
@@ -90,7 +92,8 @@ class StepRepository(object):
         elif output_type == "SharedResultFile":
             output.output_type = Artifact.OUTPUT_TYPE_SHARED_RESULT_FILE
         else:
-            raise NotImplementedError("Output type {} is not implemented".format(output_type))
+            raise NotImplementedError(
+                "Output type {} is not implemented".format(output_type))
 
         # TODO: define all of these in the base class Artifact (before
         # check-in)
@@ -131,4 +134,3 @@ DEFAULT_UDF_MAP = {
         "target_volume": "Target Volume"
     }
 }
-

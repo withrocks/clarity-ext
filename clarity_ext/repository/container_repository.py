@@ -17,4 +17,3 @@ class ContainerRepository:
             ret = Container.create_from_rest_resource(container_resource)
             self.cache[container_resource.id] = ret
             return ret
-

@@ -24,7 +24,8 @@ class Dilute(object):
         self.has_to_evaporate = None
 
     def __str__(self):
-        source = "source({}/{}, conc={})".format(self.source_container, self.source_well, self.source_concentration)
+        source = "source({}/{}, conc={})".format(self.source_container,
+                                                 self.source_well, self.source_concentration)
         target = "target({}/{}, conc={}, vol={})".format(self.target_container, self.target_well,
                                                          self.target_concentration, self.target_volume)
         return "{} => {}".format(source, target)
@@ -106,7 +107,8 @@ class DilutionScheme(object):
         """
         pairs = artifact_service.all_analyte_pairs()
 
-        # TODO: Is it safe to just check for the container for the first output analyte?
+        # TODO: Is it safe to just check for the container for the first output
+        # analyte?
         container = pairs[0].output_artifact.container
 
         self.dilutes = [Dilute(pair.input_artifact, pair.output_artifact)
@@ -158,4 +160,3 @@ class DilutionScheme(object):
 
     def __str__(self):
         return "<DilutionScheme positioner={}>".format(self.robot_deck_positioner)
-

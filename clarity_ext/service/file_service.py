@@ -10,6 +10,7 @@ class FileService:
     Handles downloading files from the LIMS and keeping local copies of them as
     well as cleaning up after a script as run
     """
+
     def __init__(self, artifact_service, file_repo, should_cache):
         """
         :param artifact_service: An artifact service instance.
@@ -47,7 +48,8 @@ class FileService:
         # Ensure that the user is only sending in a "name" (alphanumerical or spaces)
         # File paths are not allowed
         if not re.match(r"[\w ]+", file_name):
-            raise ValueError("File name can only contain alphanumeric characters, underscores and spaces")
+            raise ValueError(
+                "File name can only contain alphanumeric characters, underscores and spaces")
         local_file_name = file_name.replace(" ", "_")
         local_path = os.path.abspath(local_file_name)
         local_path = os.path.abspath(local_path)
@@ -55,7 +57,8 @@ class FileService:
         cache_path = os.path.join(cache_directory, local_file_name)
 
         if self.should_cache and os.path.exists(cache_path):
-            self.logger.info("Fetching cached artifact from '{}'".format(cache_path))
+            self.logger.info(
+                "Fetching cached artifact from '{}'".format(cache_path))
             shutil.copy(cache_path, ".")
         else:
             if not os.path.exists(local_path):
@@ -71,12 +74,14 @@ class FileService:
                 self.logger.info("Downloading file {} (artifact={} '{}')"
                                  .format(file.id, artifact.id, artifact.name))
                 self.file_repo.copy_remote_file(file.id, local_path)
-                self.logger.info("Download completed, path='{}'".format(local_path))
+                self.logger.info(
+                    "Download completed, path='{}'".format(local_path))
 
                 if self.should_cache:
                     if not os.path.exists(cache_directory):
                         os.mkdir(cache_directory)
-                    self.logger.info("Copying artifact to cache directory, {}=>{}".format(local_path, cache_directory))
+                    self.logger.info("Copying artifact to cache directory, {}=>{}".format(
+                        local_path, cache_directory))
                     shutil.copy(local_path, cache_directory)
 
         # Add to this list for cleanup:
@@ -92,4 +97,3 @@ class FileService:
                                  "that it won't be uploaded again".format(path))
                 # TODO: Handle exception
                 os.remove(path)
-

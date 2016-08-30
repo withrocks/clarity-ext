@@ -145,7 +145,8 @@ class ExtensionService(object):
 
                 self.logger.info("Executing at {}".format(path))
                 cache_artifacts = mode == self.RUN_MODE_TEST
-                context = ExtensionContext.create(run_arguments["pid"], cache=cache_artifacts)
+                context = ExtensionContext.create(
+                    run_arguments["pid"], cache=cache_artifacts)
 
                 if issubclass(extension, DriverFileExtension):
                     instance = extension(context)

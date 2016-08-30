@@ -5,6 +5,7 @@ from test.unit.clarity_ext import helpers
 
 
 class TestContext(unittest.TestCase):
+
     def test_context(self):
         """Can create an ExtensionContext"""
         session = MagicMock()
@@ -31,4 +32,3 @@ class TestContext(unittest.TestCase):
         # Fetching a single output_container should throw in this case
         self.assertRaises(ValueError, input_should_raise)
         self.assertRaises(ValueError, output_should_raise)
-

@@ -3,6 +3,7 @@ from test.unit.clarity_ext import helpers
 
 
 class TestArtifactService(unittest.TestCase):
+
     def test_output_containers_expected(self):
         svc = helpers.mock_two_containers_artifact_service()
 
@@ -21,7 +22,8 @@ class TestArtifactService(unittest.TestCase):
         self.assertEqual(expected, actual)
 
     def test_input_output_are_in_correct_order(self):
-        # Ensures that the service returns tuples of input, output pairs in order
+        # Ensures that the service returns tuples of input, output pairs in
+        # order
         svc = helpers.mock_two_containers_artifact_service()
 
         analytes = svc.all_analyte_pairs()
@@ -29,5 +31,3 @@ class TestArtifactService(unittest.TestCase):
         # Expecting AnalytePair objects, correctly mapped:
         self.assertTrue(all(pair.input_artifact.is_input and
                             not pair.output_artifact.is_input for pair in analytes))
-
-

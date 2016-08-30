@@ -2,6 +2,7 @@ class FileRepository:
     """
     Handles remote and local file access.
     """
+
     def __init__(self, session):
         self.session = session
 

@@ -4,9 +4,6 @@ from clarity_ext.domain import Container, ResultFile
 from clarity_ext.context import ExtensionContext
 import os
 
-requests_cache.install_cache(
-    "temp-test", allowable_methods=['GET', 'POST', 'PUT'])
-
 
 class TestIntegrationAnalyteRepository(unittest.TestCase):
     """
@@ -49,7 +46,8 @@ class TestIntegrationAnalyteRepository(unittest.TestCase):
         """Can fetch all output files in a step"""
         context = ExtensionContext.create("24-3144")
         actual = set(f.id for f in context.output_result_files)
-        expected = set(['92-5244', '92-5245', '92-5246', '92-5241', '92-5242', '92-5243'])
+        expected = set(['92-5244', '92-5245', '92-5246',
+                        '92-5241', '92-5242', '92-5243'])
         self.assertEqual(expected, actual)
 
     def test_can_fetch_single_output_file(self):
@@ -61,7 +59,7 @@ class TestIntegrationAnalyteRepository(unittest.TestCase):
     def test_can_read_xml(self):
         """Can parse an xml file directly form the context"""
         context = ExtensionContext.create("24-4583")
-        xml = context.local_shared_file("Result XML File (required)", is_xml=True)
+        xml = context.local_shared_file(
+            "Result XML File (required)", is_xml=True)
         self.assertEqual("D1000", xml.FileInformation.Assay)
         context.cleanup()
-

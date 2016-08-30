@@ -33,7 +33,7 @@ class Well(DomainObjectMixin):
         return (self.position.col - 1) * self.container.size.height + self.position.row
 
 
-class PlatePosition(namedtuple("PlatePosition", ["row", "col"])):
+class ContainerPosition(namedtuple("ContainerPosition", ["row", "col"])):
     """Defines the position of the plate, (zero based)"""
     def __repr__(self):
         return "{}:{}".format(self.row_letter, self.col)
@@ -55,7 +55,7 @@ class PlatePosition(namedtuple("PlatePosition", ["row", "col"])):
             col = int(col)
         else:
             row, col = repr
-        return PlatePosition(row=row, col=col)
+        return ContainerPosition(row=row, col=col)
 
     @property
     def row_letter(self):
@@ -129,7 +129,7 @@ class Container(DomainObjectMixin):
         for row, col in self._traverse():
             key = "{}:{}".format(row, col)
             content = self.mapping[key] if self.mapping and key in self.mapping else None
-            pos = PlatePosition(row=row, col=col)
+            pos = ContainerPosition(row=row, col=col)
             ret[(row, col)] = Well(pos, content)
         return ret
 
