@@ -1,4 +1,5 @@
 from clarity_ext.domain.validation import ValidationException, ValidationType
+import datetime
 
 
 class Dilute(object):
@@ -106,6 +107,7 @@ class DilutionScheme(object):
         Input and output analytes must be in the same order.
         """
         pairs = artifact_service.all_analyte_pairs()
+        self.current_step_id = artifact_service.step_repository.session.current_step_id
 
         # TODO: Is it safe to just check for the container for the first output
         # analyte?
@@ -160,3 +162,10 @@ class DilutionScheme(object):
 
     def __str__(self):
         return "<DilutionScheme positioner={}>".format(self.robot_deck_positioner)
+
+    @property
+    def driver_file_name(self):
+        # TODO: Fetch user initials
+        pid = self.current_step_id
+        today = datetime.date.today().strftime("%y%m%d")
+        return "DriverFile_EEX_{}_{}".format(today, pid)
