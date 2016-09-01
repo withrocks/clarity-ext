@@ -103,8 +103,6 @@ class DilutionScheme(object):
     def __init__(self, artifact_service, robot_name):
         """
         Calculates all derived values needed in dilute driver file.
-
-        Input and output analytes must be in the same order.
         """
         pairs = artifact_service.all_analyte_pairs()
         self.current_step_id = artifact_service.step_repository.session.current_step_id
@@ -116,27 +114,28 @@ class DilutionScheme(object):
         self.dilutes = [Dilute(pair.input_artifact, pair.output_artifact)
                         for pair in pairs]
 
-        # TODO: Split these two actions up:
-        # 1) Position dilutes and sort (handled by robot_deck_positioner)
-        # 2) set volume etc. (handled here)
-        self.robot_deck_positioner = RobotDeckPositioner(robot_name, self.dilutes, container)
+        self.analyte_pair_by_dilute = {dilute: pair for dilute, pair in zip(self.dilutes, pairs)}
 
+        # Handle volumes etc.
         for dilute in self.dilutes:
-            dilute.source_well_index = self.robot_deck_positioner.indexer(dilute.source_well)
-            dilute.source_plate_pos = self.robot_deck_positioner.\
-                source_plate_position_map[dilute.source_container.id]
             dilute.sample_volume = \
                 dilute.target_concentration * dilute.target_volume / \
                 dilute.source_concentration
             dilute.buffer_volume = \
                 max(dilute.target_volume - dilute.sample_volume, 0)
-            dilute.target_well_index = self.robot_deck_positioner.indexer(
-                dilute.target_well)
-            dilute.target_plate_pos = self.robot_deck_positioner\
-                .target_plate_position_map[
-                    dilute.target_container.id]
             dilute.has_to_evaporate = \
                 (dilute.target_volume - dilute.sample_volume) < 0
+
+        # Handle positioning
+        self.robot_deck_positioner = RobotDeckPositioner(robot_name, self.dilutes, container)
+        for dilute in self.dilutes:
+            dilute.source_well_index = self.robot_deck_positioner.indexer(dilute.source_well)
+            dilute.source_plate_pos = self.robot_deck_positioner. \
+                source_plate_position_map[dilute.source_container.id]
+            dilute.target_well_index = self.robot_deck_positioner.indexer(
+                dilute.target_well)
+            dilute.target_plate_pos = self.robot_deck_positioner \
+                .target_plate_position_map[dilute.target_container.id]
 
         self.dilutes = sorted(self.dilutes,
                               key=lambda curr_dil: self.robot_deck_positioner.find_sort_number(curr_dil))
