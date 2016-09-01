@@ -1,6 +1,8 @@
 from clarity_ext.domain.validation import ValidationException, ValidationType
 import datetime
 
+DILUTION_WASTE_VOLUME = 1
+
 
 class Dilute(object):
     # Enclose sample data, user input and derived variables for a
@@ -9,6 +11,7 @@ class Dilute(object):
         self.source_well = input_analyte.well
         self.source_container = input_analyte.container
         self.source_concentration = input_analyte.concentration
+        self.source_initial_volume = input_analyte.volume
         self.source_well_index = None
         self.source_plate_pos = None
 
@@ -22,6 +25,7 @@ class Dilute(object):
         self.buffer_volume = None
         self.target_well_index = None
         self.target_plate_pos = None
+        self.source_volume = None
         self.has_to_evaporate = None
 
     def __str__(self):
@@ -40,6 +44,7 @@ class RobotDeckPositioner(object):
     Handle plate positions on the robot deck (target and source)
     as well as well indexing
     """
+
     def __init__(self, robot_name, dilutes, plate):
         self.robot_name = robot_name
         self.plate = plate

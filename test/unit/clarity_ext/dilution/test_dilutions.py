@@ -46,7 +46,7 @@ class TestDilutionScheme(unittest.TestCase):
         def invalid_analyte_set():
             return [
                 (fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "D:5", True,
-                              concentration=100),
+                              concentration=100, volume=20),
                  fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "B:5", False,
                               target_concentration=1000, target_volume=20))
             ]
@@ -65,7 +65,7 @@ class TestDilutionScheme(unittest.TestCase):
     def test_dilution_scheme_too_low_sample_volume(self):
         def invalid_analyte_set():
             return [(fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "D:5",
-                                  True, concentration=100),
+                                  True, concentration=100, volume=20),
                      fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "B:5",
                                   False, target_concentration=2, target_volume=20))
                     ]

@@ -24,6 +24,7 @@ class Analyte(Artifact):
         self.id = id
         self.concentration = get_and_apply(kwargs, "concentration", None, float)
         self.target_concentration = get_and_apply(kwargs, "target_concentration", None, float)
+        self.volume = get_and_apply(kwargs, "volume", None, float)
         self.target_volume = get_and_apply(kwargs, "target_volume", None, float)
 
     def __repr__(self):
@@ -51,10 +52,18 @@ class Analyte(Artifact):
         well.artifact = analyte
         return analyte
 
+    # TODO: Update db
+    def commit(self):
+        pass
+
 
 class Sample(DomainObjectMixin):
     def __init__(self, sample_id):
         self.id = sample_id
+
+    #ToDo: Update db
+    def commit(self):
+        pass
 
     def __repr__(self):
         return "<Sample id={}>".format(self.id)
