@@ -129,8 +129,6 @@ class ExtensionContext(object):
 
     def commit(self):
         """Commits all objects that have been added via the update method, using batch processing if possible"""
-        # TODO: Implement batch processing
-        for obj in self._update_queue:
-            obj.commit()
+        self.artifact_service.update_artifacts(self._update_queue)
 
 
