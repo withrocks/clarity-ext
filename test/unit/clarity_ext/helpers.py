@@ -18,6 +18,7 @@ def fake_analyte(container_id=None, artifact_id=None, sample_id=None, analyte_na
     """
     container = Container(container_type=Container.CONTAINER_TYPE_96_WELLS_PLATE)
     container.id = container_id
+    container.name = container_id
     pos = ContainerPosition.create(well_key)
     well = Well(pos, container)
     sample = Sample(sample_id)

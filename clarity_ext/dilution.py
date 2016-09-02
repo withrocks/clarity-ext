@@ -120,19 +120,29 @@ class DilutionScheme(object):
                         for pair in pairs]
 
         self.analyte_pair_by_dilute = {dilute: pair for dilute, pair in zip(self.dilutes, pairs)}
+        self.robot_deck_positioner = RobotDeckPositioner(robot_name, self.dilutes, container)
 
+        self.calculate_transfer_volumes()
+        self.do_positioning()
+
+    def calculate_transfer_volumes(self):
         # Handle volumes etc.
         for dilute in self.dilutes:
-            dilute.sample_volume = \
-                dilute.target_concentration * dilute.target_volume / \
-                dilute.source_concentration
-            dilute.buffer_volume = \
-                max(dilute.target_volume - dilute.sample_volume, 0)
-            dilute.has_to_evaporate = \
-                (dilute.target_volume - dilute.sample_volume) < 0
+            try:
+                dilute.sample_volume = \
+                    dilute.target_concentration * dilute.target_volume / \
+                    dilute.source_concentration
+                dilute.buffer_volume = \
+                    max(dilute.target_volume - dilute.sample_volume, 0)
+                dilute.has_to_evaporate = \
+                    (dilute.target_volume - dilute.sample_volume) < 0
+            except (TypeError, ZeroDivisionError) as e:
+                dilute.sample_volume = None
+                dilute.buffer_volume = None
+                dilute.has_to_evaporate = None
 
+    def do_positioning(self):
         # Handle positioning
-        self.robot_deck_positioner = RobotDeckPositioner(robot_name, self.dilutes, container)
         for dilute in self.dilutes:
             dilute.source_well_index = self.robot_deck_positioner.indexer(dilute.source_well)
             dilute.source_plate_pos = self.robot_deck_positioner. \
@@ -155,14 +165,19 @@ class DilutionScheme(object):
             return "{}=>{}".format(dilute.source_well, dilute.target_well)
 
         for dilute in self.dilutes:
-            if dilute.sample_volume < 2:
-                yield ValidationException("Too low sample volume: " + pos_str(dilute))
-            elif dilute.sample_volume > 50:
-                yield ValidationException("Too high sample volume: " + pos_str(dilute))
-            if dilute.has_to_evaporate:
-                yield ValidationException("Sample has to be evaporated: " + pos_str(dilute), ValidationType.WARNING)
-            if dilute.buffer_volume > 50:
-                yield ValidationException("Too high buffer volume: " + pos_str(dilute))
+            if not dilute.source_initial_volume:
+                yield ValidationException("Source volume is not set: {}".format(dilute.source_well))
+            if not dilute.source_concentration:
+                yield ValidationException("Source concentration not set: {}".format(dilute.source_well))
+            else:
+                if dilute.sample_volume < 2:
+                    yield ValidationException("Too low sample volume: " + pos_str(dilute))
+                elif dilute.sample_volume > 50:
+                    yield ValidationException("Too high sample volume: " + pos_str(dilute))
+                if dilute.has_to_evaporate:
+                    yield ValidationException("Sample has to be evaporated: " + pos_str(dilute), ValidationType.WARNING)
+                if dilute.buffer_volume > 50:
+                    yield ValidationException("Too high buffer volume: " + pos_str(dilute))
 
     def __str__(self):
         return "<DilutionScheme positioner={}>".format(self.robot_deck_positioner)
