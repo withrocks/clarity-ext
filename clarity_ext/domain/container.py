@@ -25,7 +25,7 @@ class Well(DomainObjectMixin):
         return "{}:{}".format(self.position.row, self.position.col)
 
     def __repr__(self):
-        return "{}:{}".format(self.position.row, self.position.col)
+        return "{}({}{})".format(self.container.name, self.position.row_letter, self.position.col)
 
     @property
     def index_down_first(self):
@@ -87,6 +87,7 @@ class Container(DomainObjectMixin):
         self.mapping = mapping
         self.container_type = container_type
         self.id = None
+        self.name = None
 
         if self.container_type == self.CONTAINER_TYPE_96_WELLS_PLATE:
             self.size = PlateSize(height=8, width=12)
@@ -118,6 +119,7 @@ class Container(DomainObjectMixin):
                 "Resource type '{}' is not supported".format(resource.type.name))
         ret = Container(container_type=container_type)
         ret.id = resource.id
+        ret.name = resource.name
         ret.size = size
         for artifact in artifacts:
             ret.set_well(artifact.location[1], artifact)

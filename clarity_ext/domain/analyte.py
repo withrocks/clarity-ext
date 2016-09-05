@@ -24,6 +24,7 @@ class Analyte(Artifact):
         self.id = id
         self.concentration = get_and_apply(kwargs, "concentration", None, float)
         self.target_concentration = get_and_apply(kwargs, "target_concentration", None, float)
+        self.volume = get_and_apply(kwargs, "volume", None, float)
         self.target_volume = get_and_apply(kwargs, "target_volume", None, float)
 
     def __repr__(self):
@@ -50,6 +51,32 @@ class Analyte(Artifact):
         analyte._resource = resource
         well.artifact = analyte
         return analyte
+
+    def updated_rest_resource(self, original_rest_resource, udf_map):
+        """
+        :param original_rest_resource: The rest resource in the state as in the api cache
+        :param udf_map: global udf map for all entities
+        :return: An updated rest resource according to changes in this instance of Analyte
+        """
+        # TODO: Update udfs that is not present in the original xml received from db
+        # A ticket is sent to Clarity support (160902)
+        _updated_rest_resource = original_rest_resource
+        # TODO: This implementation is not ready! Implementation is moved to another ticket
+        # in Jira
+
+        # Update udf values
+        analyte_udf_map = udf_map['Analyte']
+        values_by_udf_names = {analyte_udf_map[key]: self.__dict__[key] for key in analyte_udf_map}
+        # Retrieve fields that are updated, only these field should be included in the rest update
+        for key in values_by_udf_names:
+            if _updated_rest_resource.udf.get(key, None):
+                original_type = type(_updated_rest_resource.udf[key])
+                value = get_and_apply(values_by_udf_names, key, None, original_type)
+                _updated_rest_resource.udf[key] = value
+
+        # Update other fields
+        _updated_rest_resource.name = self.name
+        return _updated_rest_resource
 
 
 class Sample(DomainObjectMixin):

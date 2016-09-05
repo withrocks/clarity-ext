@@ -18,6 +18,7 @@ def fake_analyte(container_id=None, artifact_id=None, sample_id=None, analyte_na
     """
     container = Container(container_type=Container.CONTAINER_TYPE_96_WELLS_PLATE)
     container.id = container_id
+    container.name = container_id
     pos = ContainerPosition.create(well_key)
     well = Well(pos, container)
     sample = Sample(sample_id)
@@ -65,16 +66,20 @@ def two_containers_artifact_set():
     Analytes have been sorted, as they would be when queried from the repository.
     """
     ret = [
-        (fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "D:5", True, concentration=134),
+        (fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "D:5", True,
+                      concentration=134, volume=30),
          fake_analyte("cont-id3", "art-id1", "sample1", "art-name1", "B:5", False,
                       target_concentration=100, target_volume=20)),
-        (fake_analyte("cont-id2", "art-id2", "sample2", "art-name2", "A:5", True, concentration=134),
+        (fake_analyte("cont-id2", "art-id2", "sample2", "art-name2", "A:5", True,
+                      concentration=134, volume=40),
          fake_analyte("cont-id4", "art-id2", "sample2", "art-name2", "A:3", False,
                       target_concentration=100, target_volume=20)),
-        (fake_analyte("cont-id2", "art-id3", "sample3", "art-name3", "B:7", True, concentration=134),
+        (fake_analyte("cont-id2", "art-id3", "sample3", "art-name3", "B:7", True,
+                      concentration=134, volume=50),
          fake_analyte("cont-id3", "art-id3", "sample3", "art-name3", "D:6", False,
                       target_concentration=100, target_volume=20)),
-        (fake_analyte("cont-id2", "art-id4", "sample4", "art-name4", "E:12", True, concentration=134),
+        (fake_analyte("cont-id2", "art-id4", "sample4", "art-name4", "E:12", True,
+                      concentration=134, volume=60),
          fake_analyte("cont-id4", "art-id4", "sample4", "art-name4", "E:9", False,
                       target_concentration=100, target_volume=20))
     ]

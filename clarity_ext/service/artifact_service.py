@@ -91,3 +91,6 @@ class ArtifactService:
         ret = list(utils.unique(files, lambda f: f.id))
         assert len(ret) == 0 or isinstance(ret[0], ResultFile)
         return ret
+
+    def update_artifacts(self, update_queue):
+        self.step_repository.update_objects(update_queue)

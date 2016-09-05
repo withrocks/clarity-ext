@@ -1,4 +1,7 @@
 from clarity_ext.domain.validation import ValidationException, ValidationType
+import datetime
+
+DILUTION_WASTE_VOLUME = 1
 
 
 class Dilute(object):
@@ -8,6 +11,7 @@ class Dilute(object):
         self.source_well = input_analyte.well
         self.source_container = input_analyte.container
         self.source_concentration = input_analyte.concentration
+        self.source_initial_volume = input_analyte.volume
         self.source_well_index = None
         self.source_plate_pos = None
 
@@ -21,6 +25,7 @@ class Dilute(object):
         self.buffer_volume = None
         self.target_well_index = None
         self.target_plate_pos = None
+        self.source_volume = None
         self.has_to_evaporate = None
 
     def __str__(self):
@@ -39,6 +44,7 @@ class RobotDeckPositioner(object):
     Handle plate positions on the robot deck (target and source)
     as well as well indexing
     """
+
     def __init__(self, robot_name, dilutes, plate):
         self.robot_name = robot_name
         self.plate = plate
@@ -102,10 +108,9 @@ class DilutionScheme(object):
     def __init__(self, artifact_service, robot_name):
         """
         Calculates all derived values needed in dilute driver file.
-
-        Input and output analytes must be in the same order.
         """
         pairs = artifact_service.all_analyte_pairs()
+        self.current_step_id = artifact_service.step_repository.session.current_step_id
 
         # TODO: Is it safe to just check for the container for the first output
         # analyte?
@@ -114,27 +119,38 @@ class DilutionScheme(object):
         self.dilutes = [Dilute(pair.input_artifact, pair.output_artifact)
                         for pair in pairs]
 
-        # TODO: Split these two actions up:
-        # 1) Position dilutes and sort (handled by robot_deck_positioner)
-        # 2) set volume etc. (handled here)
+        self.analyte_pair_by_dilute = {dilute: pair for dilute, pair in zip(self.dilutes, pairs)}
         self.robot_deck_positioner = RobotDeckPositioner(robot_name, self.dilutes, container)
 
+        self.calculate_transfer_volumes()
+        self.do_positioning()
+
+    def calculate_transfer_volumes(self):
+        # Handle volumes etc.
+        for dilute in self.dilutes:
+            try:
+                dilute.sample_volume = \
+                    dilute.target_concentration * dilute.target_volume / \
+                    dilute.source_concentration
+                dilute.buffer_volume = \
+                    max(dilute.target_volume - dilute.sample_volume, 0)
+                dilute.has_to_evaporate = \
+                    (dilute.target_volume - dilute.sample_volume) < 0
+            except (TypeError, ZeroDivisionError) as e:
+                dilute.sample_volume = None
+                dilute.buffer_volume = None
+                dilute.has_to_evaporate = None
+
+    def do_positioning(self):
+        # Handle positioning
         for dilute in self.dilutes:
             dilute.source_well_index = self.robot_deck_positioner.indexer(dilute.source_well)
-            dilute.source_plate_pos = self.robot_deck_positioner.\
+            dilute.source_plate_pos = self.robot_deck_positioner. \
                 source_plate_position_map[dilute.source_container.id]
-            dilute.sample_volume = \
-                dilute.target_concentration * dilute.target_volume / \
-                dilute.source_concentration
-            dilute.buffer_volume = \
-                max(dilute.target_volume - dilute.sample_volume, 0)
             dilute.target_well_index = self.robot_deck_positioner.indexer(
                 dilute.target_well)
-            dilute.target_plate_pos = self.robot_deck_positioner\
-                .target_plate_position_map[
-                    dilute.target_container.id]
-            dilute.has_to_evaporate = \
-                (dilute.target_volume - dilute.sample_volume) < 0
+            dilute.target_plate_pos = self.robot_deck_positioner \
+                .target_plate_position_map[dilute.target_container.id]
 
         self.dilutes = sorted(self.dilutes,
                               key=lambda curr_dil: self.robot_deck_positioner.find_sort_number(curr_dil))
@@ -149,14 +165,26 @@ class DilutionScheme(object):
             return "{}=>{}".format(dilute.source_well, dilute.target_well)
 
         for dilute in self.dilutes:
-            if dilute.sample_volume < 2:
-                yield ValidationException("Too low sample volume: " + pos_str(dilute))
-            elif dilute.sample_volume > 50:
-                yield ValidationException("Too high sample volume: " + pos_str(dilute))
-            if dilute.has_to_evaporate:
-                yield ValidationException("Sample has to be evaporated: " + pos_str(dilute), ValidationType.WARNING)
-            if dilute.buffer_volume > 50:
-                yield ValidationException("Too high buffer volume: " + pos_str(dilute))
+            if not dilute.source_initial_volume:
+                yield ValidationException("Source volume is not set: {}".format(dilute.source_well))
+            if not dilute.source_concentration:
+                yield ValidationException("Source concentration not set: {}".format(dilute.source_well))
+            else:
+                if dilute.sample_volume < 2:
+                    yield ValidationException("Too low sample volume: " + pos_str(dilute))
+                elif dilute.sample_volume > 50:
+                    yield ValidationException("Too high sample volume: " + pos_str(dilute))
+                if dilute.has_to_evaporate:
+                    yield ValidationException("Sample has to be evaporated: " + pos_str(dilute), ValidationType.WARNING)
+                if dilute.buffer_volume > 50:
+                    yield ValidationException("Too high buffer volume: " + pos_str(dilute))
 
     def __str__(self):
         return "<DilutionScheme positioner={}>".format(self.robot_deck_positioner)
+
+    @property
+    def driver_file_name(self):
+        # TODO: Fetch user initials
+        pid = self.current_step_id
+        today = datetime.date.today().strftime("%y%m%d")
+        return "DriverFile_EEX_{}_{}".format(today, pid)

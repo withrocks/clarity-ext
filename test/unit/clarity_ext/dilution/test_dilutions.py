@@ -46,7 +46,7 @@ class TestDilutionScheme(unittest.TestCase):
         def invalid_analyte_set():
             return [
                 (fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "D:5", True,
-                              concentration=100),
+                              concentration=100, volume=20),
                  fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "B:5", False,
                               target_concentration=1000, target_volume=20))
             ]
@@ -57,15 +57,15 @@ class TestDilutionScheme(unittest.TestCase):
         repo.all_artifacts = invalid_analyte_set
         svc = ArtifactService(repo)
         dilution_scheme = DilutionScheme(svc, "Hamilton")
-        expected = set(str(result) for result in dilution_scheme.validate())
-        actual = set(["Error: Too high sample volume: 4:5=>2:5",
-                      "Warning: Sample has to be evaporated: 4:5=>2:5"])
+        actual = set(str(result) for result in dilution_scheme.validate())
+        expected = set(["Error: Too high sample volume: cont-id1(D5)=>cont-id1(B5)",
+                      "Warning: Sample has to be evaporated: cont-id1(D5)=>cont-id1(B5)"])
         self.assertEqual(expected, actual)
 
     def test_dilution_scheme_too_low_sample_volume(self):
         def invalid_analyte_set():
             return [(fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "D:5",
-                                  True, concentration=100),
+                                  True, concentration=100, volume=20),
                      fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "B:5",
                                   False, target_concentration=2, target_volume=20))
                     ]
@@ -73,7 +73,46 @@ class TestDilutionScheme(unittest.TestCase):
         svc = helpers.mock_artifact_service(invalid_analyte_set)
         dilution_scheme = DilutionScheme(svc, "Hamilton")
         actual = set(str(result) for result in dilution_scheme.validate())
-        expected = set(["Error: Too low sample volume: 4:5=>2:5"])
+        expected = set(["Error: Too low sample volume: cont-id1(D5)=>cont-id1(B5)"])
+        self.assertEqual(expected, actual)
+
+    def test_dilution_scheme_source_volume_not_set(self):
+        def invalid_analyte_set():
+            return [(fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "D:5",
+                                  True, concentration=100),
+                     fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "B:5",
+                                  False, target_concentration=100, target_volume=20))
+                    ]
+        svc = helpers.mock_artifact_service(invalid_analyte_set)
+        dilution_scheme = DilutionScheme(svc, "Hamilton")
+        actual = set(str(result) for result in dilution_scheme.validate())
+        expected = set(["Error: Source volume is not set: cont-id1(D5)"])
+        self.assertEqual(expected, actual)
+
+    def test_dilution_scheme_source_concentration_not_set(self):
+        def invalid_analyte_set():
+            return [(fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "D:5",
+                                  True, volume=20),
+                     fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "B:5",
+                                  False, target_concentration=100, target_volume=20))
+                    ]
+        svc = helpers.mock_artifact_service(invalid_analyte_set)
+        dilution_scheme = DilutionScheme(svc, "Hamilton")
+        actual = set(str(result) for result in dilution_scheme.validate())
+        expected = set(["Error: Source concentration not set: cont-id1(D5)"])
+        self.assertEqual(expected, actual)
+
+    def test_dilution_scheme_source_concentration_zero(self):
+        def invalid_analyte_set():
+            return [(fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "D:5",
+                                  True, volume=20, concentration=0),
+                     fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "B:5",
+                                  False, target_concentration=100, target_volume=20))
+                    ]
+        svc = helpers.mock_artifact_service(invalid_analyte_set)
+        dilution_scheme = DilutionScheme(svc, "Hamilton")
+        actual = set(str(result) for result in dilution_scheme.validate())
+        expected = set(["Error: Source concentration not set: cont-id1(D5)"])
         self.assertEqual(expected, actual)
 
 

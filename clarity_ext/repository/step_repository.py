@@ -2,6 +2,7 @@ from clarity_ext.domain.artifact import Artifact
 from clarity_ext.domain.analyte import Analyte
 from clarity_ext.domain.result_file import ResultFile
 from clarity_ext.repository.container_repository import ContainerRepository
+from genologics.entities import Artifact as ApiArtifact
 
 
 class StepRepository(object):
@@ -120,6 +121,22 @@ class StepRepository(object):
         for artifact in artifacts:
             yield self._wrap_artifact(artifact)
 
+    def update_objects(self, objects):
+        """
+        Updates each entry in objects to db, which must have the function
+        updated_rest_resource
+        """
+        update_queue = []
+        for obj in objects:
+            if type(obj) == Analyte:
+                original_analyte_from_rest = ApiArtifact(self.session.api, id=obj.id)
+                update_queue.append(obj.updated_rest_resource(original_analyte_from_rest, self.udf_map))
+            else:
+                raise Exception("Unknown type {}".format(obj.type))
+
+        self.session.api.put_batch(update_queue)
+
+
 
 """
 The default UDF map. Certain features of the library depend on some fields existing on the domain
@@ -129,8 +146,9 @@ different setups. TODO: Make the UDF map configurable in the settings for the cl
 """
 DEFAULT_UDF_MAP = {
     "Analyte": {
-        "concentration": "Concentration",
+        "concentration": "Conc. Current (ng/ul)",
         "target_concentration": "Target Concentration",
-        "target_volume": "Target Volume"
+        "target_volume": "Target Volume",
+        "volume": "Current sample volume (ul)"
     }
 }
