@@ -145,11 +145,10 @@ exactly the same names in different implementations, a different UDF map can be 
 different setups. TODO: Make the UDF map configurable in the settings for the clarity-ext tool.
 """
 DEFAULT_UDF_MAP = {
-    # TODO: UDF Concentration should not be used
     "Analyte": {
-        "concentration": "Concentration",
+        "concentration": "Conc. Current (ng/ul)",
         "target_concentration": "Target Concentration",
         "target_volume": "Target Volume",
-        "volume": "Volume (uL)"
+        "volume": "Current sample volume (ul)"
     }
 }
