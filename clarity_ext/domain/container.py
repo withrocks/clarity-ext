@@ -25,7 +25,11 @@ class Well(DomainObjectMixin):
         return "{}:{}".format(self.position.row, self.position.col)
 
     def __repr__(self):
-        return "{}({}{})".format(self.container.name, self.position.row_letter, self.position.col)
+        if self.container:
+            container_name = self.container.name
+        else:
+            container_name = "<no container>"
+        return "{}({}{})".format(container_name, self.position.row_letter, self.position.col)
 
     @property
     def index_down_first(self):
