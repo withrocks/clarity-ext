@@ -27,3 +27,6 @@ class ArtifactPair(DomainObjectMixin):
         self.input_artifact = input_artifact
         self.output_artifact = output_artifact
 
+    def __repr__(self):
+        return "{}, {}".format(self.input_artifact.id, self.output_artifact.id)
+

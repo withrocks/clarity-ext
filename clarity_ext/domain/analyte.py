@@ -1,6 +1,6 @@
 from clarity_ext.domain.container import ContainerPosition, Well
 from clarity_ext.utils import get_and_apply
-from clarity_ext.domain.common import DomainObjectMixin
+from clarity_ext.domain.common import DomainObjectMixin, AssignLogger
 from clarity_ext.domain.artifact import Artifact
 
 
@@ -28,7 +28,7 @@ class Analyte(Artifact):
         self.target_volume = get_and_apply(kwargs, "target_volume", None, float)
 
     def __repr__(self):
-        return "{} ({})".format(self.name, self.sample.id)
+        return "{} ({})".format(self.name, self.id)
 
     @staticmethod
     def create_from_rest_resource(resource, udf_map, container_repo):
@@ -52,7 +52,7 @@ class Analyte(Artifact):
         well.artifact = analyte
         return analyte
 
-    def updated_rest_resource(self, original_rest_resource, udf_map):
+    def updated_rest_resource(self, original_rest_resource, udf_map, updated_fields):
         """
         :param original_rest_resource: The rest resource in the state as in the api cache
         :param udf_map: global udf map for all entities
@@ -66,17 +66,20 @@ class Analyte(Artifact):
 
         # Update udf values
         analyte_udf_map = udf_map['Analyte']
-        values_by_udf_names = {analyte_udf_map[key]: self.__dict__[key] for key in analyte_udf_map}
+        values_by_udf_names = {analyte_udf_map[key]: self.__dict__[key]
+                               for key in analyte_udf_map if key in updated_fields}
+        assigner = AssignLogger(self)
         # Retrieve fields that are updated, only these field should be included in the rest update
         for key in values_by_udf_names:
             if _updated_rest_resource.udf.get(key, None):
                 original_type = type(_updated_rest_resource.udf[key])
                 value = get_and_apply(values_by_udf_names, key, None, original_type)
-                _updated_rest_resource.udf[key] = value
+                _updated_rest_resource.udf[key] = assigner.log_assign(key, value)
 
         # Update other fields
-        _updated_rest_resource.name = self.name
-        return _updated_rest_resource
+        if 'name' in updated_fields:
+            _updated_rest_resource.name = assigner.log_assign('name', self.name)
+        return _updated_rest_resource, assigner.log
 
 
 class Sample(DomainObjectMixin):

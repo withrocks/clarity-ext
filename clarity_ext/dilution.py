@@ -110,6 +110,7 @@ class DilutionScheme(object):
         Calculates all derived values needed in dilute driver file.
         """
         pairs = artifact_service.all_analyte_pairs()
+
         self.current_step_id = artifact_service.step_repository.session.current_step_id
 
         # TODO: Is it safe to just check for the container for the first output
