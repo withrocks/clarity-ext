@@ -26,6 +26,7 @@ def fake_analyte(container_id=None, artifact_id=None, sample_id=None, analyte_na
     analyte.id = artifact_id
     analyte.is_input = is_input
     analyte.generation_type = Artifact.PER_INPUT
+    well.artifact = analyte
     return analyte
 
 

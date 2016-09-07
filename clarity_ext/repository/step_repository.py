@@ -131,6 +131,9 @@ class StepRepository(object):
             if type(obj) == Analyte:
                 original_analyte_from_rest = ApiArtifact(self.session.api, id=obj.id)
                 update_queue.append(obj.updated_rest_resource(original_analyte_from_rest, self.udf_map))
+            elif type(obj) == ResultFile:
+                # TODO: Implement
+                pass
             else:
                 raise Exception("Unknown type {}".format(obj.type))
 
