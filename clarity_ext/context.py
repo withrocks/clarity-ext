@@ -39,6 +39,7 @@ class ExtensionContext(object):
         self.current_step = session.current_step
         self.artifact_service = artifact_service
         self.file_service = file_service
+        self.response = None
 
     @staticmethod
     def create(step_id, cache=False):
@@ -129,6 +130,6 @@ class ExtensionContext(object):
 
     def commit(self):
         """Commits all objects that have been added via the update method, using batch processing if possible"""
-        self.artifact_service.update_artifacts(self._update_queue)
+        self.response = self.artifact_service.update_artifacts(self._update_queue)
 
 

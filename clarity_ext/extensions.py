@@ -265,32 +265,33 @@ class GeneralExtension(object):
         """
         self.context = context
         self.logger = logging.getLogger(self.__class__.__module__)
+        self.response = None
+
+    @abstractmethod
+    def integration_tests(self):
+        """Returns `DriverFileTest`s that should be run to validate the code"""
+        pass
 
     def test(self, pid):
         """Creates a test instance suitable for this extension"""
         return ExtensionTest(pid=pid)
 
 
-class DriverFileExtension(GeneralExtension):
+class GeneralFileExtension(GeneralExtension):
     __metaclass__ = ABCMeta
 
     def newline(self):
         return "\n"
 
     @abstractmethod
-    def content(self):
-        """Yields the output lines of the file"""
-        pass
-
-    @abstractmethod
     def filename(self):
-        """Returns the name of the file"""
+        """Returns the name of the file
+        (containing either response from update, or a file to be uploaded to lims)"""
         pass
 
-    @abstractmethod
-    def integration_tests(self):
-        """Returns `DriverFileTest`s that should be run to validate the code"""
-        pass
+
+class DriverFileExtension(GeneralFileExtension):
+    __metaclass__ = ABCMeta
 
     @abstractmethod
     def shared_file(self):
@@ -305,6 +306,10 @@ class DriverFileExtension(GeneralExtension):
         if len(results) > 0:
             raise ValueError("Validation errors: ".format(os.path.sep.join(report)))
 
+    @abstractmethod
+    def content(self):
+        """Yields the output lines of the file, or the response at updates"""
+        pass
 
 class ExtensionTest(object):
     def __init__(self, pid):
