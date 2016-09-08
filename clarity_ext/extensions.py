@@ -147,7 +147,7 @@ class ExtensionService(object):
                 cache_artifacts = mode == self.RUN_MODE_TEST
                 context = ExtensionContext.create(
                     run_arguments["pid"], cache=cache_artifacts)
-
+                file_svc = None
                 if issubclass(extension, DriverFileExtension):
                     instance = extension(context)
                     driver_file_svc = DriverFileService(instance, self.logger)
@@ -169,9 +169,9 @@ class ExtensionService(object):
 
                 os.chdir(old_dir)
 
-                if os.path.exists(frozen_path):
-                    test_info = RunDirectoryInfo(path)
-                    frozen_info = RunDirectoryInfo(frozen_path)
+                if os.path.exists(frozen_path) and file_svc:
+                    test_info = RunDirectoryInfo(path, file_svc)
+                    frozen_info = RunDirectoryInfo(frozen_path, file_svc)
                     diff_report = list(test_info.compare(frozen_info))
                     if len(diff_report) > 0:
                         msg = []
@@ -209,9 +209,10 @@ class RunDirectoryInfo(object):
 
     Used to compare two different runs, e.g. a current test and a frozen test
     """
-    def __init__(self, path):
+    def __init__(self, path, file_service):
         self.path = path
         self.uploaded_path = os.path.join(self.path, "uploaded")
+        self.file_service = file_service
 
     @lazyprop
     def uploaded_files(self):
@@ -221,12 +222,11 @@ class RunDirectoryInfo(object):
             return ret
         for file_name in os.listdir(self.uploaded_path):
             assert os.path.isfile(os.path.join(self.uploaded_path, file_name))
-            match = re.match(r"(^92-\d+).*$", file_name)
-            if match:
-                key = match.group(1)
-                if key in ret:
+            file_key = self.file_service.file_key(file_name)
+            if file_key:
+                if file_key in ret:
                     raise Exception("More than one file with the same prefix")
-                ret[key] = os.path.abspath(os.path.join(self.uploaded_path, file_name))
+                ret[file_key] = os.path.abspath(os.path.join(self.uploaded_path, file_name))
             else:
                 raise Exception("Unexpected file name {}, should start with Clarity ID".format(file_name))
         return ret

@@ -53,6 +53,7 @@ class GeneralFileService(object):
             os.mkdir(upload_path)
             # The LIMS does always add a prefix with the artifact ID:
             new_file_name = self.specific_file_service.lims_adapted_file_name()
+            print("driverfile, new_file_name: {}".format(new_file_name))
             new_file_path = os.path.join(upload_path, new_file_name)
             shutil.copyfile(local_file, new_file_path)
 
@@ -61,6 +62,9 @@ class GeneralFileService(object):
             with open(local_file, 'r') as f:
                 print f.read()
             print "---"
+
+    def file_key(self, file_name):
+        return self.specific_file_service.file_key(file_name)
 
 
 class DriverFileService:
@@ -92,6 +96,13 @@ class DriverFileService:
     def content(self):
         return self.extension.content()
 
+    def file_key(self, file_name):
+        match = re.match(r"(^92-\d+).*$", file_name)
+        if match:
+            return match.group(1)
+        else:
+            return None
+
     @lazyprop
     def artifact(self):
         artifacts = [shared_file for shared_file in self.extension.context.shared_files
@@ -114,12 +125,19 @@ class ResponseFileService:
         return "--- {}".format(self.local_file)
 
     def lims_adapted_file_name(self):
-        return self.local_file
+        return "{}_{}".format(self.extension.context.session.current_step_id, os.path.basename(self.local_file))
 
     def content(self):
         self.extension.execute()
         for row in self.extension.response:
             yield "\t".join(row)
+
+    def file_key(self, file_name):
+        match = re.match(r"(^24-\d+).*$", file_name)
+        if match:
+            return match.group(1)
+        else:
+            return None
 
     def print_log(self):
         pass
