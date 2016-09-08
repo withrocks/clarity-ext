@@ -3,13 +3,16 @@ import shutil
 import difflib
 from genologics.epp import attach_file
 from genologics.entities import *
+from clarity_ext.utils import lazyprop
 
 
-class DriverFileService(object):
-    def __init__(self, extension, result_path, logger=None):
-        self.logger = logger or logging.getLogger(__name__)
-        self.extension = extension
+class GeneralFileService(object):
+    def __init__(self, specific_file_service, result_path):
+        self.logger = specific_file_service.logger or \
+                      logging.getLogger(__name__)
+        self.extension = specific_file_service.extension
         self.result_path = result_path
+        self.specific_file_service = specific_file_service
 
     def execute(self, commit=False, artifacts_to_stdout=False):
         """
@@ -20,6 +23,7 @@ class DriverFileService(object):
         """
         # Save the file to the directory:
         local_file = self._save_file_locally(self.result_path)
+        self.specific_file_service.local_file = local_file
         self._upload(local_file, commit, artifacts_to_stdout)
 
     def _save_file_locally(self, root):
@@ -32,26 +36,14 @@ class DriverFileService(object):
         with open(full_path, 'wb') as f:
             self.logger.debug("Writing output to {}.".format(full_path))
             newline = self.extension.newline()
-            for line in self.extension.content():
+            for line in self.specific_file_service.content():
                 f.write(line + newline)
         return full_path
 
     def _upload(self, local_file, commit, artifacts_to_stdout):
-        self.logger.debug("Shared files: {}".format(
-            [artifact.name for artifact in
-             self.extension.context.shared_files]))
-        self.logger.debug("Shared file from extension: {}".format(
-            self.extension.shared_file()))
-        artifacts = [shared_file for shared_file in self.extension.context.shared_files
-                     if shared_file.name == self.extension.shared_file()]
-        assert len(artifacts) == 1
-        artifact = artifacts[0]
-
-        self.logger.info("Uploading local file {} to the LIMS placeholder at {}".format(local_file, artifact.id))
+        self.specific_file_service.print_log()
         if commit:
-            # Find the output on the current step
-            self.logger.info("Uploading to the LIMS server")
-            attach_file(local_file, artifact)
+            self.specific_file_service.commit()
         else:
             # When not connected to an actual server, we copy the file to another directory for integration tests
             upload_path = os.path.join(self.result_path, "uploaded")
@@ -60,16 +52,77 @@ class DriverFileService(object):
                 os.rmdir(upload_path)
             os.mkdir(upload_path)
             # The LIMS does always add a prefix with the artifact ID:
-            new_file_name = "{}_{}".format(artifact.id, os.path.basename(local_file))
+            new_file_name = self.specific_file_service.lims_adapted_file_name()
             new_file_path = os.path.join(upload_path, new_file_name)
             shutil.copyfile(local_file, new_file_path)
 
         if artifacts_to_stdout:
-            print "--- {} => {} ({})".format(local_file, artifact.name, artifact.id)
+            print self.specific_file_service.header_for_stoutput()
             with open(local_file, 'r') as f:
                 print f.read()
             print "---"
 
+
+class DriverFileService:
+    def __init__(self, extension, logger=None):
+        self.extension = extension
+        self.logger = logger
+        self.local_file = None
+
+    def commit(self):
+        # Find the output on the current step
+        self.logger.info("Uploading to the LIMS server")
+        attach_file(self.local_file, self.artifact)
+
+    def header_for_stoutput(self):
+        return "--- {} => {} ({})".format(self.local_file, self.artifact.name, self.artifact.id)
+
+    def lims_adapted_file_name(self):
+        return "{}_{}".format(self.artifact.id, os.path.basename(self.local_file))
+
+    def print_log(self):
+        self.logger.info("Uploading local file {} to the LIMS placeholder at {}".format(
+            self.local_file, self.artifact.id))
+        self.logger.debug("Shared files: {}".format(
+            [_artifact.name for _artifact in
+             self.extension.context.shared_files]))
+        self.logger.debug("Shared file from extension: {}".format(
+            self.extension.shared_file()))
+
+    def content(self):
+        return self.extension.content()
+
+    @lazyprop
+    def artifact(self):
+        artifacts = [shared_file for shared_file in self.extension.context.shared_files
+                     if shared_file.name == self.extension.shared_file()]
+        assert len(artifacts) == 1
+        return artifacts[0]
+
+
+class ResponseFileService:
+    def __init__(self, extension, logger=None):
+        self.extension = extension
+        self.logger = logger
+        self.local_file = None
+
+    def commit(self):
+        """Do nothing"""
+        pass
+
+    def header_for_stoutput(self):
+        return "--- {}".format(self.local_file)
+
+    def lims_adapted_file_name(self):
+        return self.local_file
+
+    def content(self):
+        self.extension.execute()
+        for row in self.extension.response:
+            yield "\t".join(row)
+
+    def print_log(self):
+        pass
 
 class DriverFileIntegrationTests(object):
     @staticmethod

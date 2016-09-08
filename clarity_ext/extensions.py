@@ -2,7 +2,7 @@ from __future__ import print_function
 import importlib
 import os
 import shutil
-from clarity_ext.driverfile import DriverFileService
+from clarity_ext.driverfile import GeneralFileService, DriverFileService, ResponseFileService
 from context import ExtensionContext
 import clarity_ext.utils as utils
 from abc import ABCMeta, abstractmethod
@@ -150,9 +150,15 @@ class ExtensionService(object):
 
                 if issubclass(extension, DriverFileExtension):
                     instance = extension(context)
-                    driver_file_svc = DriverFileService(instance, ".")
+                    driver_file_svc = DriverFileService(instance, self.logger)
+                    file_svc = GeneralFileService(driver_file_svc, ".")
                     commit = mode == self.RUN_MODE_EXEC
-                    driver_file_svc.execute(commit=commit, artifacts_to_stdout=artifacts_to_stdout)
+                    file_svc.execute(commit=commit, artifacts_to_stdout=artifacts_to_stdout)
+                elif issubclass(extension, GeneralFileExtension):
+                    instance = extension(context)
+                    response_file_svc = ResponseFileService(instance, self.logger)
+                    file_svc = GeneralFileService(response_file_svc, ".")
+                    file_svc.execute(commit=False, artifacts_to_stdout=artifacts_to_stdout)
                 elif issubclass(extension, GeneralExtension):
                     # TODO: Generating the instance twice (for metadata above)
                     instance = extension(context)

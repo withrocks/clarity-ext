@@ -56,7 +56,7 @@ class AssignLogger:
         self.domain_object_mixin = domain_object_mixin
 
     def log_assign(self, field_name, value):
-        class_name = self.domain_object_mixin.__class__
+        class_name = self.domain_object_mixin.__class__.__name__
         lims_id = self.domain_object_mixin.id
-        self.log.append((class_name, lims_id, field_name, value))
+        self.log.append((class_name, lims_id, field_name, str(value)))
         return value

@@ -2,6 +2,7 @@ from clarity_ext.domain.artifact import Artifact
 from clarity_ext.domain.analyte import Analyte
 from clarity_ext.domain.result_file import ResultFile
 from clarity_ext.repository.container_repository import ContainerRepository
+from clarity_ext.utils import flatten
 from genologics.entities import Artifact as ApiArtifact
 import copy
 
@@ -150,7 +151,7 @@ class StepRepository(object):
                 update_queue.append(api_resources)
 
         self.session.api.put_batch(update_queue)
-        return response
+        return flatten(response)
 
     def _retrieve_updated_fields(self, updated_artifact):
         orig_art = self.orig_state_cache[updated_artifact.id]
