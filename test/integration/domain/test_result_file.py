@@ -58,8 +58,9 @@ class TestIntegrationAnalyteRepository(unittest.TestCase):
 
     def test_can_read_xml(self):
         """Can parse an xml file directly form the context"""
-        context = ExtensionContext.create("24-4583")
+        context = ExtensionContext.create("24-7880")
         xml = context.local_shared_file(
             "Result XML File (required)", is_xml=True)
-        self.assertEqual("D1000", xml.FileInformation.Assay)
+        self.assertFalse(0, len(xml.FileInformation.Assay))
         context.cleanup()
+

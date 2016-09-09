@@ -93,4 +93,5 @@ class ArtifactService:
         return ret
 
     def update_artifacts(self, update_queue):
-        self.step_repository.update_objects(update_queue)
+        self.step_repository.update_artifacts(update_queue)
+
