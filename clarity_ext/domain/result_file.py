@@ -19,6 +19,9 @@ class ResultFile(Artifact):
             value = self.units.convert(value, from_unit, to_unit)
         self.api_resource.udf[name] = value
 
+    def get_udf(self, name):
+        return self.api_resource.udf[name]
+
     @staticmethod
     def create_from_rest_resource(resource, container_repo):
         """
@@ -27,7 +30,6 @@ class ResultFile(Artifact):
         """
         ret = ResultFile(api_resource=resource,
                          units=UnitConversion(), id=resource.id)
-        ret._resource = resource
 
         try:
             container_resource = resource.location[0]

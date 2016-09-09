@@ -48,7 +48,7 @@ class Analyte(Artifact):
         well = Well(pos, container)
         sample = Sample.create_from_rest_resource(resource.samples[0])
         analyte = Analyte(resource.name, well, sample, resource.id, **kwargs)
-        analyte._resource = resource
+        analyte.api_resource = resource
         well.artifact = analyte
         return analyte
 

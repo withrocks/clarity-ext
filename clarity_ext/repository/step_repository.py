@@ -121,23 +121,13 @@ class StepRepository(object):
         for artifact in artifacts:
             yield self._wrap_artifact(artifact)
 
-    def update_objects(self, objects):
+    def update_artifacts(self, artifacts):
         """
         Updates each entry in objects to db, which must have the function
         updated_rest_resource
         """
-        update_queue = []
-        for obj in objects:
-            if type(obj) == Analyte:
-                original_analyte_from_rest = ApiArtifact(self.session.api, id=obj.id)
-                update_queue.append(obj.updated_rest_resource(original_analyte_from_rest, self.udf_map))
-            elif type(obj) == ResultFile:
-                # TODO: Implement
-                pass
-            else:
-                raise Exception("Unknown type {}".format(obj.type))
-
-        self.session.api.put_batch(update_queue)
+        api_resources = [obj.api_resource for obj in artifacts]
+        self.session.api.put_batch(api_resources)
 
 
 
