@@ -40,4 +40,3 @@ class UpdateFieldsForDilutionTests(unittest.TestCase):
             source_volume_sum += outcome
         expected_sum = 96.0
         self.assertEqual(expected_sum, source_volume_sum)
-

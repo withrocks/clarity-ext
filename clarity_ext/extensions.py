@@ -2,7 +2,7 @@ from __future__ import print_function
 import importlib
 import os
 import shutil
-from clarity_ext.driverfile import DriverFileService
+from clarity_ext.driverfile import GeneralFileService, DriverFileService, ResponseFileService
 from context import ExtensionContext
 import clarity_ext.utils as utils
 from abc import ABCMeta, abstractmethod
@@ -147,12 +147,18 @@ class ExtensionService(object):
                 cache_artifacts = mode == self.RUN_MODE_TEST
                 context = ExtensionContext.create(
                     run_arguments["pid"], cache=cache_artifacts)
-
+                file_svc = None
                 if issubclass(extension, DriverFileExtension):
                     instance = extension(context)
-                    driver_file_svc = DriverFileService(instance, ".")
+                    driver_file_svc = DriverFileService(instance, self.logger)
+                    file_svc = GeneralFileService(driver_file_svc, ".")
                     commit = mode == self.RUN_MODE_EXEC
-                    driver_file_svc.execute(commit=commit, artifacts_to_stdout=artifacts_to_stdout)
+                    file_svc.execute(commit=commit, artifacts_to_stdout=artifacts_to_stdout)
+                elif issubclass(extension, GeneralFileExtension):
+                    instance = extension(context)
+                    response_file_svc = ResponseFileService(instance, self.logger)
+                    file_svc = GeneralFileService(response_file_svc, ".")
+                    file_svc.execute(commit=False, artifacts_to_stdout=artifacts_to_stdout)
                 elif issubclass(extension, GeneralExtension):
                     # TODO: Generating the instance twice (for metadata above)
                     instance = extension(context)
@@ -163,9 +169,9 @@ class ExtensionService(object):
 
                 os.chdir(old_dir)
 
-                if os.path.exists(frozen_path):
-                    test_info = RunDirectoryInfo(path)
-                    frozen_info = RunDirectoryInfo(frozen_path)
+                if os.path.exists(frozen_path) and file_svc:
+                    test_info = RunDirectoryInfo(path, file_svc)
+                    frozen_info = RunDirectoryInfo(frozen_path, file_svc)
                     diff_report = list(test_info.compare(frozen_info))
                     if len(diff_report) > 0:
                         msg = []
@@ -203,9 +209,10 @@ class RunDirectoryInfo(object):
 
     Used to compare two different runs, e.g. a current test and a frozen test
     """
-    def __init__(self, path):
+    def __init__(self, path, file_service):
         self.path = path
         self.uploaded_path = os.path.join(self.path, "uploaded")
+        self.file_service = file_service
 
     @lazyprop
     def uploaded_files(self):
@@ -215,12 +222,11 @@ class RunDirectoryInfo(object):
             return ret
         for file_name in os.listdir(self.uploaded_path):
             assert os.path.isfile(os.path.join(self.uploaded_path, file_name))
-            match = re.match(r"(^92-\d+).*$", file_name)
-            if match:
-                key = match.group(1)
-                if key in ret:
+            file_key = self.file_service.file_key(file_name)
+            if file_key:
+                if file_key in ret:
                     raise Exception("More than one file with the same prefix")
-                ret[key] = os.path.abspath(os.path.join(self.uploaded_path, file_name))
+                ret[file_key] = os.path.abspath(os.path.join(self.uploaded_path, file_name))
             else:
                 raise Exception("Unexpected file name {}, should start with Clarity ID".format(file_name))
         return ret
@@ -265,32 +271,33 @@ class GeneralExtension(object):
         """
         self.context = context
         self.logger = logging.getLogger(self.__class__.__module__)
+        self.response = None
+
+    @abstractmethod
+    def integration_tests(self):
+        """Returns `DriverFileTest`s that should be run to validate the code"""
+        pass
 
     def test(self, pid):
         """Creates a test instance suitable for this extension"""
         return ExtensionTest(pid=pid)
 
 
-class DriverFileExtension(GeneralExtension):
+class GeneralFileExtension(GeneralExtension):
     __metaclass__ = ABCMeta
 
     def newline(self):
         return "\n"
 
     @abstractmethod
-    def content(self):
-        """Yields the output lines of the file"""
-        pass
-
-    @abstractmethod
     def filename(self):
-        """Returns the name of the file"""
+        """Returns the name of the file
+        (containing either response from update, or a file to be uploaded to lims)"""
         pass
 
-    @abstractmethod
-    def integration_tests(self):
-        """Returns `DriverFileTest`s that should be run to validate the code"""
-        pass
+
+class DriverFileExtension(GeneralFileExtension):
+    __metaclass__ = ABCMeta
 
     @abstractmethod
     def shared_file(self):
@@ -305,6 +312,10 @@ class DriverFileExtension(GeneralExtension):
         if len(results) > 0:
             raise ValueError("Validation errors: ".format(os.path.sep.join(report)))
 
+    @abstractmethod
+    def content(self):
+        """Yields the output lines of the file, or the response at updates"""
+        pass
 
 class ExtensionTest(object):
     def __init__(self, pid):

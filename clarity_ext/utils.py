@@ -91,3 +91,7 @@ def unique(items, fn):
         if key not in seen:
             seen.add(key)
             yield item
+
+
+def flatten(list_of_lists):
+    return [item for sublist in list_of_lists for item in sublist]
