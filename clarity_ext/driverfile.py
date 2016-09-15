@@ -16,7 +16,6 @@ class OSService(object):
     def makedirs(self, path):
         os.makedirs(path)
 
-
     def open_file(self, path, mode):
         return open(path, mode)
 
