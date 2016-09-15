@@ -138,6 +138,11 @@ class DriverFileService:
         assert len(artifacts) == 1
         return artifacts[0]
 
+    @staticmethod
+    def create_file_service(instance, logger, os_service):
+        driver_file_service = DriverFileService(instance, os_service, logger)
+        return GeneralFileService(driver_file_service, ".", os_service)
+
 
 class ResponseFileService:
     def __init__(self, extension, logger=None):
@@ -169,6 +174,11 @@ class ResponseFileService:
 
     def print_log(self):
         pass
+
+    @staticmethod
+    def create_file_service(instance, logger, os_service):
+        response_file_svc = ResponseFileService(instance, logger)
+        return GeneralFileService(response_file_svc, ".", os_service)
 
 
 class DriverFileIntegrationTests(object):

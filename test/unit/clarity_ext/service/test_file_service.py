@@ -13,8 +13,7 @@ class TestGeneralFileService(unittest.TestCase):
         extension = fake_extension("file1.txt", context)
         os_service = MagicMock()
         logger = logging.getLogger(__name__)
-        driver_file_svc = DriverFileService(extension, os_service, logger)
-        file_svc = GeneralFileService(driver_file_svc, ".", os_service)
+        file_svc = DriverFileService.create_file_service(extension, logger, os_service)
         file_svc.execute()
         os_service.copy_file.assert_called_with(".\\file1.txt", ".\\uploaded\\art1_file1.txt")
 
@@ -23,8 +22,7 @@ class TestGeneralFileService(unittest.TestCase):
         extension = fake_extension("response.txt", context)
         os_service = MagicMock()
         logger = logging.getLogger(__name__)
-        response_file_svc = ResponseFileService(extension, logger)
-        file_svc = GeneralFileService(response_file_svc, ".", os_service)
+        file_svc = ResponseFileService.create_file_service(extension, logger, os_service)
         file_svc.execute()
         os_service.copy_file.assert_called_with(".\\response.txt", ".\\uploaded\\step1_response.txt")
 
