@@ -3,6 +3,7 @@ import importlib
 import os
 import shutil
 from clarity_ext.driverfile import GeneralFileService, DriverFileService, ResponseFileService
+from clarity_ext.driverfile import OSService
 from context import ExtensionContext
 import clarity_ext.utils as utils
 from abc import ABCMeta, abstractmethod
@@ -147,21 +148,17 @@ class ExtensionService(object):
                 cache_artifacts = mode == self.RUN_MODE_TEST
                 context = ExtensionContext.create(
                     run_arguments["pid"], cache=cache_artifacts)
-                file_svc = None
+                instance = extension(context)
+                os_service = OSService()
                 if issubclass(extension, DriverFileExtension):
-                    instance = extension(context)
-                    driver_file_svc = DriverFileService(instance, self.logger)
-                    file_svc = GeneralFileService(driver_file_svc, ".")
+                    file_svc = DriverFileService.create_file_service(instance, self.logger, os_service)
                     commit = mode == self.RUN_MODE_EXEC
                     file_svc.execute(commit=commit, artifacts_to_stdout=artifacts_to_stdout)
                 elif issubclass(extension, GeneralFileExtension):
-                    instance = extension(context)
-                    response_file_svc = ResponseFileService(instance, self.logger)
-                    file_svc = GeneralFileService(response_file_svc, ".")
+                    file_svc = ResponseFileService.create_file_service(instance, self.logger, os_service)
                     file_svc.execute(commit=False, artifacts_to_stdout=artifacts_to_stdout)
                 elif issubclass(extension, GeneralExtension):
                     # TODO: Generating the instance twice (for metadata above)
-                    instance = extension(context)
                     instance.execute()
                 else:
                     raise NotImplementedError("Unknown extension")
