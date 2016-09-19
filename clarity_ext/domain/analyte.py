@@ -74,11 +74,11 @@ class Analyte(Artifact):
             if _updated_rest_resource.udf.get(key, None):
                 original_type = type(_updated_rest_resource.udf[key])
                 value = get_and_apply(values_by_udf_names, key, None, original_type)
-                _updated_rest_resource.udf[key] = self.assigner.log_assign(key, value)
+                _updated_rest_resource.udf[key] = self.assigner.register_assign(key, value)
 
         # Update other fields
         if 'name' in updated_fields:
-            _updated_rest_resource.name = self.assigner.log_assign('name', self.name)
+            _updated_rest_resource.name = self.assigner.register_assign('name', self.name)
         return _updated_rest_resource, self.assigner.consume()
 
 

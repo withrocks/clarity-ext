@@ -40,7 +40,7 @@ class Artifact(DomainObjectMixin):
         else:
             # There is no mapped instance variable for this udf.
             # Log the assignment right away
-            self.api_resource.udf[name] = self.assigner.log_assign(name, value)
+            self.api_resource.udf[name] = self.assigner.register_assign(name, value)
 
     def get_udf(self, name):
         return self.api_resource.udf[name]
