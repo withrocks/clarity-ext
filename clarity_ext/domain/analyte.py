@@ -53,30 +53,16 @@ class Analyte(Artifact):
         well.artifact = analyte
         return analyte
 
-    def updated_rest_resource(self, original_rest_resource, udf_map, updated_fields):
+    def updated_rest_resource(self, original_rest_resource, updated_fields):
         """
         :param original_rest_resource: The rest resource in the state as in the api cache
-        :param udf_map: global udf map for all entities
         :return: An updated rest resource according to changes in this instance of Analyte
         """
-        # TODO: Update udfs that is not present in the original xml received from db
-        # A ticket is sent to Clarity support (160902)
-        _updated_rest_resource = original_rest_resource
-        # TODO: This implementation is not ready! Implementation is moved to another ticket
-        # in Jira
 
-        # Update udf values
-        analyte_udf_map = udf_map['Analyte']
-        values_by_udf_names = {analyte_udf_map[key]: self.__dict__[key]
-                               for key in analyte_udf_map if key in updated_fields}
-        # Retrieve fields that are updated, only these field should be included in the rest update
-        for key in values_by_udf_names:
-            if _updated_rest_resource.udf.get(key, None):
-                original_type = type(_updated_rest_resource.udf[key])
-                value = get_and_apply(values_by_udf_names, key, None, original_type)
-                _updated_rest_resource.udf[key] = self.assigner.register_assign(key, value)
+        _updated_rest_resource = \
+            super(self.__class__, self).updated_rest_resource(original_rest_resource, updated_fields)
 
-        # Update other fields
+        # Add analyte specific fields here ...
         if 'name' in updated_fields:
             _updated_rest_resource.name = self.assigner.register_assign('name', self.name)
         return _updated_rest_resource, self.assigner.consume()

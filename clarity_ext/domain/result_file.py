@@ -34,5 +34,19 @@ class ResultFile(Artifact):
 
         return ret
 
+    def updated_rest_resource(self, original_rest_resource, updated_fields):
+        """
+        :param original_rest_resource: The rest resource in the state as in the api cache
+        :return: An updated rest resource according to changes in this instance of Analyte
+        """
+
+        _updated_rest_resource = \
+            super(self.__class__, self).updated_rest_resource(original_rest_resource, updated_fields)
+
+        # Add ResultFile specific fields here ...
+
+        return _updated_rest_resource, self.assigner.consume()
+
+
     def __repr__(self):
         return self.id

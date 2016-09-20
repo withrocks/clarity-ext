@@ -1,6 +1,7 @@
 from clarity_ext.domain.common import DomainObjectMixin
 from clarity_ext.utils import lazyprop
 from clarity_ext.domain.common import AssignLogger
+from clarity_ext.utils import get_and_apply
 
 
 class Artifact(DomainObjectMixin):
@@ -15,10 +16,13 @@ class Artifact(DomainObjectMixin):
     OUTPUT_TYPE_ANALYTE = 2
     OUTPUT_TYPE_SHARED_RESULT_FILE = 3
 
-    def __init__(self, api_resource=None, artifact_specific_udf_map=dict()):
+    def __init__(self, api_resource=None, artifact_specific_udf_map=None):
         self.is_input = None  # Set to true if this is an input artifact
         self.generation_type = None  # Set to PER_INPUT or PER_ALL_INPUTS if applicable
-        self.udf_map = artifact_specific_udf_map
+        if artifact_specific_udf_map:
+            self.udf_map = artifact_specific_udf_map
+        else:
+            self.udf_map = dict()
         self.assigner = AssignLogger(self)
         self.api_resource = api_resource
 
@@ -44,6 +48,29 @@ class Artifact(DomainObjectMixin):
 
     def get_udf(self, name):
         return self.api_resource.udf[name]
+
+    def updated_rest_resource(self, original_rest_resource, updated_fields):
+        """
+        :param original_rest_resource: The rest resource in the state as in the api cache
+        :return: An updated rest resource according to changes in this instance of Analyte
+        """
+        # TODO: Update udfs that is not present in the original xml received from db
+        # A ticket is sent to Clarity support (160902)
+        _updated_rest_resource = original_rest_resource
+        # TODO: This implementation is not ready! Implementation is moved to another ticket
+        # in Jira
+
+        # Update udf values
+        values_by_udf_names = {self.udf_map[key]: self.__dict__[key]
+                               for key in self.udf_map if key in updated_fields}
+        # Retrieve fields that are updated, only these field should be included in the rest update
+        for key in values_by_udf_names:
+            if _updated_rest_resource.udf.get(key, None):
+                original_type = type(_updated_rest_resource.udf[key])
+                value = get_and_apply(values_by_udf_names, key, None, original_type)
+                _updated_rest_resource.udf[key] = self.assigner.register_assign(key, value)
+
+        return _updated_rest_resource
 
     def commit(self):
         self.api_resource.put()
