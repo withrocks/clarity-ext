@@ -20,7 +20,7 @@ class ExtensionContext(object):
     able to access the underlying services if needed.
     """
 
-    def __init__(self, session, artifact_service, file_service, cache=False, logger=None):
+    def __init__(self, session, artifact_service, file_service, current_user, cache=False, logger=None):
         """
         Initializes the context.
 
@@ -39,6 +39,7 @@ class ExtensionContext(object):
         self.current_step = session.current_step
         self.artifact_service = artifact_service
         self.file_service = file_service
+        self.current_user = current_user
         self.response = None
 
     @staticmethod
@@ -51,9 +52,10 @@ class ExtensionContext(object):
         session = ClaritySession.create(step_id)
         step_repo = StepRepository(session)
         artifact_service = ArtifactService(step_repo)
+        current_user = step_repo.current_user()
         file_repository = FileRepository(session)
         file_service = FileService(artifact_service, file_repository, False)
-        return ExtensionContext(session, artifact_service, file_service, cache=cache)
+        return ExtensionContext(session, artifact_service, file_service, current_user, cache=cache)
 
     @lazyprop
     def dilution_scheme(self):
