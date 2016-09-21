@@ -1,7 +1,7 @@
 from clarity_ext.domain.common import DomainObjectMixin
 from clarity_ext.utils import lazyprop
 from clarity_ext.domain.common import AssignLogger
-from clarity_ext.utils import get_and_apply
+from clarity_ext.unit_conversion import UnitConversion
 
 
 class Artifact(DomainObjectMixin):
@@ -35,7 +35,8 @@ class Artifact(DomainObjectMixin):
 
     def set_udf(self, name, value, from_unit=None, to_unit=None):
         if from_unit:
-            value = self.units.convert(value, from_unit, to_unit)
+            units = UnitConversion()
+            value = units.convert(value, from_unit, to_unit)
         if name in self.udf_backward_map:
             # Assign existing instance variable
             # Log for assignment of instance variables are handled in
@@ -54,11 +55,7 @@ class Artifact(DomainObjectMixin):
         :param original_rest_resource: The rest resource in the state as in the api cache
         :return: An updated rest resource according to changes in this instance of Analyte
         """
-        # TODO: Update udfs that is not present in the original xml received from db
-        # A ticket is sent to Clarity support (160902)
         _updated_rest_resource = original_rest_resource
-        # TODO: This implementation is not ready! Implementation is moved to another ticket
-        # in Jira
 
         # Update udf values
         values_by_udf_names = {self.udf_map[key]: self.__dict__[key]
