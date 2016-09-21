@@ -1,6 +1,8 @@
 import unittest
 from clarity_ext.domain import Artifact
 from test.unit.clarity_ext.helpers import fake_analyte
+from mock import MagicMock
+from clarity_ext.unit_conversion import UnitConversion
 
 
 class TestArtifact(unittest.TestCase):
@@ -50,3 +52,15 @@ class TestArtifact(unittest.TestCase):
     def test_backward_udf_map_empty_if_no_udf_map(self):
         artifact = Artifact()
         self.assertEqual(artifact.udf_backward_map, dict())
+
+    def test_unit_conversion(self):
+        def api_resource():
+            api_resource = MagicMock()
+            api_resource.udf = dict()
+            return api_resource
+
+        artifact = Artifact(api_resource=api_resource())
+        artifact.id = 'art1'
+        units = UnitConversion()
+        artifact.set_udf('test_udf', 1234, units.PICO, units.NANO)
+        self.assertEqual(artifact.api_resource.udf['test_udf'], 1.234)
