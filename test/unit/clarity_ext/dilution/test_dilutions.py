@@ -32,7 +32,7 @@ class TestDilutionScheme(unittest.TestCase):
              round(dilute.sample_volume, 1),
              round(dilute.buffer_volume, 1),
              dilute.target_well_index,
-             dilute.target_plate_pos] for dilute in dilution_scheme.dilutes
+             dilute.target_plate_pos] for dilute in dilution_scheme.transfers
         ]
 
         validation_results = list(dilution_scheme.validate())

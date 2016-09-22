@@ -4,39 +4,64 @@ import datetime
 DILUTION_WASTE_VOLUME = 1
 
 
-class Dilute(object):
+class TransferEndpoint(object):
+    def __init__(self, analyte):
+        self.sample_name = analyte.name
+        self.well = analyte.well
+        self.container = analyte.container
+        self.concentration = analyte.concentration
+        self.volume = analyte.volume
+        self.requested_concentration = analyte.target_concentration
+        self.requested_volume = analyte.target_volume
+        self.well_index = None
+        self.plate_pos = None
+
+
+class SingleTransfer(object):
     # Enclose sample data, user input and derived variables for a
     # single row in a dilution
-    def __init__(self, input_analyte, output_analyte):
-        self.source_well = input_analyte.well
-        self.source_container = input_analyte.container
-        self.source_concentration = input_analyte.concentration
-        self.source_initial_volume = input_analyte.volume
+    def __init__(self, source_endpoint, destination_endpoint):
+        self.sample_name = source_endpoint.sample_name
+
+        self.source_endpoint = source_endpoint
+        self.destination_endpoint = destination_endpoint
+
+        self.source_well = source_endpoint.well
+        self.source_container = source_endpoint.container
+        self.source_concentration = source_endpoint.concentration
+        self.source_initial_volume = source_endpoint.volume
         self.source_well_index = None
         self.source_plate_pos = None
 
-        self.target_concentration = output_analyte.target_concentration
-        self.target_volume = output_analyte.target_volume
-        self.target_well = output_analyte.well
-        self.target_container = output_analyte.container
-
-        self.sample_name = output_analyte.name
-        self.sample_volume = None
-        self.buffer_volume = None
+        self.target_well = None
+        self.target_container = None
+        self.requested_concentration = None
+        self.requested_volume = None
         self.target_well_index = None
         self.target_plate_pos = None
-        self.source_volume = None
+
+        if destination_endpoint:
+            self.set_destination_endpoint(destination_endpoint)
+
+        self.sample_volume = None
+        self.buffer_volume = None
         self.has_to_evaporate = None
+
+    def set_destination_endpoint(self, destination_endpoint):
+        self.target_well = destination_endpoint.well
+        self.target_container = destination_endpoint.container
+        self.requested_concentration = destination_endpoint.requested_concentration
+        self.requested_volume = destination_endpoint.requested_volume
 
     def __str__(self):
         source = "source({}/{}, conc={})".format(self.source_container,
                                                  self.source_well, self.source_concentration)
         target = "target({}/{}, conc={}, vol={})".format(self.target_container, self.target_well,
-                                                         self.target_concentration, self.target_volume)
+                                                         self.requested_concentration, self.requested_volume)
         return "{} => {}".format(source, target)
 
     def __repr__(self):
-        return "<Dilute {}>".format(self.sample_name)
+        return "<SingleTransfer {}>".format(self.sample_name)
 
 
 class RobotDeckPositioner(object):
@@ -45,32 +70,32 @@ class RobotDeckPositioner(object):
     as well as well indexing
     """
 
-    def __init__(self, robot_name, dilutes, plate):
+    def __init__(self, robot_name, transfers, plate):
         self.robot_name = robot_name
         self.plate = plate
         index_method_map = {"Hamilton": lambda well: well.index_down_first}
         self.indexer = index_method_map[robot_name]
         self.target_plate_sorting_map = self._build_plate_sorting_map(
-            [dilute.target_container for dilute in dilutes])
+            [transfer.target_container for transfer in transfers])
         self.target_plate_position_map = self._build_plate_position_map(
             self.target_plate_sorting_map, "END"
         )
         self.source_plate_sorting_map = self._build_plate_sorting_map(
-            [dilute.source_container for dilute in dilutes])
+            [transfer.source_container for transfer in transfers])
         self.source_plate_position_map = self._build_plate_position_map(
             self.source_plate_sorting_map, "DNA"
         )
 
-    def find_sort_number(self, dilute):
-        """Sort dilutes according to plate and well positions in source
-        :param dilute:
+    def find_sort_number(self, transfer):
+        """Sort transfers according to plate and well positions in source
+        :param transfer:
         """
         plate_base_number = self.plate.size.width * self.plate.size.height + 1
         plate_sorting = self.source_plate_sorting_map[
-            dilute.source_container.id]
+            transfer.source_container.id]
         # Sort order for wells are always based on down first indexing
         # regardless the robot type
-        return plate_sorting * plate_base_number + dilute.source_well.index_down_first
+        return plate_sorting * plate_base_number + transfer.source_well.index_down_first
 
     @staticmethod
     def _build_plate_position_map(plate_sorting_map, plate_pos_prefix):
@@ -114,45 +139,52 @@ class DilutionScheme(object):
         # TODO: Is it safe to just check for the container for the first output
         # analyte?
         container = pairs[0].output_artifact.container
+        self.transfers = self.create_transfers(pairs)
 
-        self.dilutes = [Dilute(pair.input_artifact, pair.output_artifact)
-                        for pair in pairs]
-
-        self.analyte_pair_by_dilute = {dilute: pair for dilute, pair in zip(self.dilutes, pairs)}
-        self.robot_deck_positioner = RobotDeckPositioner(robot_name, self.dilutes, container)
+        self.analyte_pair_by_transfer = {transfer: pair for transfer, pair in zip(self.transfers, pairs)}
+        self.robot_deck_positioner = RobotDeckPositioner(robot_name, self.transfers, container)
 
         self.calculate_transfer_volumes()
         self.do_positioning()
 
+    def create_transfers(self, analyte_pairs):
+        # TODO: handle tube racks
+        transfers = []
+        for pair in analyte_pairs:
+            source_endpoint = TransferEndpoint(pair.input_artifact)
+            destination_endpoint = TransferEndpoint(pair.output_artifact)
+            transfers.append(SingleTransfer(source_endpoint, destination_endpoint))
+        return transfers
+
     def calculate_transfer_volumes(self):
         # Handle volumes etc.
-        for dilute in self.dilutes:
+        for transfer in self.transfers:
             try:
-                dilute.sample_volume = \
-                    dilute.target_concentration * dilute.target_volume / \
-                    dilute.source_concentration
-                dilute.buffer_volume = \
-                    max(dilute.target_volume - dilute.sample_volume, 0)
-                dilute.has_to_evaporate = \
-                    (dilute.target_volume - dilute.sample_volume) < 0
+                transfer.sample_volume = \
+                    transfer.requested_concentration * transfer.requested_volume / \
+                    transfer.source_concentration
+                transfer.buffer_volume = \
+                    max(transfer.requested_volume - transfer.sample_volume, 0)
+                transfer.has_to_evaporate = \
+                    (transfer.requested_volume - transfer.sample_volume) < 0
             except (TypeError, ZeroDivisionError) as e:
-                dilute.sample_volume = None
-                dilute.buffer_volume = None
-                dilute.has_to_evaporate = None
+                transfer.sample_volume = None
+                transfer.buffer_volume = None
+                transfer.has_to_evaporate = None
 
     def do_positioning(self):
         # Handle positioning
-        for dilute in self.dilutes:
-            dilute.source_well_index = self.robot_deck_positioner.indexer(dilute.source_well)
-            dilute.source_plate_pos = self.robot_deck_positioner. \
-                source_plate_position_map[dilute.source_container.id]
-            dilute.target_well_index = self.robot_deck_positioner.indexer(
-                dilute.target_well)
-            dilute.target_plate_pos = self.robot_deck_positioner \
-                .target_plate_position_map[dilute.target_container.id]
+        for transfer in self.transfers:
+            transfer.source_well_index = self.robot_deck_positioner.indexer(transfer.source_well)
+            transfer.source_plate_pos = self.robot_deck_positioner. \
+                source_plate_position_map[transfer.source_container.id]
+            transfer.target_well_index = self.robot_deck_positioner.indexer(
+                transfer.target_well)
+            transfer.target_plate_pos = self.robot_deck_positioner \
+                .target_plate_position_map[transfer.target_container.id]
 
-        self.dilutes = sorted(self.dilutes,
-                              key=lambda curr_dil: self.robot_deck_positioner.find_sort_number(curr_dil))
+        self.transfers = sorted(self.transfers,
+                                key=lambda curr_dil: self.robot_deck_positioner.find_sort_number(curr_dil))
 
     def validate(self):
         """
@@ -160,23 +192,23 @@ class DilutionScheme(object):
 
         TODO: These validation errors should not be in clarity-ext (implementation specific)
         """
-        def pos_str(dilute):
-            return "{}=>{}".format(dilute.source_well, dilute.target_well)
+        def pos_str(transfer):
+            return "{}=>{}".format(transfer.source_well, transfer.target_well)
 
-        for dilute in self.dilutes:
-            if not dilute.source_initial_volume:
-                yield ValidationException("Source volume is not set: {}".format(dilute.source_well))
-            if not dilute.source_concentration:
-                yield ValidationException("Source concentration not set: {}".format(dilute.source_well))
+        for transfer in self.transfers:
+            if not transfer.source_initial_volume:
+                yield ValidationException("Source volume is not set: {}".format(transfer.source_well))
+            if not transfer.source_concentration:
+                yield ValidationException("Source concentration not set: {}".format(transfer.source_well))
             else:
-                if dilute.sample_volume < 2:
-                    yield ValidationException("Too low sample volume: " + pos_str(dilute))
-                elif dilute.sample_volume > 50:
-                    yield ValidationException("Too high sample volume: " + pos_str(dilute))
-                if dilute.has_to_evaporate:
-                    yield ValidationException("Sample has to be evaporated: " + pos_str(dilute), ValidationType.WARNING)
-                if dilute.buffer_volume > 50:
-                    yield ValidationException("Too high buffer volume: " + pos_str(dilute))
+                if transfer.sample_volume < 2:
+                    yield ValidationException("Too low sample volume: " + pos_str(transfer))
+                elif transfer.sample_volume > 50:
+                    yield ValidationException("Too high sample volume: " + pos_str(transfer))
+                if transfer.has_to_evaporate:
+                    yield ValidationException("Sample has to be evaporated: " + pos_str(transfer), ValidationType.WARNING)
+                if transfer.buffer_volume > 50:
+                    yield ValidationException("Too high buffer volume: " + pos_str(transfer))
 
     def __str__(self):
         return "<DilutionScheme positioner={}>".format(self.robot_deck_positioner)
