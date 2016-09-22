@@ -1,7 +1,7 @@
 import unittest
 from mock import MagicMock
-from clarity_ext.dilution import DilutionScheme
-from test.unit.clarity_ext.helpers import fake_analyte
+from clarity_ext.dilution import DilutionScheme, SourceOnlyDilutionScheme
+from test.unit.clarity_ext.helpers import fake_analyte, fake_result_file
 from test.unit.clarity_ext import helpers
 from clarity_ext.service import ArtifactService
 
@@ -40,6 +40,48 @@ class TestDilutionScheme(unittest.TestCase):
         # Assert:
         self.assertEqual(expected, actual)
         self.assertEqual(0, len(validation_results))
+
+    def test_dilution_scheme_for_qpcr(self):
+        """Dilution scheme initialized for qPCR dilutions, containing no output analytes"""
+        # Setup:
+        def only_input_analyte_set():
+            ret = [
+                (fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "D:5", True,
+                              concentration=134, volume=30),
+                 fake_result_file("sample-measurement1")),
+                (fake_analyte("cont-id2", "art-id2", "sample2", "art-name2", "A:5", True,
+                              concentration=134, volume=40),
+                 fake_result_file("sample-measurement2")),
+                (fake_analyte("cont-id2", "art-id3", "sample3", "art-name3", "B:7", True,
+                              concentration=134, volume=50),
+                 fake_result_file("sample-measurement3")),
+                (fake_analyte("cont-id2", "art-id4", "sample4", "art-name4", "E:12", True,
+                              concentration=134, volume=60),
+                 fake_result_file("sample-measurement4")),
+            ]
+            return ret
+
+        svc = helpers.mock_artifact_service(only_input_analyte_set)
+
+        dilution_scheme = SourceOnlyDilutionScheme(svc, "Hamilton")
+
+        expected = [
+            ['art-name1', 36, 'DNA1', 4],
+            ['art-name2', 33, 'DNA2', 4],
+            ['art-name3', 50, 'DNA2', 4],
+            ['art-name4', 93, 'DNA2', 4]]
+
+        # Test:
+        actual = [
+            [dilute.sample_name,
+             dilute.source_well_index,
+             dilute.source_plate_pos,
+             4] for dilute in dilution_scheme.transfers
+        ]
+
+        # Assert:
+        self.assertEqual(expected, actual)
+
 
     # TODO: Add a test for buffer volume validation
     def test_dilution_scheme_too_high_sample_volume(self):

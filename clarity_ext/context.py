@@ -1,5 +1,5 @@
 import logging
-from clarity_ext.dilution import *
+from clarity_ext.dilution import DilutionScheme, SourceOnlyDilutionScheme
 from clarity_ext import UnitConversion
 from clarity_ext.repository.file_repository import FileRepository
 from clarity_ext.utils import lazyprop
@@ -7,6 +7,7 @@ from clarity_ext import ClaritySession
 from clarity_ext.service import ArtifactService, FileService
 from clarity_ext.repository import StepRepository
 from clarity_ext import utils
+import datetime
 
 
 class ExtensionContext(object):
@@ -61,6 +62,10 @@ class ExtensionContext(object):
     def dilution_scheme(self):
         # TODO: The caller needs to provide the robot
         return DilutionScheme(self.artifact_service, "Hamilton")
+
+    @lazyprop
+    def source_only_dilution_scheme(self):
+        return SourceOnlyDilutionScheme(self.artifact_service, "Hamilton")
 
     @lazyprop
     def shared_files(self):

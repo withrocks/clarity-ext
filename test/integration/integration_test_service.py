@@ -1,4 +1,5 @@
 """Help classes to manage integration tests"""
+from itertools import chain
 
 
 class IntegrationTest:
@@ -21,8 +22,9 @@ class IntegrationTestPrepare:
         self.update_matrix = update_matrix
 
     def prepare(self, artifact_service):
-        input_artifacts = artifact_service.all_input_artifacts()
-        artifact_dict = {artifact.id: artifact for artifact in input_artifacts}
+        artifacts = chain(artifact_service.all_input_artifacts(),
+                          artifact_service.all_output_artifacts())
+        artifact_dict = {artifact.id: artifact for artifact in artifacts}
         self._check_artifacts_exists(artifact_dict)
         update_queue = []
         for update_row in self.update_matrix:

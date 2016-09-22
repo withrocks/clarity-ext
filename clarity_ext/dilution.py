@@ -1,5 +1,4 @@
 from clarity_ext.domain.validation import ValidationException, ValidationType
-import datetime
 
 DILUTION_WASTE_VOLUME = 1
 
@@ -24,7 +23,7 @@ class TransferEndpoint(object):
 class SingleTransfer(object):
     # Enclose sample data, user input and derived variables for a
     # single row in a dilution
-    def __init__(self, source_endpoint, destination_endpoint):
+    def __init__(self, source_endpoint, destination_endpoint=None):
         self.sample_name = source_endpoint.sample_name
 
         self.source_endpoint = source_endpoint
@@ -116,6 +115,7 @@ class EndpointPositioner(object):
         # Sort order for wells are always based on down first indexing
         # regardless the robot type
         return plate_sorting * plate_base_number + dilute.source_well.index_down_first
+
     def __str__(self):
         return "<{type} {robot} {height}x{width}>".format(type=self.__class__.__name__,
                                                           robot=self.robot_name,
@@ -155,6 +155,41 @@ class RobotDeckPositioner(object):
                                                           robot=self._robot_name,
                                                           height=self._plate_size.height,
                                                           width=self._plate_size.width)
+
+
+class SourceOnlyDilutionScheme(object):
+    """
+    Creates a dilution scheme for a source only dilution (qPCR)
+    Here, the destination position doesn't matter. Only columns for
+    the source position and a fixed transfer volume is showed in the
+    driver file
+    """
+    def __init__(self, artifact_service, robot_name):
+        input_analytes = artifact_service.all_input_analytes()
+        container = input_analytes[0].container
+        self.transfers = self.create_transfers(input_analytes)
+        self.analyte_by_transfer = {dilute: analyte for dilute, analyte in
+                                    zip(self.transfers, input_analytes)}
+        transfer_endpoints = [dilute.source_endpoint for dilute in self.transfers]
+        self.source_positioner = EndpointPositioner(robot_name, transfer_endpoints,
+                                                    container.size, "DNA")
+        self.do_positioning()
+
+    def create_transfers(self, input_analytes):
+        transfers = []
+        for analyte in input_analytes:
+            source_endpoint = TransferEndpoint(analyte)
+            transfers.append(SingleTransfer(source_endpoint))
+        return transfers
+
+    def do_positioning(self):
+        for transfer in self.transfers:
+            transfer.source_well_index = self.source_positioner.indexer(transfer.source_well)
+            transfer.source_plate_pos = self.source_positioner. \
+                plate_position_map[transfer.source_container.id]
+
+        self.transfers = sorted(self.transfers,
+                                key=lambda curr_dil: self.source_positioner.find_sort_number(curr_dil))
 
 
 class DilutionScheme(object):
