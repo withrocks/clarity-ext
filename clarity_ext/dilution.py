@@ -5,6 +5,10 @@ DILUTION_WASTE_VOLUME = 1
 
 
 class TransferEndpoint(object):
+    """
+    TransferEndpoint wraps an source or destination analyte involved in a dilution
+    """
+    # TODO: Handle tube racks
     def __init__(self, analyte):
         self.sample_name = analyte.name
         self.well = analyte.well
@@ -64,38 +68,20 @@ class SingleTransfer(object):
         return "<SingleTransfer {}>".format(self.sample_name)
 
 
-class RobotDeckPositioner(object):
+class EndpointPositioner(object):
     """
-    Handle plate positions on the robot deck (target and source)
-    as well as well indexing
+    Handles positions for all plates and wells for either source or
+    destination placement on a robot deck
     """
-
-    def __init__(self, robot_name, transfers, plate):
+    def __init__(self, robot_name, transfer_endpoints, plate_size, plate_pos_prefix):
         self.robot_name = robot_name
-        self.plate = plate
+        self._plate_size = plate_size
         index_method_map = {"Hamilton": lambda well: well.index_down_first}
         self.indexer = index_method_map[robot_name]
-        self.target_plate_sorting_map = self._build_plate_sorting_map(
-            [transfer.target_container for transfer in transfers])
-        self.target_plate_position_map = self._build_plate_position_map(
-            self.target_plate_sorting_map, "END"
-        )
-        self.source_plate_sorting_map = self._build_plate_sorting_map(
-            [transfer.source_container for transfer in transfers])
-        self.source_plate_position_map = self._build_plate_position_map(
-            self.source_plate_sorting_map, "DNA"
-        )
-
-    def find_sort_number(self, transfer):
-        """Sort transfers according to plate and well positions in source
-        :param transfer:
-        """
-        plate_base_number = self.plate.size.width * self.plate.size.height + 1
-        plate_sorting = self.source_plate_sorting_map[
-            transfer.source_container.id]
-        # Sort order for wells are always based on down first indexing
-        # regardless the robot type
-        return plate_sorting * plate_base_number + transfer.source_well.index_down_first
+        self.plate_sorting_map = self._build_plate_sorting_map(
+            [transfer_endpoint.container for transfer_endpoint in transfer_endpoints])
+        self.plate_position_map = self._build_plate_position_map(
+            self.plate_sorting_map, plate_pos_prefix)
 
     @staticmethod
     def _build_plate_position_map(plate_sorting_map, plate_pos_prefix):
@@ -120,11 +106,55 @@ class RobotDeckPositioner(object):
         plate_position_numbers = dict(zip(unique_containers, positions))
         return plate_position_numbers
 
+    def find_sort_number(self, dilute):
+        """Sort dilutes according to plate and well positions
+        """
+        plate_base_number = self._plate_size.width * self._plate_size.height + 1
+        plate_sorting = self.plate_sorting_map[
+            dilute.source_container.id
+        ]
+        # Sort order for wells are always based on down first indexing
+        # regardless the robot type
+        return plate_sorting * plate_base_number + dilute.source_well.index_down_first
     def __str__(self):
         return "<{type} {robot} {height}x{width}>".format(type=self.__class__.__name__,
                                                           robot=self.robot_name,
-                                                          height=self.plate.size.height,
-                                                          width=self.plate.size.width)
+                                                          height=self._plate_size.size.height,
+                                                          width=self._plate_size.size.width)
+
+
+class RobotDeckPositioner(object):
+    """
+    Handle plate positions on the robot deck (target and source)
+    as well as well indexing
+    """
+
+    def __init__(self, robot_name, dilutes, plate_size):
+
+        source_endpoints = [dilute.source_endpoint for dilute in dilutes]
+        source_positioner = EndpointPositioner(robot_name, source_endpoints,
+                                               plate_size, "DNA")
+        destination_endpoints = [dilute.destination_endpoint for dilute in dilutes]
+        destination_positioner = EndpointPositioner(
+            robot_name, destination_endpoints, plate_size, "END")
+
+        self._robot_name = robot_name
+        self._plate_size = plate_size
+        self._source_positioner = source_positioner
+        self.indexer = source_positioner.indexer
+        self.source_plate_position_map = source_positioner.plate_position_map
+        self.target_plate_position_map = destination_positioner.plate_position_map
+
+    def find_sort_number(self, dilute):
+        """Sort dilutes according to plate and well positions in source
+        """
+        return self._source_positioner.find_sort_number(dilute)
+
+    def __str__(self):
+        return "<{type} {robot} {height}x{width}>".format(type=self.__class__.__name__,
+                                                          robot=self._robot_name,
+                                                          height=self._plate_size.height,
+                                                          width=self._plate_size.width)
 
 
 class DilutionScheme(object):
@@ -142,7 +172,7 @@ class DilutionScheme(object):
         self.transfers = self.create_transfers(pairs)
 
         self.analyte_pair_by_transfer = {transfer: pair for transfer, pair in zip(self.transfers, pairs)}
-        self.robot_deck_positioner = RobotDeckPositioner(robot_name, self.transfers, container)
+        self.robot_deck_positioner = RobotDeckPositioner(robot_name, self.transfers, container.size)
 
         self.calculate_transfer_volumes()
         self.do_positioning()
