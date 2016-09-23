@@ -80,7 +80,6 @@ class GeneralFileService(object):
             self.os_service.mkdir(upload_path)
             # The LIMS does always add a prefix with the artifact ID:
             new_file_name = self.specific_file_service.lims_adapted_file_name()
-            print("driverfile, new_file_name: {}".format(new_file_name))
             new_file_path = os.path.join(upload_path, new_file_name)
             self.os_service.copy_file(local_file, new_file_path)
 
@@ -136,7 +135,8 @@ class DriverFileService:
     def artifact(self):
         artifacts = [shared_file for shared_file in self.extension.context.shared_files
                      if shared_file.name == self.shared_file_name]
-        assert len(artifacts) == 1
+        assert len(artifacts) == 1, "shared file {} could not be found".format(
+            self.shared_file_name)
         return artifacts[0]
 
     @staticmethod

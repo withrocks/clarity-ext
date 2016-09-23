@@ -1,7 +1,13 @@
-from clarity_ext.domain import Container, Analyte, Well, ContainerPosition, Sample, Artifact
+from clarity_ext.domain import Container, Analyte, Well, ContainerPosition, Sample, Artifact, ResultFile
 from mock import MagicMock
 from clarity_ext.service import ArtifactService, FileService
 from clarity_ext.repository.step_repository import DEFAULT_UDF_MAP
+
+
+def fake_result_file(artifact_id=None):
+    udf_map = dict()
+    api_resource = MagicMock()
+    return ResultFile(api_resource, udf_map, artifact_id)
 
 
 def fake_analyte(container_id=None, artifact_id=None, sample_id=None, analyte_name=None,
@@ -25,8 +31,9 @@ def fake_analyte(container_id=None, artifact_id=None, sample_id=None, analyte_na
     sample = Sample(sample_id)
     api_resource = None
     udf_map = DEFAULT_UDF_MAP['Analyte']
-    analyte = Analyte(api_resource=api_resource, name=analyte_name, well=well,
-                      sample=sample, artifact_specific_udf_map=udf_map, **kwargs)
+    analyte = Analyte(api_resource=api_resource,
+                      name=analyte_name, well=well, sample=sample,
+                      artifact_specific_udf_map=udf_map, **kwargs)
     analyte.id = artifact_id
     analyte.is_input = is_input
     analyte.generation_type = Artifact.PER_INPUT

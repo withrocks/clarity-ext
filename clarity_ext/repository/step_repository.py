@@ -3,6 +3,7 @@ from clarity_ext.domain.analyte import Analyte
 from clarity_ext.domain.result_file import ResultFile
 from clarity_ext.repository.container_repository import ContainerRepository
 from genologics.entities import Artifact as ApiArtifact
+from clarity_ext.domain.user import User
 import copy
 
 
@@ -150,6 +151,11 @@ class StepRepository(object):
     def _retrieve_updated_fields(self, updated_artifact):
         orig_art = self.orig_state_cache[updated_artifact.id]
         return updated_artifact.differing_fields(orig_art)
+
+    def current_user(self):
+        current_user_resource = self.session.current_step.technician
+        return User.create_from_rest_resource(current_user_resource)
+
 
 
 

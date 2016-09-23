@@ -11,14 +11,18 @@ class TestContext(unittest.TestCase):
         session = MagicMock()
         artifact_svc = MagicMock()
         file_svc = MagicMock()
-        context = ExtensionContext(session, artifact_svc, file_svc)
+        current_user = MagicMock()
+        context = ExtensionContext(
+            session, artifact_svc, file_svc, current_user)
         self.assertIsNotNone(context)
 
     def test_input_output_container_throws(self):
         session = MagicMock()
         artifact_svc = helpers.mock_two_containers_artifact_service()
         file_svc = MagicMock()
-        context = ExtensionContext(session, artifact_svc, file_svc)
+        current_user = MagicMock()
+        context = ExtensionContext(
+            session, artifact_svc, file_svc, current_user)
 
         containers = artifact_svc.all_input_containers()
         self.assertEqual(2, len(containers), "Test data not correctly setup")

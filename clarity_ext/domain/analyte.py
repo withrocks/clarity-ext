@@ -48,7 +48,8 @@ class Analyte(Artifact):
         pos = ContainerPosition.create(resource.location[1])
         well = Well(pos, container)
         sample = Sample.create_from_rest_resource(resource.samples[0])
-        analyte = Analyte(resource, resource.name, well, sample, analyte_udf_map, resource.id, **kwargs)
+        analyte = Analyte(resource, resource.name, well, sample, analyte_udf_map,
+                          resource.id, **kwargs)
         analyte.api_resource = resource
         well.artifact = analyte
         return analyte
