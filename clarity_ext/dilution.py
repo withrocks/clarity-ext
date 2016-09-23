@@ -8,6 +8,7 @@ class TransferEndpoint(object):
     TransferEndpoint wraps an source or destination analyte involved in a dilution
     """
     # TODO: Handle tube racks
+
     def __init__(self, analyte):
         self.sample_name = analyte.name
         self.well = analyte.well
@@ -23,6 +24,7 @@ class TransferEndpoint(object):
 class SingleTransfer(object):
     # Enclose sample data, user input and derived variables for a
     # single row in a dilution
+
     def __init__(self, source_endpoint, destination_endpoint=None):
         self.sample_name = source_endpoint.sample_name
 
@@ -72,6 +74,7 @@ class EndpointPositioner(object):
     Handles positions for all plates and wells for either source or
     destination placement on a robot deck
     """
+
     def __init__(self, robot_name, transfer_endpoints, plate_size, plate_pos_prefix):
         self.robot_name = robot_name
         self._plate_size = plate_size
@@ -134,7 +137,8 @@ class RobotDeckPositioner(object):
         source_endpoints = [dilute.source_endpoint for dilute in dilutes]
         source_positioner = EndpointPositioner(robot_name, source_endpoints,
                                                plate_size, "DNA")
-        destination_endpoints = [dilute.destination_endpoint for dilute in dilutes]
+        destination_endpoints = [
+            dilute.destination_endpoint for dilute in dilutes]
         destination_positioner = EndpointPositioner(
             robot_name, destination_endpoints, plate_size, "END")
 
@@ -164,13 +168,15 @@ class SourceOnlyDilutionScheme(object):
     the source position and a fixed transfer volume is showed in the
     driver file
     """
+
     def __init__(self, artifact_service, robot_name):
         input_analytes = artifact_service.all_input_analytes()
         container = input_analytes[0].container
         self.transfers = self.create_transfers(input_analytes)
         self.analyte_by_transfer = {dilute: analyte for dilute, analyte in
                                     zip(self.transfers, input_analytes)}
-        transfer_endpoints = [dilute.source_endpoint for dilute in self.transfers]
+        transfer_endpoints = [
+            dilute.source_endpoint for dilute in self.transfers]
         self.source_positioner = EndpointPositioner(robot_name, transfer_endpoints,
                                                     container.size, "DNA")
         self.do_positioning()
@@ -184,7 +190,8 @@ class SourceOnlyDilutionScheme(object):
 
     def do_positioning(self):
         for transfer in self.transfers:
-            transfer.source_well_index = self.source_positioner.indexer(transfer.source_well)
+            transfer.source_well_index = self.source_positioner.indexer(
+                transfer.source_well)
             transfer.source_plate_pos = self.source_positioner. \
                 plate_position_map[transfer.source_container.id]
 
@@ -206,8 +213,10 @@ class DilutionScheme(object):
         container = pairs[0].output_artifact.container
         self.transfers = self.create_transfers(pairs)
 
-        self.analyte_pair_by_transfer = {transfer: pair for transfer, pair in zip(self.transfers, pairs)}
-        self.robot_deck_positioner = RobotDeckPositioner(robot_name, self.transfers, container.size)
+        self.analyte_pair_by_transfer = {
+            transfer: pair for transfer, pair in zip(self.transfers, pairs)}
+        self.robot_deck_positioner = RobotDeckPositioner(
+            robot_name, self.transfers, container.size)
 
         self.calculate_transfer_volumes()
         self.do_positioning()
@@ -218,7 +227,8 @@ class DilutionScheme(object):
         for pair in analyte_pairs:
             source_endpoint = TransferEndpoint(pair.input_artifact)
             destination_endpoint = TransferEndpoint(pair.output_artifact)
-            transfers.append(SingleTransfer(source_endpoint, destination_endpoint))
+            transfers.append(SingleTransfer(
+                source_endpoint, destination_endpoint))
         return transfers
 
     def calculate_transfer_volumes(self):
@@ -240,7 +250,8 @@ class DilutionScheme(object):
     def do_positioning(self):
         # Handle positioning
         for transfer in self.transfers:
-            transfer.source_well_index = self.robot_deck_positioner.indexer(transfer.source_well)
+            transfer.source_well_index = self.robot_deck_positioner.indexer(
+                transfer.source_well)
             transfer.source_plate_pos = self.robot_deck_positioner. \
                 source_plate_position_map[transfer.source_container.id]
             transfer.target_well_index = self.robot_deck_positioner.indexer(

@@ -132,15 +132,8 @@ class ExtensionContext(object):
         return self.artifact_service.all_output_files()
 
     @property
-    def user_initials(self):
-        return self.current_user.initials
-
-    @property
     def pid(self):
         return self.session.current_step_id
-
-    def today(self, format):
-        return datetime.date.today().strftime(format)
 
     def update(self, obj):
         """Add an object that has a commit method to the list of objects to update"""
