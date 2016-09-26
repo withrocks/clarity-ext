@@ -1,6 +1,7 @@
 from clarity_ext.domain.validation import ValidationException, ValidationType
 
 DILUTION_WASTE_VOLUME = 1
+ROBOT_MIN_VOLUME = 2
 
 
 class TransferEndpoint(object):
@@ -51,6 +52,7 @@ class SingleTransfer(object):
         self.sample_volume = None
         self.buffer_volume = None
         self.has_to_evaporate = None
+        self.scaled_up = False
 
     def set_destination_endpoint(self, destination_endpoint):
         self.target_well = destination_endpoint.well
@@ -202,10 +204,11 @@ class SourceOnlyDilutionScheme(object):
 class DilutionScheme(object):
     """Creates a dilution scheme, given input and output analytes."""
 
-    def __init__(self, artifact_service, robot_name):
+    def __init__(self, artifact_service, robot_name, scale_up_low_volumes=True):
         """
         Calculates all derived values needed in dilute driver file.
         """
+        self.scale_up_low_volumes = scale_up_low_volumes
         pairs = artifact_service.all_analyte_pairs()
 
         # TODO: Is it safe to just check for the container for the first output
@@ -242,6 +245,11 @@ class DilutionScheme(object):
                     max(transfer.requested_volume - transfer.sample_volume, 0)
                 transfer.has_to_evaporate = \
                     (transfer.requested_volume - transfer.sample_volume) < 0
+                if self.scale_up_low_volumes and transfer.sample_volume < ROBOT_MIN_VOLUME:
+                    scale_factor = float(ROBOT_MIN_VOLUME / transfer.sample_volume)
+                    transfer.sample_volume *= scale_factor
+                    transfer.buffer_volume *= scale_factor
+                    transfer.scaled_up = True
             except (TypeError, ZeroDivisionError) as e:
                 transfer.sample_volume = None
                 transfer.buffer_volume = None
