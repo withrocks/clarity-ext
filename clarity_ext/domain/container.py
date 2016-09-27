@@ -36,6 +36,18 @@ class Well(DomainObjectMixin):
         # The position is 1-indexed
         return (self.position.col - 1) * self.container.size.height + self.position.row
 
+    @staticmethod
+    def create_from_rest_resource(api_resource, container_repo):
+        pos = ContainerPosition.create(api_resource.location[1])
+        # Try statement: If testing and not caring for the container repo
+        try:
+            container = container_repo.get_container(api_resource.location[0])
+        except AttributeError:
+            pass
+            container = None
+
+        return Well(pos, container)
+
 
 class ContainerPosition(namedtuple("ContainerPosition", ["row", "col"])):
     """Defines the position of the plate, (zero based)"""

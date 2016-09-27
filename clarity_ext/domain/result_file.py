@@ -1,35 +1,37 @@
-from clarity_ext.unit_conversion import UnitConversion
-from clarity_ext.domain.artifact import Artifact
+from clarity_ext.domain.aliquot import Aliquot, Sample
+from clarity_ext.domain.container import Well
 
 
-class ResultFile(Artifact):
+class ResultFile(Aliquot):
     """Encapsulates a ResultFile in Clarity"""
 
-    def __init__(self, api_resource, artifact_specific_udf_map, id=None):
-        super(self.__class__, self).__init__(api_resource, artifact_specific_udf_map)
-        self.id = id
+    def __init__(self, api_resource, is_input, id=None, sample=None, name=None, well=None,
+                 artifact_specific_udf_map=None, **kwargs):
+        super(self.__class__, self).__init__(
+            api_resource, is_input=is_input, id=id, sample=sample, name=name, well=well,
+            artifact_specific_udf_map=artifact_specific_udf_map, **kwargs)
 
     @staticmethod
-    def create_from_rest_resource(resource, udf_map, container_repo):
+    def create_from_rest_resource(resource, is_input, udf_map, container_repo):
         """
         Creates a `ResultFile` from the REST resource object.
         The container is fetched from the container_repo.
         """
 
         result_file_udf_map = udf_map.get('ResultFile', None)
-        ret = ResultFile(api_resource=resource,
-                         artifact_specific_udf_map=result_file_udf_map, id=resource.id)
+        kwargs = {key: resource.udf.get(result_file_udf_map[key], None)
+                  for key in result_file_udf_map}
+        # TODO: Batch call
+        well = Well.create_from_rest_resource(api_resource=resource, container_repo=container_repo)
+        # TODO: sample should be put in a lazy property, and all samples in a step should be
+        # loaded in one batch
+        sample = Sample.create_from_rest_resource(resource.samples[0])
+        ret = ResultFile(api_resource=resource, is_input=is_input,
+                         id=resource.id, sample=sample, name=resource.name, well=well,
+                         artifact_specific_udf_map=result_file_udf_map, **kwargs)
 
-        try:
-            container_resource = resource.location[0]
-            ret.container = container_repo.get_container(container_resource)
-            well = resource.location[1]
-            ret.container.set_well(well, artifact=ret)
-        except AttributeError:
-            pass
-            ret.container = None
-
-        ret.name = resource.name
+        if well.container:
+            well.container.set_well(resource.location[1], artifact=ret)
 
         return ret
 
@@ -45,7 +47,6 @@ class ResultFile(Artifact):
         # Add ResultFile specific fields here ...
 
         return _updated_rest_resource, self.assigner.consume()
-
 
     def __repr__(self):
         return self.id

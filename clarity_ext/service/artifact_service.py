@@ -60,7 +60,7 @@ class ArtifactService:
     def all_output_containers(self):
         artifacts_having_container = (artifact.container
                                       for artifact in self.all_output_artifacts()
-                                      if artifact.container is not None)
+                                      if isinstance(artifact, Aliquot) and artifact.container is not None)
         containers = utils.unique(
             artifacts_having_container, lambda item: item.id)
         return list(containers)
