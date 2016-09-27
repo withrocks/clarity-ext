@@ -1,7 +1,10 @@
 from clarity_ext.domain.validation import ValidationException, ValidationType
+from clarity_ext.utils import lazyprop
+import copy
 
 DILUTION_WASTE_VOLUME = 1
 ROBOT_MIN_VOLUME = 2
+PIPETTING_MAX_VOLUME = 50
 
 
 class TransferEndpoint(object):
@@ -110,16 +113,16 @@ class EndpointPositioner(object):
         plate_position_numbers = dict(zip(unique_containers, positions))
         return plate_position_numbers
 
-    def find_sort_number(self, dilute):
+    def find_sort_number(self, transfer):
         """Sort dilutes according to plate and well positions
         """
         plate_base_number = self._plate_size.width * self._plate_size.height + 1
         plate_sorting = self.plate_sorting_map[
-            dilute.source_container.id
+            transfer.source_container.id
         ]
         # Sort order for wells are always based on down first indexing
         # regardless the robot type
-        return plate_sorting * plate_base_number + dilute.source_well.index_down_first
+        return plate_sorting * plate_base_number + transfer.source_well.index_down_first
 
     def __str__(self):
         return "<{type} {robot} {height}x{width}>".format(type=self.__class__.__name__,
@@ -222,7 +225,9 @@ class DilutionScheme(object):
             robot_name, self.transfers, container.size)
 
         self.calculate_transfer_volumes()
+        self.split_up_high_volume_rows()
         self.do_positioning()
+        self.sort_transfers()
 
     def create_transfers(self, analyte_pairs):
         # TODO: handle tube racks
@@ -246,7 +251,8 @@ class DilutionScheme(object):
                 transfer.has_to_evaporate = \
                     (transfer.requested_volume - transfer.sample_volume) < 0
                 if self.scale_up_low_volumes and transfer.sample_volume < ROBOT_MIN_VOLUME:
-                    scale_factor = float(ROBOT_MIN_VOLUME / transfer.sample_volume)
+                    scale_factor = float(
+                        ROBOT_MIN_VOLUME / transfer.sample_volume)
                     transfer.sample_volume *= scale_factor
                     transfer.buffer_volume *= scale_factor
                     transfer.scaled_up = True
@@ -254,6 +260,73 @@ class DilutionScheme(object):
                 transfer.sample_volume = None
                 transfer.buffer_volume = None
                 transfer.has_to_evaporate = None
+
+    def split_up_high_volume_rows(self):
+        for transfer in self.transfers:
+            calculation_volume = max(
+                self._get_volume(transfer.sample_volume), self._get_volume(transfer.buffer_volume))
+            (n, residual) = divmod(calculation_volume, PIPETTING_MAX_VOLUME)
+            if residual > 0:
+                duplication_number = int(n + 1)
+            else:
+                duplication_number = int(n)
+
+            # Copy transfer x times and add to array
+            # Update sample volume and buffer volume if needed
+            splitted_transfers = self._split_up_single_transfer(
+                transfer, duplication_number)
+            self.transfers += splitted_transfers
+
+    @staticmethod
+    def _split_up_single_transfer(transfer, number_rows):
+        transfers = []
+        for i in range(0, number_rows):
+            if i == number_rows - 1:
+                t = transfer
+            else:
+                t = copy.copy(transfer)
+                t.buffer_volume = 0
+                t.sample_volume = 0
+                transfers.append(t)
+
+            # Only split up pipetting volume if the actual volume exceeds
+            # max of 50 ul. Otherwise, the min volume of 2 ul might be violated.
+            if transfer.buffer_volume > PIPETTING_MAX_VOLUME:
+                t.buffer_volume = float(
+                    transfer.buffer_volume / number_rows)
+
+            if transfer.sample_volume > PIPETTING_MAX_VOLUME:
+                t.sample_volume = float(
+                    transfer.sample_volume / number_rows)
+
+        return transfers
+
+    def sort_transfers(self):
+        def pipetting_volume(transfer):
+            return self._get_volume(transfer.buffer_volume) + self._get_volume(transfer.sample_volume)
+
+        def max_added_pip_volume():
+            volumes = map(lambda t: (self._get_volume(t.buffer_volume),
+                                     self._get_volume(t.sample_volume)), self.transfers)
+            return max(map(lambda v: v[0] + v[1], volumes))
+
+        # Sort on source position, and in case of splitted rows, pipetting
+        # volumes. Let max pipetting volumes be shown first
+        max_vol = max_added_pip_volume()
+        self.transfers = sorted(self.transfers,
+                                key=lambda t:
+                                self.robot_deck_positioner.find_sort_number(t) +
+                                (max_vol - pipetting_volume(t)) / (max_vol + 1.0))
+
+    @staticmethod
+    def _get_volume(volume):
+        # In cases when some parameter is not set (Source conc, Target concentration
+        # or volume), let the error and warnings check in script
+        # catch these exceptions
+        if not volume:
+            return 0
+        else:
+            return volume
 
     def do_positioning(self):
         # Handle positioning
@@ -266,9 +339,6 @@ class DilutionScheme(object):
                 transfer.target_well)
             transfer.target_plate_pos = self.robot_deck_positioner \
                 .target_plate_position_map[transfer.target_container.id]
-
-        self.transfers = sorted(self.transfers,
-                                key=lambda curr_dil: self.robot_deck_positioner.find_sort_number(curr_dil))
 
     def validate(self):
         """

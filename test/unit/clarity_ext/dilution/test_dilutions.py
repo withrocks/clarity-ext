@@ -67,7 +67,7 @@ class TestDilutionScheme(unittest.TestCase):
                               concentration=80),
                  fake_analyte("cont2", "art8", "sample4", "sample4", "E:2", False,
                               target_concentration=40, target_volume=10)),
-                    ]
+            ]
 
         svc = helpers.mock_artifact_service(scaled_up_analyte_set)
         dilution_scheme = DilutionScheme(svc, 'Hamilton')
@@ -96,6 +96,71 @@ class TestDilutionScheme(unittest.TestCase):
         self.assertEqual(dilution_scheme.transfers[1].scaled_up, True)
         self.assertEqual(dilution_scheme.transfers[2].scaled_up, True)
         self.assertEqual(dilution_scheme.transfers[3].scaled_up, False)
+        self.assertEqual(expected, actual)
+
+    def test_split_rows_for_high_volume(self):
+        """
+        Test that sample/buffer volume > 50 ul is split up into multiple
+        rows, so that the pipetting max volume is not exceeded
+        1st analyte pair: sample volume = 50 ul
+        2nd analyte pair: sample volume = 51 ul
+        3rd analyte pair: buffer volume = 98 ul, scaled up
+        4th analyte pair: buffer volume = 135 ul
+        5th analyte pair: buffer volume = 60, sample volume = 90
+        """
+        def high_volume_analyte_set():
+            return [
+                (fake_analyte("cont-id1", "art1-id1", "sample1", "sample1", "B:2", True,
+                              concentration=10),
+                 fake_analyte("cont-id1", "art1-id2", "sample1", "sample1", "B:2", False,
+                              target_concentration=50, target_volume=10)),
+                (fake_analyte("cont-id1", "art1-id3", "sample2", "sample2", "C:2", True,
+                              concentration=10),
+                 fake_analyte("cont-id1", "art1-id4", "sample2", "sample2", "C:2", False,
+                              target_concentration=10, target_volume=51)),
+                (fake_analyte("cont-id1", "art1-id5", "sample3", "sample3", "D:2", True,
+                              concentration=100),
+                 fake_analyte("cont-id1", "art1-id6", "sample3", "sample3", "D:2", False,
+                              target_concentration=2, target_volume=50)),
+                (fake_analyte("cont-id1", "art1-id7", "sample4", "sample4", "E:2", True,
+                              concentration=100),
+                 fake_analyte("cont-id1", "art1-id8", "sample4", "sample4", "E:2", False,
+                              target_concentration=10, target_volume=150)),
+                (fake_analyte("cont-id1", "art1-id9", "sample5", "sample5", "F:2", True,
+                              concentration=100),
+                 fake_analyte("cont-id1", "art1-id10", "sample5", "sample5", "F:2", False,
+                              target_concentration=60, target_volume=150)),
+            ]
+
+        svc = helpers.mock_artifact_service(high_volume_analyte_set)
+        dilution_scheme = DilutionScheme(svc, "Hamilton")
+        expected = [
+            ['sample1', 10, 'DNA1', 50.0, 0, 10, 'END1'],
+            ['sample2', 11, 'DNA1', 25.5, 0, 11, 'END1'],
+            ['sample2', 11, 'DNA1', 25.5, 0, 11, 'END1'],
+            ['sample3', 12, 'DNA1', 2.0, 49.0, 12, 'END1'],
+            ['sample3', 12, 'DNA1', 0, 49.0, 12, 'END1'],
+            ['sample4', 13, 'DNA1', 15.0, 45.0, 13, 'END1'],
+            ['sample4', 13, 'DNA1', 0, 45.0, 13, 'END1'],
+            ['sample4', 13, 'DNA1', 0, 45.0, 13, 'END1'],
+            ['sample5', 14, 'DNA1', 45.0, 30.0, 14, 'END1'],
+            ['sample5', 14, 'DNA1', 45.0, 30.0, 14, 'END1'],
+        ]
+
+        actual = [
+            [dilute.sample_name,
+             dilute.source_well_index,
+             dilute.source_plate_pos,
+             round(dilute.sample_volume, 1),
+             round(dilute.buffer_volume, 1),
+             dilute.target_well_index,
+             dilute.target_plate_pos] for dilute in dilution_scheme.transfers
+        ]
+
+        print("actual:")
+        for row in actual:
+            print("{}".format(row))
+
         self.assertEqual(expected, actual)
 
     def test_dilution_scheme_for_qpcr(self):
@@ -140,6 +205,9 @@ class TestDilutionScheme(unittest.TestCase):
         self.assertEqual(expected, actual)
 
     # TODO: Add a test for buffer volume validation
+    @unittest.skip("Remove when error and warning checks are in place in scripts")
+    # Remove this test, and all other error and warning tests, when these checks are
+    # in place in the scripts
     def test_dilution_scheme_too_high_sample_volume(self):
         def invalid_analyte_set():
             return [
@@ -169,7 +237,8 @@ class TestDilutionScheme(unittest.TestCase):
                     ]
 
         svc = helpers.mock_artifact_service(invalid_analyte_set)
-        dilution_scheme = DilutionScheme(svc, "Hamilton", scale_up_low_volumes=False)
+        dilution_scheme = DilutionScheme(
+            svc, "Hamilton", scale_up_low_volumes=False)
         actual = set(str(result) for result in dilution_scheme.validate())
         expected = set(["Error: Too low sample volume: cont-id1(D5)=>cont-id1(B5)"])
         self.assertEqual(expected, actual)
