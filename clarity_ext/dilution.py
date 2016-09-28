@@ -262,44 +262,73 @@ class DilutionScheme(object):
                 transfer.has_to_evaporate = None
 
     def split_up_high_volume_rows(self):
+        """
+        Split up a transfer between source well x and target well y into
+        several rows, if sample volume or buffer volume exceeds 50 ul
+        :return:
+        """
+        added_transfers = []
         for transfer in self.transfers:
             calculation_volume = max(
                 self._get_volume(transfer.sample_volume), self._get_volume(transfer.buffer_volume))
             (n, residual) = divmod(calculation_volume, PIPETTING_MAX_VOLUME)
             if residual > 0:
-                duplication_number = int(n + 1)
+                total_rows = int(n + 1)
             else:
-                duplication_number = int(n)
+                total_rows = int(n)
 
-            # Copy transfer x times and add to array
-            # Update sample volume and buffer volume if needed
-            splitted_transfers = self._split_up_single_transfer(
-                transfer, duplication_number)
-            self.transfers += splitted_transfers
+            copies = self._create_copies(transfer, total_rows)
+            added_transfers += copies
+            self._split_up_volumes(
+                [transfer] + copies, transfer.sample_volume, transfer.buffer_volume)
+
+        self.transfers += added_transfers
 
     @staticmethod
-    def _split_up_single_transfer(transfer, number_rows):
-        transfers = []
-        for i in range(0, number_rows):
-            if i == number_rows - 1:
-                t = transfer
-            else:
-                t = copy.copy(transfer)
-                t.buffer_volume = 0
-                t.sample_volume = 0
-                transfers.append(t)
+    def _create_copies(transfer, total_rows):
+        """
+        Create copies of transfer, if duplication_number > 1,
+        that will cause extra rows in the driver file.
+        Initiate both buffer volume and sample volume to zero
+        :param transfer: The transfer to be copied
+        :param total_rows: The total number of rows needed for a
+        transfer between source well x and target well y
+        :return:
+        """
+        copies = []
+        for i in xrange(0, total_rows - 1):
+            t = copy.copy(transfer)
+            t.buffer_volume = 0
+            t.sample_volume = 0
+            copies.append(t)
 
+        return copies
+
+    @staticmethod
+    def _split_up_volumes(transfers, original_sample_volume, original_buffer_volume):
+        """
+        Split up any transferring volume exceeding 50 ul to multiple rows represented by the
+         list 'transfers'
+        :param transfers: Represents rows in driver file,
+        needed for a transfer between source well x and target well y
+        :param original_sample_volume: Sample volume first calculated for a single row transfer,
+        that might exceed 50 ul
+        :param original_buffer_volume: Buffer volume first calculated for a single row transfer,
+        that might exceed 50 ul
+        :return:
+        """
+        number_rows = len(transfers)
+        for t in transfers:
             # Only split up pipetting volume if the actual volume exceeds
-            # max of 50 ul. Otherwise, the min volume of 2 ul might be violated.
-            if transfer.buffer_volume > PIPETTING_MAX_VOLUME:
+            # max of 50 ul. Otherwise, the min volume of 2 ul might be
+            # violated.
+            if original_buffer_volume > PIPETTING_MAX_VOLUME:
                 t.buffer_volume = float(
-                    transfer.buffer_volume / number_rows)
+                    original_buffer_volume / number_rows)
 
-            if transfer.sample_volume > PIPETTING_MAX_VOLUME:
+            if original_sample_volume > PIPETTING_MAX_VOLUME:
                 t.sample_volume = float(
-                    transfer.sample_volume / number_rows)
-
-        return transfers
+                    original_sample_volume / number_rows)
 
     def sort_transfers(self):
         def pipetting_volume(transfer):
@@ -308,7 +337,7 @@ class DilutionScheme(object):
         def max_added_pip_volume():
             volumes = map(lambda t: (self._get_volume(t.buffer_volume),
                                      self._get_volume(t.sample_volume)), self.transfers)
-            return max(map(lambda v: v[0] + v[1], volumes))
+            return max(map(lambda (buffer_vol, sample_vol): buffer_vol + sample_vol, volumes))
 
         # Sort on source position, and in case of splitted rows, pipetting
         # volumes. Let max pipetting volumes be shown first
