@@ -59,18 +59,6 @@ class ExtensionService(object):
         else:
             return in_argument.__dict__
 
-    def _fetch_shared_file(self, extension, run_arguments):
-        """
-        Fetch shared file name from
-        1. run_arguments, if the entry "shared_file" exists (integration tests)
-        2. the extension (production)
-        Thus, entry "shared_file" in run_argument overrides the shared file from extension
-        """
-        if "shared_file" in run_arguments:
-            return run_arguments["shared_file"]
-        else:
-            return extension.shared_file()
-
     def _artifact_service(self, pid):
         session = ClaritySession.create(pid)
         step_repo = StepRepository(session, DEFAULT_UDF_MAP)
@@ -176,8 +164,8 @@ class ExtensionService(object):
                 instance = extension(context)
                 os_service = OSService()
                 if issubclass(extension, DriverFileExtension):
-                    shared_file_name = self._fetch_shared_file(instance, run_arguments)
-                    file_svc = DriverFileService.create_file_service(instance, shared_file_name, self.logger, os_service)
+                    file_svc = DriverFileService.create_file_service(
+                        instance, instance.shared_file(), self.logger, os_service)
                     commit = mode == self.RUN_MODE_EXEC
                     file_svc.execute(commit=commit, artifacts_to_stdout=artifacts_to_stdout)
                 elif issubclass(extension, GeneralFileExtension):
