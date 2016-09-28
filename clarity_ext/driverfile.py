@@ -4,6 +4,7 @@ import difflib
 from genologics.epp import attach_file
 from genologics.entities import *
 from clarity_ext.utils import lazyprop
+import re
 
 
 class OSService(object):
@@ -29,7 +30,7 @@ class OSService(object):
         shutil.copyfile(source, dest)
 
     def attach_file_for_epp(self, local_file, artifact):
-        attach_file(local_file, artifact)
+        return attach_file(local_file, artifact)
 
 
 class GeneralFileService(object):
@@ -59,7 +60,7 @@ class GeneralFileService(object):
             self.logger.debug("Creating directories {}".format(root))
             self.os_service.makedirs(root)
         full_path = os.path.join(root, self.extension.filename())
-        # The file needs to be openeded in binary form to ensure that Windows line endings are used if specified
+        # The file needs to be opened in binary form to ensure that Windows line endings are used if specified
         with self.os_service.open_file(full_path, 'wb') as f:
             self.logger.debug("Writing output to {}.".format(full_path))
             newline = self.extension.newline()

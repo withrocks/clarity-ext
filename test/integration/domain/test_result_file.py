@@ -56,6 +56,7 @@ class TestIntegrationAnalyteRepository(unittest.TestCase):
         self.assertIsNotNone(result)
         self.assertIsInstance(result, ResultFile)
 
+    @unittest.skip("Step removed")
     def test_can_read_xml(self):
         """Can parse an xml file directly form the context"""
         context = ExtensionContext.create("24-7880")

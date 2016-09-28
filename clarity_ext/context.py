@@ -4,10 +4,11 @@ from clarity_ext import UnitConversion
 from clarity_ext.repository.file_repository import FileRepository
 from clarity_ext.utils import lazyprop
 from clarity_ext import ClaritySession
-from clarity_ext.service import ArtifactService, FileService
+from clarity_ext.service import ArtifactService, FileService, StepLoggerService
 from clarity_ext.repository import StepRepository
 from clarity_ext import utils
 import datetime
+from clarity_ext.driverfile import OSService
 
 
 class ExtensionContext(object):
@@ -21,21 +22,21 @@ class ExtensionContext(object):
     able to access the underlying services if needed.
     """
 
-    def __init__(self, session, artifact_service, file_service, current_user, cache=False, logger=None):
+    def __init__(self, session, artifact_service, file_service, current_user, step_logger_service, cache=False):
         """
         Initializes the context.
 
+        :param logger_service:
         :param session: An object encapsulating the connection to Clarity
         :param artifact_service: Provides access to artifacts in the current step
         :param file_service: Provides access to result files locally on the machine.
+        :param step_logger_service: Provides access to logging via the context. 
         :param cache: Set to True to use the cache folder (.cache) for downloaded files
-        :param logger: A logger instance
         """
         self.session = session
-        self.logger = logger or logging.getLogger(__name__)
         self.cache = cache
-
-        self.units = UnitConversion(self.logger)
+        self.logger = step_logger_service
+        self.units = UnitConversion()
         self._update_queue = []
         self.current_step = session.current_step
         self.artifact_service = artifact_service
@@ -55,8 +56,9 @@ class ExtensionContext(object):
         artifact_service = ArtifactService(step_repo)
         current_user = step_repo.current_user()
         file_repository = FileRepository(session)
-        file_service = FileService(artifact_service, file_repository, False)
-        return ExtensionContext(session, artifact_service, file_service, current_user, cache=cache)
+        file_service = FileService(artifact_service, file_repository, False, OSService())
+        step_logger_service = StepLoggerService("Step log", file_service)
+        return ExtensionContext(session, artifact_service, file_service, current_user, step_logger_service, cache=cache)
 
     @lazyprop
     def dilution_scheme(self):
@@ -142,5 +144,4 @@ class ExtensionContext(object):
     def commit(self):
         """Commits all objects that have been added via the update method, using batch processing if possible"""
         self.response = self.artifact_service.update_artifacts(self._update_queue)
-
 

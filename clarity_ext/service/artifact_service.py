@@ -1,5 +1,6 @@
 from clarity_ext import utils
 from clarity_ext.domain import *
+import logging
 
 
 class ArtifactService:
@@ -9,6 +10,7 @@ class ArtifactService:
 
     def __init__(self, step_repository):
         self.step_repository = step_repository
+        self.logger = logging.getLogger(__name__)
 
     def shared_files(self):
         """

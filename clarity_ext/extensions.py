@@ -33,8 +33,32 @@ class ExtensionService(object):
     CACHE_NAME = ".http_cache"
     CACHE_ARTIFACTS_DIR = ".cache"
 
-    def __init__(self, logger=None):
-        self.logger = logger or logging.getLogger(__name__)
+    PRODUCTION_LOGS_DIR = "/opt/clarity-ext/logs"
+    PRODUCTION_LOG_NAME = "extensions.log"
+
+    def __init__(self):
+        self.logger = logging.getLogger(__name__)
+
+    @classmethod
+    def initialize_logging(cls, level):
+        """
+        Initializes logging for the application. Should be called once in the entry point.
+
+        Everything is logged to a console handler. By convention, if the directory "/opt/clarity-ext/logs" exists,
+        the logger will also log to that.
+        """
+        formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(formatter)
+        root_logger = logging.getLogger('')
+        root_logger.addHandler(console_handler)
+        root_logger.setLevel(level)
+
+        if os.path.exists(cls.PRODUCTION_LOGS_DIR):
+            file_name = os.path.join(cls.PRODUCTION_LOGS_DIR, cls.PRODUCTION_LOG_NAME)
+            rotating_handler = logging.handlers.RotatingFileHandler(file_name, maxBytes=10 * (2**20), backupCount=5)
+            rotating_handler.setFormatter(formatter)
+            root_logger.addHandler(rotating_handler)
 
     def _run_path(self, args, module, mode, config):
         if mode == self.RUN_MODE_EXEC:
@@ -157,10 +181,9 @@ class ExtensionService(object):
                 old_dir = os.getcwd()
                 os.chdir(path)
 
-                self.logger.info("Executing at {}".format(path))
+                self.logger.info("Executing at {}".format(os.path.abspath(path)))
                 cache_artifacts = mode == self.RUN_MODE_TEST
-                context = ExtensionContext.create(
-                    run_arguments["pid"], cache=cache_artifacts)
+                context = ExtensionContext.create(run_arguments["pid"], cache=cache_artifacts)
                 instance = extension(context)
                 os_service = OSService()
                 if issubclass(extension, DriverFileExtension):
@@ -172,10 +195,9 @@ class ExtensionService(object):
                     file_svc = ResponseFileService.create_file_service(instance, self.logger, os_service)
                     file_svc.execute(commit=False, artifacts_to_stdout=artifacts_to_stdout)
                 elif issubclass(extension, GeneralExtension):
-                    # TODO: Generating the instance twice (for metadata above)
                     instance.execute()
                 else:
-                    raise NotImplementedError("Unknown extension")
+                    raise NotImplementedError("Unknown extension type")
                 context.cleanup()
 
                 os.chdir(old_dir)
