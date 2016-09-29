@@ -11,7 +11,7 @@ class FileService:
     well as cleaning up after a script as run
     """
 
-    def __init__(self, artifact_service, file_repo, should_cache):
+    def __init__(self, artifact_service, file_repo, should_cache, os_service):
         """
         :param artifact_service: An artifact service instance.
         :param should_cache: Set to True if files should be cached in .cache, mainly
@@ -22,6 +22,7 @@ class FileService:
         self.logger = logging.getLogger(__name__)
         self.should_cache = should_cache
         self.file_repo = file_repo
+        self.os_service = os_service
 
     def parse_xml(self, f):
         """
@@ -32,7 +33,7 @@ class FileService:
             tree = objectify.parse(f)
             return tree.getroot()
 
-    def local_shared_file(self, file_name, mode='r'):
+    def local_shared_file(self, file_name, mode='r', extension="", modify_attached=False):
         """
         Downloads the local shared file and returns an open file-like object.
 
@@ -50,45 +51,64 @@ class FileService:
         if not re.match(r"[\w ]+", file_name):
             raise ValueError(
                 "File name can only contain alphanumeric characters, underscores and spaces")
-        local_file_name = file_name.replace(" ", "_")
+        local_file_name = ".".join([file_name.replace(" ", "_"), extension])
         local_path = os.path.abspath(local_file_name)
         local_path = os.path.abspath(local_path)
         cache_directory = os.path.abspath(".cache")
         cache_path = os.path.join(cache_directory, local_file_name)
+        artifact = None
 
         if self.should_cache and os.path.exists(cache_path):
-            self.logger.info(
-                "Fetching cached artifact from '{}'".format(cache_path))
+            self.logger.info("Fetching cached artifact from '{}'".format(cache_path))
             shutil.copy(cache_path, ".")
         else:
             if not os.path.exists(local_path):
-                shared_files = self.artifact_service.shared_files()
-                by_name = [shared_file for shared_file in shared_files
-                           if shared_file.name == file_name]
-                if len(by_name) != 1:
-                    files = ", ".join(map(lambda x: x.name, shared_files))
-                    raise ValueError("Expected 1 shared file, got {}.\nFile: '{}'\nFiles: {}".format(
-                        len(by_name), file_name, files))
-                artifact = by_name[0]
-                file = artifact.api_resource.files[0]  # TODO: Hide this logic
-                self.logger.info("Downloading file {} (artifact={} '{}')"
-                                 .format(file.id, artifact.id, artifact.name))
-                self.file_repo.copy_remote_file(file.id, local_path)
-                self.logger.info(
-                    "Download completed, path='{}'".format(local_path))
+                artifact = self._artifact_by_name(file_name)
 
-                if self.should_cache:
-                    if not os.path.exists(cache_directory):
-                        os.mkdir(cache_directory)
-                    self.logger.info("Copying artifact to cache directory, {}=>{}".format(
-                        local_path, cache_directory))
-                    shutil.copy(local_path, cache_directory)
+                if len(artifact.api_resource.files) == 0:
+                    # No file has been uploaded yet
+                    if modify_attached:
+                        with open(local_path, "w+") as fs:
+                            pass
+                else:
+                    file = artifact.api_resource.files[0]  # TODO: Hide this logic
+                    self.logger.info("Downloading file {} (artifact={} '{}')"
+                                     .format(file.id, artifact.id, artifact.name))
+                    self.file_repo.copy_remote_file(file.id, local_path)
+                    self.logger.info("Download completed, path='{}'".format(local_path))
 
-        # Add to this list for cleanup:
+                    if self.should_cache:
+                        if not os.path.exists(cache_directory):
+                            os.mkdir(cache_directory)
+                        self.logger.info("Copying artifact to cache directory, {}=>{}".format(
+                            local_path, cache_directory))
+                        shutil.copy(local_path, cache_directory)
+
+        # Add to this to the cleanup list
         if local_path not in self._local_shared_files:
             self._local_shared_files.append(local_path)
 
+        if modify_attached:
+            if artifact is None:
+                artifact = self._artifact_by_name(file_name)
+            # After this, the caller will be able to modify the file with the prefix that ensures
+            # that this will be uploaded afterwards. We don't want that in the case of files that are
+            # not to be modified, since then they would be automatically uploaded afterwards.
+            attached_name = self.os_service.attach_file_for_epp(local_file_name, artifact.api_resource)
+            local_path = attached_name
+
         return self.file_repo.open_local_file(local_path, mode)
+
+    def _artifact_by_name(self, file_name):
+        shared_files = self.artifact_service.shared_files()
+        by_name = [shared_file for shared_file in shared_files
+                   if shared_file.name == file_name]
+        if len(by_name) != 1:
+            files = ", ".join(map(lambda x: x.name, shared_files))
+            raise SharedFileNotFound("Expected a shared file called '{}', got {}.\nFile: '{}'\nFiles: {}".format(
+                file_name, len(by_name), file_name, files))
+        artifact = by_name[0]
+        return artifact
 
     def cleanup(self):
         for path in self._local_shared_files:
@@ -97,3 +117,8 @@ class FileService:
                                  "that it won't be uploaded again".format(path))
                 # TODO: Handle exception
                 os.remove(path)
+
+
+class SharedFileNotFound(Exception):
+    pass
+

@@ -8,10 +8,11 @@ import os
 import yaml
 
 config = None
+logger = None
 
 
 @click.group()
-@click.option("--level", default="WARN")
+@click.option("--level", default="INFO")
 def main(level):
     """
     :param level: ["DEBUG", "INFO", "WARN", "ERROR"]
@@ -20,11 +21,13 @@ def main(level):
     :return:
     """
     global config
+    global logger
+    ExtensionService.initialize_logging(level.upper())
+    logger = logging.getLogger(__name__)
+
     if os.path.exists("clarity-ext.config"):
         with open("clarity-ext.config", "r") as f:
             config = yaml.load(f)
-
-    logging.basicConfig(level=level.upper())
 
 
 @main.command()
@@ -61,8 +64,15 @@ def extension(module, mode, args, cache):
     :param args: Dynamic parameters to the extension
     :param cache: Specifies if the cache should be used. If None, the default for `mode` will be used.
     """
-    extension_svc = ExtensionService()
-    extension_svc.execute(module, mode, args, config, use_cache=cache)
+    try:
+        extension_svc = ExtensionService()
+        extension_svc.execute(module, mode, args, config, use_cache=cache)
+    except Exception:
+        logger.exception("Exception while running extension")
+        raise Exception("There was an exception while running the extension. " +
+                        "Refer to the file 'Step log' if available or {} on the application server for details."
+                        .format(os.path.join(ExtensionService.PRODUCTION_LOGS_DIR,
+                                             ExtensionService.PRODUCTION_LOG_NAME)))
 
 if __name__ == "__main__":
     main()

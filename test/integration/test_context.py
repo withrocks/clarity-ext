@@ -8,6 +8,7 @@ import random
 class TestResultFile(unittest.TestCase):
     """Tests for interacting with result files through the context"""
 
+    @unittest.skip("Step removed")
     def test_can_update_udfs(self):
         def fetch():
             context = ExtensionContext.create("24-7880")

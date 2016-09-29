@@ -220,6 +220,7 @@ class TestDilutionScheme(unittest.TestCase):
             return inputs, outputs
 
         repo = MagicMock()
+        logger_service = MagicMock()
         repo.all_artifacts = invalid_analyte_set
         svc = ArtifactService(repo)
         dilution_scheme = DilutionScheme(svc, "Hamilton")
