@@ -166,26 +166,30 @@ class TestDilutionScheme(unittest.TestCase):
     def test_dilution_scheme_for_qpcr(self):
         """Dilution scheme initialized for qPCR dilutions, containing no output analytes"""
         # Setup:
-        def only_input_analyte_set():
+        def analyte_result_file_set():
             ret = [
                 (fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "D:5", True,
                               concentration=134, volume=30),
-                 fake_result_file("sample-measurement1")),
+                 fake_result_file(artifact_id="sample-measurement1", name="sample1",
+                                  container_id="cont1", well_key="D:5")),
                 (fake_analyte("cont-id2", "art-id2", "sample2", "art-name2", "A:5", True,
                               concentration=134, volume=40),
-                 fake_result_file("sample-measurement2")),
+                 fake_result_file(artifact_id="sample-measurement2", name="sample2",
+                                  container_id="cont1", well_key="B:7")),
                 (fake_analyte("cont-id2", "art-id3", "sample3", "art-name3", "B:7", True,
                               concentration=134, volume=50),
-                 fake_result_file("sample-measurement3")),
+                 fake_result_file(artifact_id="sample-measurement3", name="sample3",
+                                  container_id="cont1", well_key="B:7")),
                 (fake_analyte("cont-id2", "art-id4", "sample4", "art-name4", "E:12", True,
                               concentration=134, volume=60),
-                 fake_result_file("sample-measurement4")),
+                 fake_result_file(artifact_id="sample-measurement4", name="sample4",
+                                  container_id="cont1", well_key="E:12")),
             ]
             return ret
 
-        svc = helpers.mock_artifact_service(only_input_analyte_set)
+        svc = helpers.mock_artifact_service(analyte_result_file_set)
 
-        dilution_scheme = SourceOnlyDilutionScheme(svc, "Hamilton")
+        dilution_scheme = DilutionScheme(svc, "Hamilton")
 
         expected = [
             ['art-name1', 36, 'DNA1', 4],

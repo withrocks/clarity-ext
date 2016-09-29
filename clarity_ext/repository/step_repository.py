@@ -81,17 +81,18 @@ class StepRepository(object):
         # will be created for each object in a call to this method
         input_resource = input_info["uri"]
         output_resource = output_info["uri"]
-        input = self._wrap_artifact(input_resource, container_repo, is_input=True)
-        output = self._wrap_artifact(output_resource, container_repo, is_input=False)
+        output_gen_type = output_info["output-generation-type"]
+        input = self._wrap_artifact(input_resource, container_repo, gen_type="Input", is_input=True)
+        output = self._wrap_artifact(output_resource, container_repo,
+                                     gen_type=output_gen_type, is_input=False)
 
-        gen_type = output_info["output-generation-type"]
-        if gen_type == "PerInput":
+        if output_gen_type == "PerInput":
             output.generation_type = Artifact.PER_INPUT
-        elif gen_type == "PerAllInputs":
+        elif output_gen_type == "PerAllInputs":
             output.generation_type = Artifact.PER_ALL_INPUTS
         else:
             raise NotImplementedError(
-                "Generation type {} is not implemented".format(gen_type))
+                "Generation type {} is not implemented".format(output_gen_type))
 
         output_type = output_info["output-type"]
         if output_type == "ResultFile":
