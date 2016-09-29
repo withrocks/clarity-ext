@@ -5,11 +5,7 @@ from clarity_ext.service.file_service import SharedFileNotFound
 
 class StepLoggerService:
     """
-    The logger service provides logging for files attached in the step.
-
-    Extension writers are exposed to this class via the `ExtensionContext`, which supplies direct
-    access to both logging artifacts, without them having to do anything but ensuring that
-    a file is defined on the step
+    Provides support for logging to shared files in a step.
     """
     def __init__(self, step_logger_name, file_service, raise_if_not_found=False, append=True):
         self.core_logger = logging.getLogger(__name__)
