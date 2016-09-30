@@ -1,6 +1,7 @@
 from clarity_ext.domain.artifact import Artifact
 from clarity_ext.utils import get_and_apply
 from clarity_ext.domain.common import DomainObjectMixin
+from clarity_ext.domain.container import ContainerPosition
 
 
 class Aliquot(Artifact):
@@ -15,11 +16,32 @@ class Aliquot(Artifact):
         self.is_input = is_input
         if well:
             self.container = well.container
+            well.artifact = self
         else:
             self.container = None
         self.concentration = get_and_apply(
             kwargs, "concentration", None, float)
         self.volume = get_and_apply(kwargs, "volume", None, float)
+
+    @staticmethod
+    def create_well_from_rest(resource, container_repo):
+        # TODO: Batch call
+        try:
+            container = container_repo.get_container(resource.location[0])
+        except AttributeError:
+            pass
+            container = None
+        try:
+            pos = ContainerPosition.create(resource.location[1])
+        except (AttributeError, ValueError):
+            pass
+            pos = None
+
+        well = None
+        if container and pos:
+            well = container.wells[pos]
+
+        return well
 
 
 class Sample(DomainObjectMixin):

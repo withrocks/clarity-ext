@@ -1,5 +1,4 @@
 from clarity_ext.domain.aliquot import Aliquot, Sample
-from clarity_ext.domain.container import Well
 
 
 class ResultFile(Aliquot):
@@ -21,17 +20,15 @@ class ResultFile(Aliquot):
         result_file_udf_map = udf_map.get('ResultFile', None)
         kwargs = {key: resource.udf.get(result_file_udf_map[key], None)
                   for key in result_file_udf_map}
-        # TODO: Batch call
-        well = Well.create_from_rest_resource(api_resource=resource, container_repo=container_repo)
+
+        well = Aliquot.create_well_from_rest(resource=resource, container_repo=container_repo)
+
         # TODO: sample should be put in a lazy property, and all samples in a step should be
         # loaded in one batch
         sample = Sample.create_from_rest_resource(resource.samples[0])
         ret = ResultFile(api_resource=resource, is_input=is_input,
                          id=resource.id, sample=sample, name=resource.name, well=well,
                          artifact_specific_udf_map=result_file_udf_map, **kwargs)
-
-        if well.container:
-            well.container.set_well(resource.location[1], artifact=ret)
 
         return ret
 

@@ -27,8 +27,12 @@ def fake_result_file(artifact_id=None, name=None, container_id=None, well_key=No
     api_resource = MagicMock()
     if not udf_map:
         udf_map = DEFAULT_UDF_MAP["ResultFile"]
-    return ResultFile(api_resource=api_resource, is_input=is_input, id=artifact_id, sample=None,
+    ret = ResultFile(api_resource=api_resource, is_input=is_input, id=artifact_id, sample=None,
                       name=name, well=well, artifact_specific_udf_map=udf_map, **kwargs)
+
+    if container:
+        container.set_well(well.position, artifact=ret)
+    return ret
 
 
 def fake_analyte(container_id=None, artifact_id=None, sample_id=None, analyte_name=None,
@@ -69,6 +73,27 @@ def fake_container(container_id):
     else:
         container = None
     return container
+
+
+def mock_artifact_resource(resouce_id=None, sample_name=None, well_position=None):
+    api_resource = MagicMock()
+    if well_position:
+        api_resource.location = [None, well_position]
+    sample = MagicMock()
+    sample.id = sample_name
+    api_resource.samples = [sample]
+    api_resource.id = resouce_id
+    api_resource.name = sample_name
+    return api_resource
+
+
+def mock_container_repo(container_id=None):
+    container_repo = MagicMock()
+    container = None
+    if container_id:
+        container = fake_container(container_id=container_id)
+    container_repo.get_container.return_value = container
+    return container_repo
 
 
 def mock_two_containers_artifact_service():

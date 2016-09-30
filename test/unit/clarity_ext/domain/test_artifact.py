@@ -1,6 +1,7 @@
 import unittest
 from test.unit.clarity_ext.helpers import fake_analyte, fake_result_file
 from test.unit.clarity_ext.helpers import fake_shared_result_file
+from test.unit.clarity_ext.helpers import fake_container
 from mock import MagicMock
 from clarity_ext.unit_conversion import UnitConversion
 from clarity_ext.domain import Artifact
@@ -8,6 +9,8 @@ from clarity_ext.domain.analyte import Analyte
 from clarity_ext.domain.result_file import ResultFile
 from clarity_ext.domain.shared_result_file import SharedResultFile
 from clarity_ext.repository.step_repository import StepRepository
+from test.unit.clarity_ext.helpers import mock_artifact_resource
+from test.unit.clarity_ext.helpers import mock_container_repo
 
 
 class TestArtifact(unittest.TestCase):
@@ -112,13 +115,14 @@ class TestArtifact(unittest.TestCase):
             "Analyte": {"concentration": "conc from udf"}
         }
         container_repo = MagicMock()
-        container_repo.get_container.return_value = None
+        container = fake_container("cont1")
+        container_repo.get_container.return_value = container
 
         analyte = Analyte.create_from_rest_resource(
             api_resource, is_input=True, udf_map=udf_map,
             container_repo=container_repo)
 
-        expected_analyte = fake_analyte(container_id=None, artifact_id="art1", sample_id="sample1",
+        expected_analyte = fake_analyte(container_id="cont1", artifact_id="art1", sample_id="sample1",
                                         analyte_name="sample1", well_key="B:2", is_input=True,
                                         concentration=10)
 
@@ -134,6 +138,8 @@ class TestArtifact(unittest.TestCase):
         self.assertEqual(expected_analyte.name, analyte.name)
         self.assertEqual(expected_analyte.well.__repr__(),
                          analyte.well.__repr__())
+        self.assertEqual(expected_analyte.well.artifact.name,
+                         analyte.well.artifact.name)
 
     def test_updated_rest_resource_result_file(self):
         def fake_result_file(artifact_id=None, future_field=None):
@@ -166,19 +172,46 @@ class TestArtifact(unittest.TestCase):
         self.assertEqual(expected_log, log)
 
     def test_create_from_rest_result_file(self):
-        api_resource = MagicMock()
+        api_resource = mock_artifact_resource(resouce_id="art1", sample_name="sample1", well_position="B:2")
         api_resource.udf = {"conc from udf": 10}
-        api_resource.location = [None, "B:2"]
-        sample = MagicMock()
-        sample.id = "sample1"
-        api_resource.samples = [sample]
-        api_resource.id = "art1"
-        api_resource.name = "sample1"
         udf_map = {
             "ResultFile": {"concentration": "conc from udf"}
         }
-        container_repo = MagicMock()
-        container_repo.get_container.return_value = None
+        container_repo = mock_container_repo(container_id="cont1")
+
+        result_file = ResultFile.create_from_rest_resource(
+            api_resource, is_input=True, udf_map=udf_map,
+            container_repo=container_repo)
+
+        expected_result_file = fake_result_file(
+            artifact_id="art1", container_id="cont1", name="sample1", well_key="B:2",
+            is_input=False, udf_map=udf_map, concentration=10)
+
+        print("result_file:")
+        for key in result_file.__dict__:
+            print("{}\t{}".format(key, result_file.__dict__[key]))
+        print("\nexpected result_file:")
+        for key in expected_result_file.__dict__:
+            print("{}\t{}".format(key, expected_result_file.__dict__[key]))
+
+        print("artifact: {}".format(result_file))
+
+        self.assertEqual(expected_result_file.concentration,
+                         result_file.concentration)
+        self.assertEqual(expected_result_file.id, result_file.id)
+        self.assertEqual(expected_result_file.name, result_file.name)
+        self.assertEqual(result_file.well.__repr__(),
+                         "cont1(B2)")
+        self.assertEqual(result_file.well.artifact.name,
+                         "sample1")
+
+    def test_create_result_file_with_no_container(self):
+        api_resource = mock_artifact_resource(resouce_id="art1", sample_name="sample1")
+        api_resource.udf = {"conc from udf": 10}
+        udf_map = {
+            "ResultFile": {"concentration": "conc from udf"}
+        }
+        container_repo = mock_container_repo(container_id=None)
 
         result_file = ResultFile.create_from_rest_resource(
             api_resource, is_input=True, udf_map=udf_map,
@@ -195,12 +228,15 @@ class TestArtifact(unittest.TestCase):
         for key in expected_result_file.__dict__:
             print("{}\t{}".format(key, expected_result_file.__dict__[key]))
 
+        print("artifact: {}".format(result_file))
+
         self.assertEqual(expected_result_file.concentration,
                          result_file.concentration)
         self.assertEqual(expected_result_file.id, result_file.id)
         self.assertEqual(expected_result_file.name, result_file.name)
-        self.assertEqual(expected_result_file.well.__repr__(),
-                         result_file.well.__repr__())
+        self.assertEqual(result_file.well.__repr__(),
+                         "None")
+
 
     def test_create_from_rest_shared_result_file(self):
         api_resource = MagicMock()

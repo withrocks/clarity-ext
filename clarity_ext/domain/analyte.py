@@ -1,4 +1,3 @@
-from clarity_ext.domain.container import Well
 from clarity_ext.utils import get_and_apply
 from clarity_ext.domain.aliquot import Aliquot, Sample
 
@@ -37,9 +36,10 @@ class Analyte(Aliquot):
         # Map UDFs (which may be using different names in different Clarity setups)
         # to a key-value list with well-defined key names:
         analyte_udf_map = udf_map.get("Analyte", None)
-        kwargs = {key: resource.udf.get(analyte_udf_map[key], None) for key in analyte_udf_map}
-        # TODO: Batch call
-        well = Well.create_from_rest_resource(api_resource=resource, container_repo=container_repo)
+        kwargs = {key: resource.udf.get(
+            analyte_udf_map[key], None) for key in analyte_udf_map}
+        well = Aliquot.create_well_from_rest(resource=resource, container_repo=container_repo)
+
         # TODO: sample should be put in a lazy property, and all samples in a step should be
         # loaded in one batch
         sample = Sample.create_from_rest_resource(resource.samples[0])
@@ -47,7 +47,7 @@ class Analyte(Aliquot):
                           sample=sample, name=resource.name,
                           well=well, artifact_specific_udf_map=analyte_udf_map, **kwargs)
         analyte.api_resource = resource
-        well.artifact = analyte
+
         return analyte
 
     def updated_rest_resource(self, original_rest_resource, updated_fields):
