@@ -18,8 +18,10 @@ class Analyte(Aliquot):
         super(self.__class__, self).__init__(api_resource, is_input=is_input, id=id,
                                              sample=sample, name=name, well=well,
                                              artifact_specific_udf_map=artifact_specific_udf_map, **kwargs)
-        self.target_concentration = get_and_apply(kwargs, "target_concentration", None, float)
-        self.target_volume = get_and_apply(kwargs, "target_volume", None, float)
+        self.target_concentration = get_and_apply(
+            kwargs, "target_concentration", None, float)
+        self.target_volume = get_and_apply(
+            kwargs, "target_volume", None, float)
 
     def __repr__(self):
         return "{} ({})".format(self.name, self.id)
@@ -38,7 +40,8 @@ class Analyte(Aliquot):
         analyte_udf_map = udf_map.get("Analyte", None)
         kwargs = {key: resource.udf.get(
             analyte_udf_map[key], None) for key in analyte_udf_map}
-        well = Aliquot.create_well_from_rest(resource=resource, container_repo=container_repo)
+        well = Aliquot.create_well_from_rest(
+            resource=resource, container_repo=container_repo)
 
         # TODO: sample should be put in a lazy property, and all samples in a step should be
         # loaded in one batch

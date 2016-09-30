@@ -82,7 +82,8 @@ class StepRepository(object):
         input_resource = input_info["uri"]
         output_resource = output_info["uri"]
         output_gen_type = output_info["output-generation-type"]
-        input = self._wrap_artifact(input_resource, container_repo, gen_type="Input", is_input=True)
+        input = self._wrap_artifact(
+            input_resource, container_repo, gen_type="Input", is_input=True)
         output = self._wrap_artifact(output_resource, container_repo,
                                      gen_type=output_gen_type, is_input=False)
 
@@ -126,7 +127,8 @@ class StepRepository(object):
         elif artifact.type == "ResultFile" and gen_type == "PerAllInputs":
             return SharedResultFile.create_from_rest_resource(artifact, self.udf_map)
         else:
-            raise Exception("Unknown type and gen_type combination {}, {}".format(artifact.type, gen_type))
+            raise Exception("Unknown type and gen_type combination {}, {}".format(
+                artifact.type, gen_type))
 
     def _wrap_artifacts(self, artifacts):
         for artifact in artifacts:

@@ -45,6 +45,7 @@ class Aliquot(Artifact):
 
 
 class Sample(DomainObjectMixin):
+
     def __init__(self, sample_id):
         self.id = sample_id
 

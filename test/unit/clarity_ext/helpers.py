@@ -28,7 +28,7 @@ def fake_result_file(artifact_id=None, name=None, container_id=None, well_key=No
     if not udf_map:
         udf_map = DEFAULT_UDF_MAP["ResultFile"]
     ret = ResultFile(api_resource=api_resource, is_input=is_input, id=artifact_id, sample=None,
-                      name=name, well=well, artifact_specific_udf_map=udf_map, **kwargs)
+                     name=name, well=well, artifact_specific_udf_map=udf_map, **kwargs)
 
     if container:
         container.set_well(well.position, artifact=ret)

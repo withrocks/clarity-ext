@@ -172,7 +172,8 @@ class TestArtifact(unittest.TestCase):
         self.assertEqual(expected_log, log)
 
     def test_create_from_rest_result_file(self):
-        api_resource = mock_artifact_resource(resouce_id="art1", sample_name="sample1", well_position="B:2")
+        api_resource = mock_artifact_resource(
+            resouce_id="art1", sample_name="sample1", well_position="B:2")
         api_resource.udf = {"conc from udf": 10}
         udf_map = {
             "ResultFile": {"concentration": "conc from udf"}
@@ -206,7 +207,8 @@ class TestArtifact(unittest.TestCase):
                          "sample1")
 
     def test_create_result_file_with_no_container(self):
-        api_resource = mock_artifact_resource(resouce_id="art1", sample_name="sample1")
+        api_resource = mock_artifact_resource(
+            resouce_id="art1", sample_name="sample1")
         api_resource.udf = {"conc from udf": 10}
         udf_map = {
             "ResultFile": {"concentration": "conc from udf"}
@@ -237,7 +239,6 @@ class TestArtifact(unittest.TestCase):
         self.assertEqual(result_file.well.__repr__(),
                          "None")
 
-
     def test_create_from_rest_shared_result_file(self):
         api_resource = MagicMock()
         api_resource.id = "id1"
@@ -247,7 +248,5 @@ class TestArtifact(unittest.TestCase):
             api_resource=api_resource, udf_map=dict())
         expected_shared_result_file = fake_shared_result_file("id1", "name1")
         self.assertEqual(expected_shared_result_file.id, shared_result_file.id)
-        self.assertEqual(expected_shared_result_file.name, shared_result_file.name)
-
-
-
+        self.assertEqual(expected_shared_result_file.name,
+                         shared_result_file.name)

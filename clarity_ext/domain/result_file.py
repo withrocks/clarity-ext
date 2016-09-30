@@ -21,7 +21,8 @@ class ResultFile(Aliquot):
         kwargs = {key: resource.udf.get(result_file_udf_map[key], None)
                   for key in result_file_udf_map}
 
-        well = Aliquot.create_well_from_rest(resource=resource, container_repo=container_repo)
+        well = Aliquot.create_well_from_rest(
+            resource=resource, container_repo=container_repo)
 
         # TODO: sample should be put in a lazy property, and all samples in a step should be
         # loaded in one batch

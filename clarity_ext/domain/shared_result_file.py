@@ -2,6 +2,7 @@ from clarity_ext.domain.artifact import Artifact
 
 
 class SharedResultFile(Artifact):
+
     def __init__(self, api_resource=None, id=None, name=None, artifact_specific_udf_map=None):
         super(SharedResultFile, self).__init__(
             api_resource=api_resource, id=id, name=name,
