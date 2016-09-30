@@ -38,13 +38,11 @@ class Well(DomainObjectMixin):
 
     @staticmethod
     def create_from_rest_resource(api_resource, container_repo):
-        pos = ContainerPosition.create(api_resource.location[1])
-        # Try statement: If testing and not caring for the container repo
         try:
             container = container_repo.get_container(api_resource.location[0])
+            pos = ContainerPosition.create(api_resource.location[1])
         except AttributeError:
-            pass
-            container = None
+            return None
 
         return Well(pos, container)
 

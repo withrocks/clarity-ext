@@ -1,6 +1,6 @@
 import unittest
 from mock import MagicMock
-from clarity_ext.dilution import DilutionScheme, SourceOnlyDilutionScheme
+from clarity_ext.dilution import DilutionScheme
 from test.unit.clarity_ext.helpers import fake_analyte, fake_result_file
 from test.unit.clarity_ext import helpers
 from clarity_ext.service import ArtifactService
