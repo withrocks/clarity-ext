@@ -16,9 +16,11 @@ class Artifact(DomainObjectMixin):
     OUTPUT_TYPE_ANALYTE = 2
     OUTPUT_TYPE_SHARED_RESULT_FILE = 3
 
-    def __init__(self, api_resource=None, artifact_specific_udf_map=None):
+    def __init__(self, api_resource=None, id=None, name=None, artifact_specific_udf_map=None):
+        self.id = id
         self.is_input = None  # Set to true if this is an input artifact
         self.generation_type = None  # Set to PER_INPUT or PER_ALL_INPUTS if applicable
+        self.name = name
         if artifact_specific_udf_map:
             self.udf_map = artifact_specific_udf_map
         else:

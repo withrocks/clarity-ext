@@ -1,8 +1,8 @@
 from clarity_ext.domain.artifact import Artifact
 from clarity_ext.domain.analyte import Analyte
 from clarity_ext.domain.result_file import ResultFile
+from clarity_ext.domain.shared_result_file import SharedResultFile
 from clarity_ext.repository.container_repository import ContainerRepository
-from genologics.entities import Artifact as ApiArtifact
 from clarity_ext.domain.user import User
 import copy
 
@@ -81,19 +81,19 @@ class StepRepository(object):
         # will be created for each object in a call to this method
         input_resource = input_info["uri"]
         output_resource = output_info["uri"]
-        input = self._wrap_artifact(input_resource, container_repo)
-        input.is_input = True
-        output = self._wrap_artifact(output_resource, container_repo)
-        output.is_input = False
+        output_gen_type = output_info["output-generation-type"]
+        input = self._wrap_artifact(
+            input_resource, container_repo, gen_type="Input", is_input=True)
+        output = self._wrap_artifact(output_resource, container_repo,
+                                     gen_type=output_gen_type, is_input=False)
 
-        gen_type = output_info["output-generation-type"]
-        if gen_type == "PerInput":
+        if output_gen_type == "PerInput":
             output.generation_type = Artifact.PER_INPUT
-        elif gen_type == "PerAllInputs":
+        elif output_gen_type == "PerAllInputs":
             output.generation_type = Artifact.PER_ALL_INPUTS
         else:
             raise NotImplementedError(
-                "Generation type {} is not implemented".format(gen_type))
+                "Generation type {} is not implemented".format(output_gen_type))
 
         output_type = output_info["output-type"]
         if output_type == "ResultFile":
@@ -115,17 +115,20 @@ class StepRepository(object):
 
         return input, output
 
-    def _wrap_artifact(self, artifact, container_repo):
+    def _wrap_artifact(self, artifact, container_repo, gen_type, is_input):
         """
         Wraps an artifact in a domain object, if one exists. The domain objects provide logic
         convenient methods for working with the domain object in extensions.
         """
         if artifact.type == "Analyte":
-            return Analyte.create_from_rest_resource(artifact, self.udf_map, container_repo)
-        elif artifact.type == "ResultFile":
-            return ResultFile.create_from_rest_resource(artifact, self.udf_map, container_repo)
+            return Analyte.create_from_rest_resource(artifact, is_input, self.udf_map, container_repo)
+        elif artifact.type == "ResultFile" and gen_type == "PerInput":
+            return ResultFile.create_from_rest_resource(artifact, is_input, self.udf_map, container_repo)
+        elif artifact.type == "ResultFile" and gen_type == "PerAllInputs":
+            return SharedResultFile.create_from_rest_resource(artifact, self.udf_map)
         else:
-            raise Exception("Unknown type {}".format(artifact.type))
+            raise Exception("Unknown type and gen_type combination {}, {}".format(
+                artifact.type, gen_type))
 
     def _wrap_artifacts(self, artifacts):
         for artifact in artifacts:
@@ -170,6 +173,10 @@ DEFAULT_UDF_MAP = {
         "concentration": "Conc. Current (ng/ul)",
         "target_concentration": "Target Concentration",
         "target_volume": "Target Volume",
+        "volume": "Current sample volume (ul)"
+    },
+    "ResultFile": {
+        "concentration": "Conc. Current (ng/ul)",
         "volume": "Current sample volume (ul)"
     }
 }

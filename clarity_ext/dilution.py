@@ -1,6 +1,6 @@
 from clarity_ext.domain.validation import ValidationException, ValidationType
-from clarity_ext.utils import lazyprop
 import copy
+from clarity_ext.utils import get_and_apply
 
 DILUTION_WASTE_VOLUME = 1
 ROBOT_MIN_VOLUME = 2
@@ -13,17 +13,18 @@ class TransferEndpoint(object):
     """
     # TODO: Handle tube racks
 
-    def __init__(self, analyte):
-        self.sample_name = analyte.name
-        self.well = analyte.well
-        self.container = analyte.container
-        self.concentration = analyte.concentration
-        self.volume = analyte.volume
-        self.requested_concentration = analyte.target_concentration
-        self.requested_volume = analyte.target_volume
+    def __init__(self, aliquot):
+        self.sample_name = aliquot.name
+        self.well = aliquot.well
+        self.container = aliquot.container
+        self.concentration = aliquot.concentration
+        self.volume = aliquot.volume
+        self.requested_concentration = get_and_apply(
+            aliquot.__dict__, "target_concentration", None, float)
+        self.requested_volume = get_and_apply(
+            aliquot.__dict__, "target_volume", None, float)
         self.well_index = None
         self.plate_pos = None
-
 
 class SingleTransfer(object):
     # Enclose sample data, user input and derived variables for a
@@ -166,44 +167,6 @@ class RobotDeckPositioner(object):
                                                           width=self._plate_size.width)
 
 
-class SourceOnlyDilutionScheme(object):
-    """
-    Creates a dilution scheme for a source only dilution (qPCR)
-    Here, the destination position doesn't matter. Only columns for
-    the source position and a fixed transfer volume is showed in the
-    driver file
-    """
-
-    def __init__(self, artifact_service, robot_name):
-        input_analytes = artifact_service.all_input_analytes()
-        container = input_analytes[0].container
-        self.transfers = self.create_transfers(input_analytes)
-        self.analyte_by_transfer = {dilute: analyte for dilute, analyte in
-                                    zip(self.transfers, input_analytes)}
-        transfer_endpoints = [
-            dilute.source_endpoint for dilute in self.transfers]
-        self.source_positioner = EndpointPositioner(robot_name, transfer_endpoints,
-                                                    container.size, "DNA")
-        self.do_positioning()
-
-    def create_transfers(self, input_analytes):
-        transfers = []
-        for analyte in input_analytes:
-            source_endpoint = TransferEndpoint(analyte)
-            transfers.append(SingleTransfer(source_endpoint))
-        return transfers
-
-    def do_positioning(self):
-        for transfer in self.transfers:
-            transfer.source_well_index = self.source_positioner.indexer(
-                transfer.source_well)
-            transfer.source_plate_pos = self.source_positioner. \
-                plate_position_map[transfer.source_container.id]
-
-        self.transfers = sorted(self.transfers,
-                                key=lambda curr_dil: self.source_positioner.find_sort_number(curr_dil))
-
-
 class DilutionScheme(object):
     """Creates a dilution scheme, given input and output analytes."""
 
@@ -212,14 +175,14 @@ class DilutionScheme(object):
         Calculates all derived values needed in dilute driver file.
         """
         self.scale_up_low_volumes = scale_up_low_volumes
-        pairs = artifact_service.all_analyte_pairs()
+        pairs = artifact_service.all_aliquot_pairs()
 
         # TODO: Is it safe to just check for the container for the first output
         # analyte?
         container = pairs[0].output_artifact.container
         self.transfers = self.create_transfers(pairs)
 
-        self.analyte_pair_by_transfer = {
+        self.aliquot_pair_by_transfer = {
             transfer: pair for transfer, pair in zip(self.transfers, pairs)}
         self.robot_deck_positioner = RobotDeckPositioner(
             robot_name, self.transfers, container.size)
@@ -229,10 +192,10 @@ class DilutionScheme(object):
         self.do_positioning()
         self.sort_transfers()
 
-    def create_transfers(self, analyte_pairs):
+    def create_transfers(self, aliquot_pairs):
         # TODO: handle tube racks
         transfers = []
-        for pair in analyte_pairs:
+        for pair in aliquot_pairs:
             source_endpoint = TransferEndpoint(pair.input_artifact)
             destination_endpoint = TransferEndpoint(pair.output_artifact)
             transfers.append(SingleTransfer(

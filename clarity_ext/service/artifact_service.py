@@ -1,6 +1,7 @@
 from clarity_ext import utils
 from clarity_ext.domain import *
 import logging
+from clarity_ext.domain.shared_result_file import SharedResultFile
 
 
 class ArtifactService:
@@ -20,8 +21,17 @@ class ArtifactService:
         shared_files = (
             outp for outp in outputs if outp.generation_type == Artifact.PER_ALL_INPUTS)
         ret = list(utils.unique(shared_files, lambda f: f.id))
-        assert len(ret) == 0 or isinstance(ret[0], ResultFile)
+        assert len(ret) == 0 or isinstance(ret[0], SharedResultFile)
         return ret
+
+    def all_aliquot_pairs(self):
+        """
+        Returns all aliquots in a step as an artifact pair (input/output)
+        """
+        pairs = self.step_repository.all_artifacts()
+        aliquots_only = filter(lambda pair: isinstance(pair[0], Aliquot)
+                               and isinstance(pair[1], Aliquot), pairs)
+        return [ArtifactPair(i, o) for i, o in aliquots_only]
 
     def all_analyte_pairs(self):
         """
@@ -60,7 +70,7 @@ class ArtifactService:
     def all_output_containers(self):
         artifacts_having_container = (artifact.container
                                       for artifact in self.all_output_artifacts()
-                                      if artifact.container is not None)
+                                      if isinstance(artifact, Aliquot) and artifact.container is not None)
         containers = utils.unique(
             artifacts_having_container, lambda item: item.id)
         return list(containers)

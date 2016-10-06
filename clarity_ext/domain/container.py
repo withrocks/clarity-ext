@@ -106,7 +106,7 @@ class Container(DomainObjectMixin):
         return "<Container id={}>".format(self.id)
 
     @classmethod
-    def create_from_rest_resource(cls, resource, artifacts=[]):
+    def create_from_rest_resource(cls, resource, api_artifacts=[]):
         """
         Creates a container based on a resource from the REST API.
         """
@@ -125,7 +125,7 @@ class Container(DomainObjectMixin):
         ret.id = resource.id
         ret.name = resource.name
         ret.size = size
-        for artifact in artifacts:
+        for artifact in api_artifacts:
             ret.set_well(artifact.location[1], artifact)
         return ret
 
@@ -137,6 +137,7 @@ class Container(DomainObjectMixin):
             content = self.mapping[key] if self.mapping and key in self.mapping else None
             pos = ContainerPosition(row=row, col=col)
             ret[(row, col)] = Well(pos, content)
+            ret[(row, col)].container = self
         return ret
 
     def _traverse(self, order=DOWN_FIRST):
@@ -160,25 +161,16 @@ class Container(DomainObjectMixin):
         return list(self.enumerate_wells(order))
 
     def set_well(self, well_pos, artifact_name=None, artifact_id=None, artifact=None):
-        """
-        well_pos should be a string in the format 'B:1'
-        """
-        if type(well_pos) is str:
-            row, col = well_pos.split(":")
-            try:
-                well_pos = int(row), int(col)
-            except ValueError:
-                # Try to parse as "A:1" etc
-                row = ord(row.upper()) - 64
-                well_pos = row, int(col)
 
         if well_pos not in self.wells:
-            raise KeyError("Well id {} is not available in this container (type={})".format(well_pos, self))
+            raise KeyError(
+                "Well id {} is not available in this container (type={})".format(well_pos, self))
 
         self.wells[well_pos].artifact_name = artifact_name
         self.wells[well_pos].artifact_id = artifact_id
         # TODO: Accept only an artifact
         self.wells[well_pos].artifact = artifact
+
 
     def __repr__(self):
         return "{}".format(self.id)

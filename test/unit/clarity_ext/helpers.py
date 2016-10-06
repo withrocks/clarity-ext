@@ -1,17 +1,42 @@
-from clarity_ext.domain import Container, Analyte, Well, ContainerPosition, Sample, Artifact, ResultFile
+from clarity_ext.domain import Container
 from mock import MagicMock
 from clarity_ext.service import ArtifactService, FileService
+from clarity_ext.domain.analyte import Analyte
+from clarity_ext.domain.container import Well
+from clarity_ext.domain.container import ContainerPosition
+from clarity_ext.domain.aliquot import Sample
+from clarity_ext.domain.artifact import Artifact
+from clarity_ext.domain.result_file import ResultFile
+from clarity_ext.domain.shared_result_file import SharedResultFile
 from clarity_ext.repository.step_repository import DEFAULT_UDF_MAP
 
 
-def fake_result_file(artifact_id=None):
+def fake_shared_result_file(artifact_id=None, name=None):
     udf_map = dict()
     api_resource = MagicMock()
-    return ResultFile(api_resource, udf_map, artifact_id)
+    return SharedResultFile(api_resource=api_resource,
+                            id=artifact_id, name=name,
+                            artifact_specific_udf_map=udf_map)
+
+
+def fake_result_file(artifact_id=None, name=None, container_id=None, well_key=None,
+                     is_input=None, udf_map=None, **kwargs):
+    container = fake_container(container_id=container_id)
+    pos = ContainerPosition.create(well_key)
+    well = Well(pos, container)
+    api_resource = MagicMock()
+    if not udf_map:
+        udf_map = DEFAULT_UDF_MAP["ResultFile"]
+    ret = ResultFile(api_resource=api_resource, is_input=is_input, id=artifact_id, sample=None,
+                     name=name, well=well, artifact_specific_udf_map=udf_map, **kwargs)
+
+    if container:
+        container.set_well(well.position, artifact=ret)
+    return ret
 
 
 def fake_analyte(container_id=None, artifact_id=None, sample_id=None, analyte_name=None,
-                 well_key=None, is_input=None, **kwargs):
+                 well_key=None, is_input=None, udf_map=None, **kwargs):
     """
     Creates a fake Analyte domain object
 
@@ -23,22 +48,52 @@ def fake_analyte(container_id=None, artifact_id=None, sample_id=None, analyte_na
     :is_input: True if the analyte is an input analyte, False otherwise.
     :kwargs: Any UDF. Use the key names specified in the udf_map being used.
     """
-    container = Container(container_type=Container.CONTAINER_TYPE_96_WELLS_PLATE)
-    container.id = container_id
-    container.name = container_id
+    container = fake_container(container_id)
     pos = ContainerPosition.create(well_key)
     well = Well(pos, container)
     sample = Sample(sample_id)
     api_resource = None
-    udf_map = DEFAULT_UDF_MAP['Analyte']
-    analyte = Analyte(api_resource=api_resource,
+    if not udf_map:
+        udf_map = DEFAULT_UDF_MAP['Analyte']
+    analyte = Analyte(api_resource=api_resource, is_input=is_input,
                       name=analyte_name, well=well, sample=sample,
                       artifact_specific_udf_map=udf_map, **kwargs)
     analyte.id = artifact_id
-    analyte.is_input = is_input
     analyte.generation_type = Artifact.PER_INPUT
     well.artifact = analyte
     return analyte
+
+
+def fake_container(container_id):
+    if container_id:
+        container = Container(
+            container_type=Container.CONTAINER_TYPE_96_WELLS_PLATE)
+        container.id = container_id
+        container.name = container_id
+    else:
+        container = None
+    return container
+
+
+def mock_artifact_resource(resouce_id=None, sample_name=None, well_position=None):
+    api_resource = MagicMock()
+    if well_position:
+        api_resource.location = [None, well_position]
+    sample = MagicMock()
+    sample.id = sample_name
+    api_resource.samples = [sample]
+    api_resource.id = resouce_id
+    api_resource.name = sample_name
+    return api_resource
+
+
+def mock_container_repo(container_id=None):
+    container_repo = MagicMock()
+    container = None
+    if container_id:
+        container = fake_container(container_id=container_id)
+    container_repo.get_container.return_value = container
+    return container_repo
 
 
 def mock_two_containers_artifact_service():
