@@ -1,5 +1,6 @@
 from clarity_ext.utils import get_and_apply
 from clarity_ext.domain.aliquot import Aliquot, Sample
+from clarity_ext import utils
 
 
 class Analyte(Aliquot):
@@ -10,13 +11,13 @@ class Analyte(Aliquot):
     in udf_map, so they can be overridden in different installations.
     """
 
-    def __init__(self, api_resource, is_input, id=None, sample=None, name=None, well=None,
+    def __init__(self, api_resource, is_input, id=None, samples=None, name=None, well=None,
                  artifact_specific_udf_map=None, **kwargs):
         """
         Creates an analyte
         """
         super(self.__class__, self).__init__(api_resource, is_input=is_input, id=id,
-                                             sample=sample, name=name, well=well,
+                                             samples=samples, name=name, well=well,
                                              artifact_specific_udf_map=artifact_specific_udf_map, **kwargs)
         self.target_concentration = get_and_apply(
             kwargs, "target_concentration", None, float)
@@ -45,9 +46,9 @@ class Analyte(Aliquot):
 
         # TODO: sample should be put in a lazy property, and all samples in a step should be
         # loaded in one batch
-        sample = Sample.create_from_rest_resource(resource.samples[0])
+        samples = [Sample.create_from_rest_resource(sample) for sample in resource.samples]
         analyte = Analyte(api_resource=resource, is_input=is_input, id=resource.id,
-                          sample=sample, name=resource.name,
+                          samples=samples, name=resource.name,
                           well=well, artifact_specific_udf_map=analyte_udf_map, **kwargs)
         analyte.api_resource = resource
 
@@ -66,4 +67,13 @@ class Analyte(Aliquot):
         if 'name' in updated_fields:
             _updated_rest_resource.name = self.assigner.register_assign('name', self.name)
         return _updated_rest_resource, self.assigner.consume()
+
+    @property
+    def sample(self):
+        """
+        Returns a single sample for convenience. Throws an error if there isn't exactly one sample.
+
+        NOTE: There can be more than one sample on an Analyte. That's the case with pools.
+        """
+        return utils.single(self.samples)
 
