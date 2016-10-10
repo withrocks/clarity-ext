@@ -1,5 +1,5 @@
 # clarity-ext
-NOTE: Work in progress (pre-alpha).
+NOTE: Work in progress (pre-alpha). This document is also in pre-alpha.
 
 Provides a library for extending Clarity LIMS in a more developer-friendly way.
 
@@ -35,7 +35,7 @@ The `Process Type`s  EPP is set up like this in that case:
 clarity-ext extension --args 'pid={processLuid}' clarity_ext_scripts.fragment_analyzer.create_fa_input_file exec
 ```
 
-However, when developing, developer runs this instead:
+However, when developing, the developer runs this instead:
 ```
 clarity-ext extension clarity_ext_scripts.fragment_analyzer.create_fa_input_file test
 ```
@@ -48,26 +48,27 @@ The end result is that the user will get feedback directly in the IDE or termina
 caching, but the tool will also output the file to stdout.
 
 ### Extensions
-The clarity_ext_scripts module includes extensions that have been implemented for the SNP&SEQ technology platform at
-Uppsala University. Some might be directly applied in another lab, but they are generally there as samples only.
-
 The developer creates an extension by subclassing one of the extension base classes and implementing or overriding
 one or more method.
 
 Currently, there are two extension base classes:
   * `GeneralExtension`: The extensions's `execute` method will be run on execution
-  * `DriverFileExtension`: Provides methods that describe the file
+  * `DriverFileExtension`: Provides methods that describe how a driver file looks,
+     rather than explicitly saying how it's generated.
 
 All extensions have access to the `ExtensionContext`. This object provides a higher level view on the data available
 from the Clarity REST API. The extension can also import generic helper classes. All of the properties on this
 object are generated lazily (on request), and an exception is thrown if they can't be used in the particular context
 for some reason.
 
-All extensions in the clarity_ext_scripts folder follow the design principle of leaving all non-trivial or boilerplate
+Extensions have been created for the SNP&SEQ platform at Uppsala University. These are in a private repo for now,
+but examples showing how they work will be added to this repo.
+
+All of these extensions follow the design principle of leaving all non-trivial or boilerplate
 code to the framework. The idea is that they can be understood by non-developers configuring or validating the system.
-Furthermore, the idea is that all new extensions are made only with this framework.
 
 ### Helper modules
-* clarity_ext.domain: Provides classes that help with work directly related to labs, such as a Plate object that
+* clarity_ext.domain: Provides classes that help with work directly related to labs, such as a `Container` object that
   can enumerate wells in different ways.
 * clarity_ext.pdf: Provides ways to work with pdf files in a high level way, such as splitting them
+
