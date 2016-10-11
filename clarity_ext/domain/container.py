@@ -81,11 +81,14 @@ class Container(DomainObjectMixin):
     CONTAINER_TYPE_96_WELLS_PLATE = 100
     CONTAINER_TYPE_STRIP_TUBE = 200
     CONTAINER_TYPE_TUBE = 300
+    CONTAINER_TYPE_PATTERNED_FLOW_CELL = 400
 
-    def __init__(self, mapping=None, container_type=None, resource=None):
+    def __init__(self, mapping=None, container_type=None, size=None):
         """
         :param mapping: A dictionary-like object containing mapping from well
         position to content. It can be non-complete.
+        :param container_type: One of the CONTAINER_TYPE_* constants
+        :param size: The size of the container. Object should support height and width
         :return:
         """
         self.mapping = mapping
@@ -93,14 +96,18 @@ class Container(DomainObjectMixin):
         self.id = None
         self.name = None
 
-        if self.container_type == self.CONTAINER_TYPE_96_WELLS_PLATE:
-            self.size = PlateSize(height=8, width=12)
-        elif self.container_type == self.CONTAINER_TYPE_STRIP_TUBE:
-            self.size = PlateSize(height=8, width=1)
-        elif self.container_type == self.CONTAINER_TYPE_TUBE:
-            self.size = PlateSize(height=1, width=1)
+        if size:
+            self.size = size
         else:
-            raise ValueError("Unknown plate type '{}'".format(self.container_type))
+            # TODO: Require the size to be sent in instead
+            if self.container_type == self.CONTAINER_TYPE_96_WELLS_PLATE:
+                self.size = PlateSize(height=8, width=12)
+            elif self.container_type == self.CONTAINER_TYPE_STRIP_TUBE:
+                self.size = PlateSize(height=8, width=1)
+            elif self.container_type == self.CONTAINER_TYPE_TUBE:
+                self.size = PlateSize(height=1, width=1)
+            else:
+                raise ValueError("Unknown plate type '{}'".format(self.container_type))
 
     def __repr__(self):
         return "<Container id={}>".format(self.id)
@@ -118,10 +125,12 @@ class Container(DomainObjectMixin):
             container_type = Container.CONTAINER_TYPE_TUBE
         elif resource.type.name == "Strip Tube":
             container_type = Container.CONTAINER_TYPE_STRIP_TUBE
+        elif resource.type.name == "Patterned Flow Cell":
+            container_type = Container.CONTAINER_TYPE_PATTERNED_FLOW_CELL
         else:
             raise NotImplementedError(
                 "Resource type '{}' is not supported".format(resource.type.name))
-        ret = Container(container_type=container_type)
+        ret = Container(container_type=container_type, size=size)
         ret.id = resource.id
         ret.name = resource.name
         ret.size = size
