@@ -1,0 +1,14 @@
+---
+# Contains the IDs for steps that have been set up in a certain way
+# This will always be different on different systems. The step IDs (pid)
+# kept in source control are the ones used for development at https://github.com/molmed
+# To make all integration tests run, you will need to create steps looking like this.
+steps:
+  - name: has_one_output_of_type_patterned_flow_cell
+    description: >
+        The output container has one patterned flow cell and there should be >= 2 samples
+        which have related input artifacts in the parent process which have the same name.
+    pid: 24-9186
+    containers:
+      - type: "Patterned Flow Cell"
+
