@@ -20,15 +20,18 @@ class ExtensionContext(object):
     able to access the underlying services if needed.
     """
 
-    def __init__(self, session, artifact_service, file_service, current_user, step_logger_service, cache=False):
+    def __init__(self, session, artifact_service, file_service, current_user, step_logger_service, step_repo,
+                 cache=False):
         """
         Initializes the context.
 
+        :param step_repo:
         :param logger_service:
         :param session: An object encapsulating the connection to Clarity
         :param artifact_service: Provides access to artifacts in the current step
         :param file_service: Provides access to result files locally on the machine.
-        :param step_logger_service: Provides access to logging via the context. 
+        :param step_logger_service: Provides access to logging via the context.
+        :param step_repo: The repository for the current step
         :param cache: Set to True to use the cache folder (.cache) for downloaded files
         """
         self.session = session
@@ -40,6 +43,7 @@ class ExtensionContext(object):
         self.artifact_service = artifact_service
         self.file_service = file_service
         self.current_user = current_user
+        self.step_repo = step_repo
         self.response = None
 
     @staticmethod
@@ -56,7 +60,12 @@ class ExtensionContext(object):
         file_repository = FileRepository(session)
         file_service = FileService(artifact_service, file_repository, False, OSService())
         step_logger_service = StepLoggerService("Step log", file_service)
-        return ExtensionContext(session, artifact_service, file_service, current_user, step_logger_service, cache=cache)
+        return ExtensionContext(session, artifact_service, file_service, current_user, step_logger_service, step_repo,
+                                cache=cache)
+
+    @property
+    def udfs(self):
+        return self.step_repo.all_udfs()
 
     @lazyprop
     def dilution_scheme(self):

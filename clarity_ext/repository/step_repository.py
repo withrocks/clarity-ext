@@ -28,6 +28,12 @@ class StepRepository(object):
         self.udf_map = udf_map or DEFAULT_UDF_MAP
         self.orig_state_cache = dict()
 
+    def all_udfs(self):
+        """
+        Returns the UDFs on the current step
+        """
+        return self.session.current_step.udf
+
     def all_artifacts(self):
         """
         Fetches all artifacts from the input output map, wraps them in to a domain object.
