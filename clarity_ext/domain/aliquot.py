@@ -46,13 +46,22 @@ class Aliquot(Artifact):
 
 class Sample(DomainObjectMixin):
 
-    def __init__(self, sample_id):
+    def __init__(self, sample_id, name, project):
         self.id = sample_id
+        self.name = name
+        self.project = project
 
     def __repr__(self):
         return "<Sample id={}>".format(self.id)
 
     @staticmethod
     def create_from_rest_resource(resource):
-        sample = Sample(resource.id)
+        project = Project(resource.project.name) if resource.project else None
+        sample = Sample(resource.id, resource.name, project)
         return sample
+
+
+class Project(DomainObjectMixin):
+    def __init__(self, name):
+        self.name = name
+
