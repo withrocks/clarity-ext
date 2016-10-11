@@ -1,4 +1,3 @@
-import requests_cache
 import unittest
 from clarity_ext.domain import Container, ResultFile
 from clarity_ext.context import ExtensionContext

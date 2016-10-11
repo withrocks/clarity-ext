@@ -51,6 +51,7 @@ class Analyte(Aliquot):
                           samples=samples, name=resource.name,
                           well=well, artifact_specific_udf_map=analyte_udf_map, **kwargs)
         analyte.api_resource = resource
+        analyte.reagent_labels = resource.reagent_labels
 
         return analyte
 

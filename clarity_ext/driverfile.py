@@ -136,8 +136,8 @@ class DriverFileService:
     def artifact(self):
         artifacts = [shared_file for shared_file in self.extension.context.shared_files
                      if shared_file.name == self.shared_file_name]
-        assert len(artifacts) == 1, "shared file {} could not be found".format(
-            self.shared_file_name)
+        assert len(artifacts) == 1, "Shared file '{}' not exactly single".format(
+            self.shared_file_name, ",".join("'{}'".format(f.name) for f in self.extension.context.shared_files))
         return artifacts[0]
 
     @staticmethod
