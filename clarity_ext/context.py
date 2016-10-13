@@ -25,8 +25,6 @@ class ExtensionContext(object):
         """
         Initializes the context.
 
-        :param step_repo:
-        :param logger_service:
         :param session: An object encapsulating the connection to Clarity
         :param artifact_service: Provides access to artifacts in the current step
         :param file_service: Provides access to result files locally on the machine.

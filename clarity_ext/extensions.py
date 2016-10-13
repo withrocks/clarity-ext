@@ -359,22 +359,25 @@ class SampleSheetExtension(DriverFileExtension):
 
     NONE = "<none>"
 
+    def __init__(self, context):
+        super(SampleSheetExtension, self).__init__(context)
+        self.column_count = 9
+
     def header(self, name):
         return self.line("[{}]".format(name))
 
-    def udf_prefixed(self, name, mapping=None):
-        return self.udf(name, mapping, prefix=name)
-
     def udf(self, name):
-        """Returns the UDF if available, othervise self.NONE. Provided for readability"""
-        udf_val = self.context.udfs.get(name, self.NONE)
-        return udf_val
+        """Returns the UDF if available, otherwise self.NONE. Provided for readability"""
+        return self.context.udfs.get(name, self.NONE)
 
-    @staticmethod
-    def line(*args):
-        """Generates one line of the sample sheet, CSV formatted"""
+    def line(self, *args):
+        """
+        Generates one line of the sample sheet, CSV formatted
+
+        Example: Calling with self.line("a", "b") will produce 'a,b,,,,,,,'
+        """
         # TODO: The example shows commas in each line. Is that actually required?
-        arg_list = list(args) + [""] * (9 - len(args))
+        arg_list = list(args) + [""] * (self.column_count - len(args))
         return ",".join(map(str, arg_list))
 
 

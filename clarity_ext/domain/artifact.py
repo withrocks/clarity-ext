@@ -28,8 +28,9 @@ class Artifact(DomainObjectMixin):
             self.udf_map = dict()
         self.assigner = AssignLogger(self)
         self.api_resource = api_resource
-        attributes, self.udfs_to_attributes = self._create_automap(api_resource.udf)
-        self.__dict__.update(attributes)
+        if api_resource:
+            attributes, self.udfs_to_attributes = self._create_automap(api_resource.udf)
+            self.__dict__.update(attributes)
 
     @lazyprop
     def udf_backward_map(self):
