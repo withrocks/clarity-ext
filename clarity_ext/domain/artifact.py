@@ -1,3 +1,4 @@
+import re
 from clarity_ext.domain.common import DomainObjectMixin
 from clarity_ext.utils import lazyprop
 from clarity_ext.domain.common import AssignLogger
@@ -27,6 +28,8 @@ class Artifact(DomainObjectMixin):
             self.udf_map = dict()
         self.assigner = AssignLogger(self)
         self.api_resource = api_resource
+        attributes, self.udfs_to_attributes = self._create_automap(api_resource.udf)
+        self.__dict__.update(attributes)
 
     @lazyprop
     def udf_backward_map(self):
@@ -71,6 +74,31 @@ class Artifact(DomainObjectMixin):
 
     def commit(self):
         self.api_resource.put()
+
+    def _create_automap(self, original_udfs):
+        """
+        Given a dictionary of UDFs, returns a new dictionary that uses Python naming conventions instead.
+
+        Also returns a dictionary mapping from the original UDF name back to the attribute name, which can
+        be used to synchronize the two if needed.
+        """
+        attributes = dict()
+        udfs_to_attributes = dict()  # A dictionary that matches from Python attributes back to the api resource UDFs.
+        for key, value in original_udfs.items():
+            attrib_name = self._automap_name(key)
+            attributes[attrib_name] = value
+            udfs_to_attributes[key] = attrib_name
+        return attributes, udfs_to_attributes
+
+    def _automap_name(self, original_udf_name):
+        """
+        Maps a UDF name from Clarity to one that matches Python naming conventions
+
+        Example: 'Fragment Lower (bp)' => 'fragment_lower_bp'
+        """
+        new_name = original_udf_name.lower().replace(" ", "_")
+        new_name = re.sub("\W+", "", new_name)  # Get rid of all non-alphanumeric characters
+        return "udf_{}".format(new_name)
 
 
 class ArtifactPair(DomainObjectMixin):
