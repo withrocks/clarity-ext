@@ -1,5 +1,7 @@
 from clarity_ext.domain import Container
 from mock import MagicMock
+from mock import patch
+from mock import PropertyMock
 from clarity_ext.service import ArtifactService, FileService
 from clarity_ext.domain.analyte import Analyte
 from clarity_ext.domain.container import Well
@@ -36,7 +38,7 @@ def fake_result_file(artifact_id=None, name=None, container_id=None, well_key=No
 
 
 def fake_analyte(container_id=None, artifact_id=None, sample_id=None, analyte_name=None,
-                 well_key=None, is_input=None, udf_map=None, **kwargs):
+                 well_key=None, is_input=None, is_control=False, udf_map=None, **kwargs):
     """
     Creates a fake Analyte domain object
 
@@ -56,8 +58,8 @@ def fake_analyte(container_id=None, artifact_id=None, sample_id=None, analyte_na
     if not udf_map:
         udf_map = DEFAULT_UDF_MAP['Analyte']
     analyte = Analyte(api_resource=api_resource, is_input=is_input,
-                      name=analyte_name, well=well, sample=sample,
-                      artifact_specific_udf_map=udf_map, **kwargs)
+                      name=analyte_name, well=well, is_control=is_control,
+                      sample=sample, artifact_specific_udf_map=udf_map, **kwargs)
     analyte.id = artifact_id
     analyte.generation_type = Artifact.PER_INPUT
     well.artifact = analyte

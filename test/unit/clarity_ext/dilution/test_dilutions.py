@@ -12,7 +12,7 @@ class TestDilutionScheme(unittest.TestCase):
     based on fake data from the LIMS
     """
 
-    def test_dilution_scheme_hamilton_expected_results(self):
+    def test_dilution_scheme_hamilton_base(self):
         """Dilution scheme created by mocked analytes is correctly generated for Hamilton"""
         # Setup:
         svc = helpers.mock_two_containers_artifact_service()
@@ -40,6 +40,56 @@ class TestDilutionScheme(unittest.TestCase):
         # Assert:
         self.assertEqual(expected, actual)
         self.assertEqual(0, len(validation_results))
+
+    def test_dilution_scheme_including_blanks(self):
+        """Generate driver file with a step containing blank controls"""
+        # Setup:
+        def analyte_set_with_blank():
+            return [
+                (fake_analyte("cont1", "art1", "sample1", "sample1", "B:2", True,
+                              concentration=100),
+                 fake_analyte("cont2", "art2", "sample1", "sample1", "B:2", False,
+                              target_concentration=10, target_volume=20)),
+                (fake_analyte("cont1", "art7", "sample4", "sample4", "E:2", True, is_control=True),
+                 fake_analyte("cont2", "art8", "sample4", "sample4", "E:2", False, is_control=True,
+                              target_concentration=10, target_volume=20)),
+                (fake_analyte("cont1", "art3", "sample2", "sample2", "C:2", True,
+                              concentration=100),
+                 fake_analyte("cont2", "art4", "sample2", "sample2", "C:2", False,
+                              target_concentration=10, target_volume=20)),
+                (fake_analyte("cont1", "art5", "sample3", "sample3", "D:2", True,
+                              concentration=100),
+                 fake_analyte("cont2", "art6", "sample3", "sample3", "D:2", False,
+                              target_concentration=10, target_volume=20)),
+            ]
+
+        svc = helpers.mock_artifact_service(analyte_set_with_blank)
+        dilution_scheme = DilutionScheme(svc, 'Hamilton')
+
+        mydict = analyte_set_with_blank()[3][0].__dict__
+        print("control fake analyte: {}".format(mydict))
+        for key in mydict:
+            print("{} {}\n".format(key, mydict[key]))
+
+        expected = [
+            ['sample1', 10, 'DNA1', 2.0, 18.0, 10, 'END1'],
+            ['sample2', 11, 'DNA1', 2.0, 18.0, 11, 'END1'],
+            ['sample3', 12, 'DNA1', 2.0, 18.0, 12, 'END1'],
+            ]
+
+        # Test:
+        actual = [
+            [dilute.sample_name,
+             dilute.source_well_index,
+             dilute.source_plate_pos,
+             round(dilute.sample_volume, 1),
+             round(dilute.buffer_volume, 1),
+             dilute.target_well_index,
+             dilute.target_plate_pos] for dilute in dilution_scheme.transfers
+        ]
+
+        # Assert:
+        self.assertEqual(expected, actual)
 
     def test_scaled_up_volume(self):
         """

@@ -12,7 +12,7 @@ class Analyte(Aliquot):
     """
 
     def __init__(self, api_resource, is_input, id=None, samples=None, name=None, well=None,
-                 artifact_specific_udf_map=None, **kwargs):
+                 is_control=False, artifact_specific_udf_map=None, **kwargs):
         """
         Creates an analyte
         """
@@ -23,6 +23,7 @@ class Analyte(Aliquot):
             kwargs, "target_concentration", None, float)
         self.target_volume = get_and_apply(
             kwargs, "target_volume", None, float)
+        self.is_control = is_control
 
     def __repr__(self):
         return "{} ({})".format(self.name, self.id)
@@ -47,9 +48,14 @@ class Analyte(Aliquot):
         # TODO: sample should be put in a lazy property, and all samples in a step should be
         # loaded in one batch
         samples = [Sample.create_from_rest_resource(sample) for sample in resource.samples]
+        is_control = False
+        # TODO: This code principally belongs to the genologics layer, but 'control-type' does not exist there
+        if resource.root.find("control-type") is not None:
+            is_control = True
         analyte = Analyte(api_resource=resource, is_input=is_input, id=resource.id,
                           samples=samples, name=resource.name,
-                          well=well, artifact_specific_udf_map=analyte_udf_map, **kwargs)
+                          well=well, is_control=is_control,
+                          artifact_specific_udf_map=analyte_udf_map, **kwargs)
         analyte.api_resource = resource
         analyte.reagent_labels = resource.reagent_labels
 
