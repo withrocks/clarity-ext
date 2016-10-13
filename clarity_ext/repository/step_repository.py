@@ -28,6 +28,12 @@ class StepRepository(object):
         self.udf_map = udf_map or DEFAULT_UDF_MAP
         self.orig_state_cache = dict()
 
+    def all_udfs(self):
+        """
+        Returns the UDFs on the current step
+        """
+        return self.session.current_step.udf
+
     def all_artifacts(self):
         """
         Fetches all artifacts from the input output map, wraps them in to a domain object.
@@ -59,9 +65,9 @@ class StepRepository(object):
         ret = []
         # TODO: Ensure that the container repo fetches all containers in one batch call:
         container_repo = ContainerRepository()
-        for input, output in input_output_maps:
+        for input_res, output_res in input_output_maps:
             input, output = self._wrap_input_output(
-                input, output, container_repo)
+                input_res, output_res, container_repo)
             ret.append((input, output))
 
         self._add_to_orig_state_cache(ret)
@@ -106,9 +112,6 @@ class StepRepository(object):
             raise NotImplementedError(
                 "Output type {} is not implemented".format(output_type))
 
-        # TODO: define all of these in the base class Artifact (before
-        # check-in)
-
         # Add a reference to the other object for convenience:
         input.output = output
         output.input = input
@@ -121,14 +124,22 @@ class StepRepository(object):
         convenient methods for working with the domain object in extensions.
         """
         if artifact.type == "Analyte":
-            return Analyte.create_from_rest_resource(artifact, is_input, self.udf_map, container_repo)
+            wrapped = Analyte.create_from_rest_resource(artifact, is_input, self.udf_map, container_repo)
         elif artifact.type == "ResultFile" and gen_type == "PerInput":
-            return ResultFile.create_from_rest_resource(artifact, is_input, self.udf_map, container_repo)
+            wrapped = ResultFile.create_from_rest_resource(artifact, is_input, self.udf_map, container_repo)
         elif artifact.type == "ResultFile" and gen_type == "PerAllInputs":
-            return SharedResultFile.create_from_rest_resource(artifact, self.udf_map)
+            wrapped = SharedResultFile.create_from_rest_resource(artifact, self.udf_map)
         else:
             raise Exception("Unknown type and gen_type combination {}, {}".format(
                 artifact.type, gen_type))
+
+        # TODO: This is kind of a hack for adding the parent process. Make more use of OOP.
+        try:
+            wrapped.parent_process = artifact.parent_process
+        except AttributeError:
+            wrapped.parent_process = None
+
+        return wrapped
 
     def _wrap_artifacts(self, artifacts):
         for artifact in artifacts:

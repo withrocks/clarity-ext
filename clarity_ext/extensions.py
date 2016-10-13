@@ -351,6 +351,36 @@ class DriverFileExtension(GeneralFileExtension):
         pass
 
 
+class SampleSheetExtension(DriverFileExtension):
+    """
+    Provides helper methods for creating a CSV
+    """
+    __metaclass__ = ABCMeta
+
+    NONE = "<none>"
+
+    def __init__(self, context):
+        super(SampleSheetExtension, self).__init__(context)
+        self.column_count = 9
+
+    def header(self, name):
+        return self.line("[{}]".format(name))
+
+    def udf(self, name):
+        """Returns the UDF if available, otherwise self.NONE. Provided for readability"""
+        return self.context.udfs.get(name, self.NONE)
+
+    def line(self, *args):
+        """
+        Generates one line of the sample sheet, CSV formatted
+
+        Example: Calling with self.line("a", "b") will produce 'a,b,,,,,,,'
+        """
+        # TODO: The example shows commas in each line. Is that actually required?
+        arg_list = list(args) + [""] * (self.column_count - len(args))
+        return ",".join(map(str, arg_list))
+
+
 class ExtensionTest(object):
     def __init__(self, pid):
         self.pid = pid

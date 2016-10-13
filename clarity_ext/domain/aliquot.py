@@ -6,12 +6,12 @@ from clarity_ext.domain.container import ContainerPosition
 
 class Aliquot(Artifact):
 
-    def __init__(self, api_resource, is_input, id=None, sample=None, name=None, well=None,
+    def __init__(self, api_resource, is_input, id=None, samples=None, name=None, well=None,
                  artifact_specific_udf_map=None, **kwargs):
         super(Aliquot, self).__init__(
             api_resource=api_resource, id=id, name=name,
             artifact_specific_udf_map=artifact_specific_udf_map)
-        self.sample = sample
+        self.samples = samples
         self.well = well
         self.is_input = is_input
         if well:
@@ -46,13 +46,22 @@ class Aliquot(Artifact):
 
 class Sample(DomainObjectMixin):
 
-    def __init__(self, sample_id):
+    def __init__(self, sample_id, name, project):
         self.id = sample_id
+        self.name = name
+        self.project = project
 
     def __repr__(self):
         return "<Sample id={}>".format(self.id)
 
     @staticmethod
     def create_from_rest_resource(resource):
-        sample = Sample(resource.id)
+        project = Project(resource.project.name) if resource.project else None
+        sample = Sample(resource.id, resource.name, project)
         return sample
+
+
+class Project(DomainObjectMixin):
+    def __init__(self, name):
+        self.name = name
+
