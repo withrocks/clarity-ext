@@ -230,9 +230,9 @@ class DilutionScheme(object):
                     transfer.buffer_volume *= scale_factor
                     transfer.scaled_up = True
             except (TypeError, ZeroDivisionError) as e:
-                transfer.sample_volume = 0
-                transfer.buffer_volume = 0
-                transfer.has_to_evaporate = False
+                transfer.sample_volume = None
+                transfer.buffer_volume = None
+                transfer.has_to_evaporate = None
 
     def split_up_high_volume_rows(self):
         """
