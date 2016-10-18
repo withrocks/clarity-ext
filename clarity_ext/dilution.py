@@ -19,6 +19,9 @@ class TransferEndpoint(object):
         self.container = aliquot.container
         self.concentration = aliquot.concentration
         self.volume = aliquot.volume
+        self.is_control = False
+        if hasattr(aliquot, "is_control"):
+            self.is_control = aliquot.is_control
         self.requested_concentration = get_and_apply(
             aliquot.__dict__, "target_concentration", None, float)
         self.requested_volume = get_and_apply(
@@ -26,12 +29,15 @@ class TransferEndpoint(object):
         self.well_index = None
         self.plate_pos = None
 
+
 class SingleTransfer(object):
     # Enclose sample data, user input and derived variables for a
     # single row in a dilution
 
-    def __init__(self, source_endpoint, destination_endpoint=None):
+    def __init__(self, source_endpoint, destination_endpoint=None, pair_id=None):
+        self.pair_id = pair_id
         self.sample_name = source_endpoint.sample_name
+        self.is_control = source_endpoint.is_control
 
         self.source_endpoint = source_endpoint
         self.destination_endpoint = destination_endpoint
@@ -180,10 +186,10 @@ class DilutionScheme(object):
         # TODO: Is it safe to just check for the container for the first output
         # analyte?
         container = pairs[0].output_artifact.container
-        self.transfers = self.create_transfers(pairs)
+        all_transfers = self._create_transfers(pairs)
+        self.transfers = list(t for t in all_transfers if t.is_control is False)
 
-        self.aliquot_pair_by_transfer = {
-            transfer: pair for transfer, pair in zip(self.transfers, pairs)}
+        self.aliquot_pair_by_transfer = self._map_pair_and_transfers(pairs=pairs)
         self.robot_deck_positioner = RobotDeckPositioner(
             robot_name, self.transfers, container.size)
 
@@ -192,15 +198,19 @@ class DilutionScheme(object):
         self.do_positioning()
         self.sort_transfers()
 
-    def create_transfers(self, aliquot_pairs):
+    def _create_transfers(self, aliquot_pairs):
         # TODO: handle tube racks
         transfers = []
         for pair in aliquot_pairs:
             source_endpoint = TransferEndpoint(pair.input_artifact)
             destination_endpoint = TransferEndpoint(pair.output_artifact)
             transfers.append(SingleTransfer(
-                source_endpoint, destination_endpoint))
+                source_endpoint, destination_endpoint, pair_id=id(pair)))
         return transfers
+
+    def _map_pair_and_transfers(self, pairs):
+        pair_dict = {id(pair): pair for pair in pairs}
+        return {transfer: pair_dict[transfer.pair_id] for transfer in self.transfers}
 
     def calculate_transfer_volumes(self):
         # Handle volumes etc.
