@@ -17,13 +17,13 @@ class TransferEndpoint(object):
         self.sample_name = aliquot.name
         self.well = aliquot.well
         self.container = aliquot.container
-        self.concentration = aliquot.concentration
+        self.concentration = aliquot.concentration_ngul
         self.volume = aliquot.volume
         self.is_control = False
         if hasattr(aliquot, "is_control"):
             self.is_control = aliquot.is_control
         self.requested_concentration = get_and_apply(
-            aliquot.__dict__, "target_concentration", None, float)
+            aliquot.__dict__, "target_concentration_ngul", None, float)
         self.requested_volume = get_and_apply(
             aliquot.__dict__, "target_volume", None, float)
         self.well_index = None

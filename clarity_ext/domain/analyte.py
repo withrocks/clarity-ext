@@ -19,8 +19,8 @@ class Analyte(Aliquot):
         super(self.__class__, self).__init__(api_resource, is_input=is_input, id=id,
                                              samples=samples, name=name, well=well,
                                              artifact_specific_udf_map=artifact_specific_udf_map, **kwargs)
-        self.target_concentration = get_and_apply(
-            kwargs, "target_concentration", None, float)
+        self.target_concentration_ngul = get_and_apply(
+            kwargs, "target_concentration_ngul", None, float)
         self.target_volume = get_and_apply(
             kwargs, "target_volume", None, float)
         self.is_control = is_control

@@ -112,7 +112,7 @@ class TestArtifact(unittest.TestCase):
         api_resource.id = "art1"
         api_resource.name = "sample1"
         udf_map = {
-            "Analyte": {"concentration": "conc from udf"}
+            "Analyte": {"concentration_ngul": "conc from udf"}
         }
         container_repo = MagicMock()
         container = fake_container("cont1")
@@ -124,7 +124,7 @@ class TestArtifact(unittest.TestCase):
 
         expected_analyte = fake_analyte(container_id="cont1", artifact_id="art1", sample_id="sample1",
                                         analyte_name="sample1", well_key="B:2", is_input=True,
-                                        concentration=10)
+                                        concentration_ngul=10)
 
         print("analyte:")
         for key in analyte.__dict__:
@@ -133,7 +133,7 @@ class TestArtifact(unittest.TestCase):
         for key in expected_analyte.__dict__:
             print("{}\t{}".format(key, expected_analyte.__dict__[key]))
 
-        self.assertEqual(expected_analyte.concentration, analyte.concentration)
+        self.assertEqual(expected_analyte.concentration_ngul, analyte.concentration_ngul)
         self.assertEqual(expected_analyte.id, analyte.id)
         self.assertEqual(expected_analyte.name, analyte.name)
         self.assertEqual(expected_analyte.well.__repr__(),
@@ -176,7 +176,7 @@ class TestArtifact(unittest.TestCase):
             resouce_id="art1", sample_name="sample1", well_position="B:2")
         api_resource.udf = {"conc from udf": 10}
         udf_map = {
-            "ResultFile": {"concentration": "conc from udf"}
+            "ResultFile": {"concentration_ngul": "conc from udf"}
         }
         container_repo = mock_container_repo(container_id="cont1")
 
@@ -186,7 +186,7 @@ class TestArtifact(unittest.TestCase):
 
         expected_result_file = fake_result_file(
             artifact_id="art1", container_id="cont1", name="sample1", well_key="B:2",
-            is_input=False, udf_map=udf_map, concentration=10)
+            is_input=False, udf_map=udf_map, concentration_ngul=10)
 
         print("result_file:")
         for key in result_file.__dict__:
@@ -197,8 +197,8 @@ class TestArtifact(unittest.TestCase):
 
         print("artifact: {}".format(result_file))
 
-        self.assertEqual(expected_result_file.concentration,
-                         result_file.concentration)
+        self.assertEqual(expected_result_file.concentration_ngul,
+                         result_file.concentration_ngul)
         self.assertEqual(expected_result_file.id, result_file.id)
         self.assertEqual(expected_result_file.name, result_file.name)
         self.assertEqual(result_file.well.__repr__(),
@@ -211,7 +211,7 @@ class TestArtifact(unittest.TestCase):
             resouce_id="art1", sample_name="sample1")
         api_resource.udf = {"conc from udf": 10}
         udf_map = {
-            "ResultFile": {"concentration": "conc from udf"}
+            "ResultFile": {"concentration_ngul": "conc from udf"}
         }
         container_repo = mock_container_repo(container_id=None)
 
@@ -221,7 +221,7 @@ class TestArtifact(unittest.TestCase):
 
         expected_result_file = fake_result_file(
             artifact_id="art1", container_id=None, name="sample1", well_key="B:2",
-            is_input=False, udf_map=udf_map, concentration=10)
+            is_input=False, udf_map=udf_map, concentration_ngul=10)
 
         print("result_file:")
         for key in result_file.__dict__:
@@ -232,8 +232,8 @@ class TestArtifact(unittest.TestCase):
 
         print("artifact: {}".format(result_file))
 
-        self.assertEqual(expected_result_file.concentration,
-                         result_file.concentration)
+        self.assertEqual(expected_result_file.concentration_ngul,
+                         result_file.concentration_ngul)
         self.assertEqual(expected_result_file.id, result_file.id)
         self.assertEqual(expected_result_file.name, result_file.name)
         self.assertEqual(result_file.well.__repr__(),

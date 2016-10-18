@@ -19,8 +19,8 @@ class Aliquot(Artifact):
             well.artifact = self
         else:
             self.container = None
-        self.concentration = get_and_apply(
-            kwargs, "concentration", None, float)
+        self.concentration_ngul = get_and_apply(
+            kwargs, "concentration_ngul", None, float)
         self.volume = get_and_apply(kwargs, "volume", None, float)
 
     @staticmethod
