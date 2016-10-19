@@ -2,6 +2,7 @@ import unittest
 from clarity_ext.dilution import DILUTION_WASTE_VOLUME
 from mock import MagicMock
 from clarity_ext.dilution import DilutionScheme
+from clarity_ext.dilution import CONCENTRATION_REF_NGUL
 from test.unit.clarity_ext import helpers
 from test.unit.clarity_ext.helpers import fake_analyte
 
@@ -10,7 +11,8 @@ class UpdateFieldsForDilutionTests(unittest.TestCase):
 
     def setUp(self):
         svc = helpers.mock_artifact_service(analyte_set_with_blank)
-        self.dilution_scheme = DilutionScheme(svc, "Hamilton")
+        self.dilution_scheme = DilutionScheme(
+            svc, "Hamilton", concentration_ref=CONCENTRATION_REF_NGUL)
 
         analyte_pair_by_dilute = self.dilution_scheme.aliquot_pair_by_transfer
         for dilute in self.dilution_scheme.transfers:
@@ -58,18 +60,18 @@ def analyte_set_with_blank():
     return [
         (fake_analyte("cont1", "art7", "sample4", "sample4", "E:2", True, is_control=True),
          fake_analyte("cont2", "art8", "sample4", "sample4", "E:2", False, is_control=True,
-                      target_concentration=100, target_volume=20)),
+                      requested_concentration=100, requested_volume=20)),
         (fake_analyte("cont1", "art1", "sample1", "sample1", "B:2", True,
                       concentration=100, volume=30),
          fake_analyte("cont2", "art2", "sample1", "sample1", "B:2", False,
-                      target_concentration=100, target_volume=20)),
+                      requested_concentration=100, requested_volume=20)),
         (fake_analyte("cont1", "art3", "sample2", "sample2", "C:2", True,
                       concentration=100, volume=40),
          fake_analyte("cont2", "art4", "sample2", "sample2", "C:2", False,
-                      target_concentration=100, target_volume=20)),
+                      requested_concentration=100, requested_volume=20)),
         (fake_analyte("cont1", "art5", "sample3", "sample3", "D:2", True,
                       concentration=100, volume=50),
          fake_analyte("cont2", "art6", "sample3", "sample3", "D:2", False,
-                      target_concentration=100, target_volume=20)),
+                      requested_concentration=100, requested_volume=20)),
     ]
 

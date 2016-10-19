@@ -19,9 +19,12 @@ class Aliquot(Artifact):
             well.artifact = self
         else:
             self.container = None
-        self.concentration = get_and_apply(
-            kwargs, "concentration", None, float)
-        self.volume = get_and_apply(kwargs, "volume", None, float)
+        self.requested_concentration_ngul = None
+        self.requested_concentration_nm = None
+        self.requested_volume = None
+        self.concentration_ngul = None
+        self.concentration_nm = None
+        self.volume = None
 
     @staticmethod
     def create_well_from_rest(resource, container_repo):

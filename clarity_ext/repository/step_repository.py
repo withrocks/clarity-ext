@@ -181,13 +181,15 @@ different setups. TODO: Make the UDF map configurable in the settings for the cl
 """
 DEFAULT_UDF_MAP = {
     "Analyte": {
-        "concentration": "Conc. Current (ng/ul)",
-        "target_concentration": "Target Concentration",
-        "target_volume": "Target Volume",
+        "concentration_ngul": "Conc. Current (ng/ul)",
+        "concentration_nm": "Conc. Current (nM)",
+        "requested_concentration_ngul": "Target conc. (ng/ul)",
+        "requested_concentration_nm": "Target conc. (nM)",
+        "requested_volume": "Target vol. (ul)",
         "volume": "Current sample volume (ul)"
     },
     "ResultFile": {
-        "concentration": "Conc. Current (ng/ul)",
+        "concentration_ngul": "Conc. Current (ng/ul)",
         "volume": "Current sample volume (ul)"
     }
 }

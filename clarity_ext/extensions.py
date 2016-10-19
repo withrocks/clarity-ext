@@ -343,6 +343,10 @@ class DriverFileExtension(GeneralFileExtension):
         results = list(validation_results)
         report = [repr(result) for result in results]
         if len(results) > 0:
+            self.logger.debug(
+                "Validation errors, len = {}".format(len(results)))
+            for r in results:
+                self.logger.debug("{}".format(r))
             raise ValueError("Validation errors: ".format(os.path.sep.join(report)))
 
     @abstractmethod
