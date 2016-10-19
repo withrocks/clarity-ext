@@ -175,10 +175,8 @@ class TestArtifact(unittest.TestCase):
     def test_create_from_rest_result_file(self):
         api_resource = mock_artifact_resource(
             resouce_id="art1", sample_name="sample1", well_position="B:2")
-        api_resource.udf = {"conc from udf": 10}
-        udf_map = {
-            "ResultFile": {"concentration_ngul": "conc from udf"}
-        }
+        api_resource.udf = {}
+        udf_map = {"ResultFile": {}}
         container_repo = mock_container_repo(container_id="cont1")
 
         result_file = ResultFile.create_from_rest_resource(
@@ -198,8 +196,6 @@ class TestArtifact(unittest.TestCase):
 
         print("artifact: {}".format(result_file))
 
-        self.assertEqual(expected_result_file.concentration_ngul,
-                         result_file.concentration_ngul)
         self.assertEqual(expected_result_file.id, result_file.id)
         self.assertEqual(expected_result_file.name, result_file.name)
         self.assertEqual(result_file.well.__repr__(),
@@ -210,10 +206,8 @@ class TestArtifact(unittest.TestCase):
     def test_create_result_file_with_no_container(self):
         api_resource = mock_artifact_resource(
             resouce_id="art1", sample_name="sample1")
-        api_resource.udf = {"conc from udf": 10}
-        udf_map = {
-            "ResultFile": {"concentration_ngul": "conc from udf"}
-        }
+        api_resource.udf = {}
+        udf_map = {"ResultFile": {}}
         container_repo = mock_container_repo(container_id=None)
 
         result_file = ResultFile.create_from_rest_resource(
@@ -222,7 +216,7 @@ class TestArtifact(unittest.TestCase):
 
         expected_result_file = fake_result_file(
             artifact_id="art1", container_id=None, name="sample1", well_key="B:2",
-            is_input=False, udf_map=udf_map, concentration_ngul=10)
+            is_input=False, udf_map={}, concentration_ngul=10)
 
         print("result_file:")
         for key in result_file.__dict__:
@@ -233,8 +227,6 @@ class TestArtifact(unittest.TestCase):
 
         print("artifact: {}".format(result_file))
 
-        self.assertEqual(expected_result_file.concentration_ngul,
-                         result_file.concentration_ngul)
         self.assertEqual(expected_result_file.id, result_file.id)
         self.assertEqual(expected_result_file.name, result_file.name)
         self.assertEqual(result_file.well.__repr__(),

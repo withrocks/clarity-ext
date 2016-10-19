@@ -54,18 +54,18 @@ class TestDilutionScheme(unittest.TestCase):
                 (fake_analyte("cont1", "art1", "sample1", "sample1", "B:2", True,
                               concentration_ngul=100),
                  fake_analyte("cont2", "art2", "sample1", "sample1", "B:2", False,
-                              target_concentration_ngul=10, target_volume=20)),
+                              requested_concentration_ngul=10, requested_volume=20)),
                 (fake_analyte("cont1", "art7", "sample4", "sample4", "E:2", True, is_control=True),
                  fake_analyte("cont2", "art8", "sample4", "sample4", "E:2", False, is_control=True,
-                              target_concentration_ngul=10, target_volume=20)),
+                              requested_concentration_ngul=10, requested_volume=20)),
                 (fake_analyte("cont1", "art3", "sample2", "sample2", "C:2", True,
                               concentration_ngul=100),
                  fake_analyte("cont2", "art4", "sample2", "sample2", "C:2", False,
-                              target_concentration_ngul=10, target_volume=20)),
+                              requested_concentration_ngul=10, requested_volume=20)),
                 (fake_analyte("cont1", "art5", "sample3", "sample3", "D:2", True,
                               concentration_ngul=100),
                  fake_analyte("cont2", "art6", "sample3", "sample3", "D:2", False,
-                              target_concentration_ngul=10, target_volume=20)),
+                              requested_concentration_ngul=10, requested_volume=20)),
             ]
 
         svc = helpers.mock_artifact_service(analyte_set_with_blank)
@@ -109,19 +109,19 @@ class TestDilutionScheme(unittest.TestCase):
                 (fake_analyte("cont1", "art1", "sample1", "sample1", "B:2", True,
                               concentration_ngul=200),
                  fake_analyte("cont2", "art2", "sample1", "sample1", "B:2", False,
-                              target_concentration_ngul=10, target_volume=20)),
+                              requested_concentration_ngul=10, requested_volume=20)),
                 (fake_analyte("cont1", "art3", "sample2", "sample2", "C:2", True,
                               concentration_ngul=10),
                  fake_analyte("cont2", "art4", "sample2", "sample2", "C:2", False,
-                              target_concentration_ngul=10, target_volume=1)),
+                              requested_concentration_ngul=10, requested_volume=1)),
                 (fake_analyte("cont1", "art5", "sample3", "sample3", "D:2", True,
                               concentration_ngul=20),
                  fake_analyte("cont2", "art6", "sample3", "sample3", "D:2", False,
-                              target_concentration_ngul=40, target_volume=0.5)),
+                              requested_concentration_ngul=40, requested_volume=0.5)),
                 (fake_analyte("cont1", "art7", "sample4", "sample4", "E:2", True,
                               concentration_ngul=80),
                  fake_analyte("cont2", "art8", "sample4", "sample4", "E:2", False,
-                              target_concentration_ngul=40, target_volume=10)),
+                              requested_concentration_ngul=40, requested_volume=10)),
             ]
 
         svc = helpers.mock_artifact_service(scaled_up_analyte_set)
@@ -168,23 +168,23 @@ class TestDilutionScheme(unittest.TestCase):
                 (fake_analyte("cont-id1", "art1-id1", "sample1", "sample1", "B:2", True,
                               concentration_ngul=10),
                  fake_analyte("cont-id1", "art1-id2", "sample1", "sample1", "B:2", False,
-                              target_concentration_ngul=50, target_volume=10)),
+                              requested_concentration_ngul=50, requested_volume=10)),
                 (fake_analyte("cont-id1", "art1-id3", "sample2", "sample2", "C:2", True,
                               concentration_ngul=10),
                  fake_analyte("cont-id1", "art1-id4", "sample2", "sample2", "C:2", False,
-                              target_concentration_ngul=10, target_volume=51)),
+                              requested_concentration_ngul=10, requested_volume=51)),
                 (fake_analyte("cont-id1", "art1-id5", "sample3", "sample3", "D:2", True,
                               concentration_ngul=100),
                  fake_analyte("cont-id1", "art1-id6", "sample3", "sample3", "D:2", False,
-                              target_concentration_ngul=2, target_volume=50)),
+                              requested_concentration_ngul=2, requested_volume=50)),
                 (fake_analyte("cont-id1", "art1-id7", "sample4", "sample4", "E:2", True,
                               concentration_ngul=100),
                  fake_analyte("cont-id1", "art1-id8", "sample4", "sample4", "E:2", False,
-                              target_concentration_ngul=10, target_volume=150)),
+                              requested_concentration_ngul=10, requested_volume=150)),
                 (fake_analyte("cont-id1", "art1-id9", "sample5", "sample5", "F:2", True,
                               concentration_ngul=100),
                  fake_analyte("cont-id1", "art1-id10", "sample5", "sample5", "F:2", False,
-                              target_concentration_ngul=60, target_volume=150)),
+                              requested_concentration_ngul=60, requested_volume=150)),
             ]
 
         svc = helpers.mock_artifact_service(high_volume_analyte_set)
@@ -273,7 +273,7 @@ class TestDilutionScheme(unittest.TestCase):
                 (fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "D:5", True,
                               concentration=100, volume=20),
                  fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "B:5", False,
-                              target_concentration=1000, target_volume=20))
+                              requested_concentration_ngul=1000, requested_volume=20))
             ]
 
             return inputs, outputs
@@ -293,7 +293,7 @@ class TestDilutionScheme(unittest.TestCase):
             return [(fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "D:5",
                                   True, concentration_ngul=100, volume=20),
                      fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "B:5",
-                                  False, target_concentration=2, target_volume=20))
+                                  False, requested_concentration_ngul=2, requested_volume=20))
                     ]
 
         svc = helpers.mock_artifact_service(invalid_analyte_set)
@@ -308,7 +308,7 @@ class TestDilutionScheme(unittest.TestCase):
             return [(fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "D:5",
                                   True, concentration_ngul=100),
                      fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "B:5",
-                                  False, target_concentration_ngul=100, target_volume=20))
+                                  False, requested_concentration_ngul=100, requested_volume=20))
                     ]
         svc = helpers.mock_artifact_service(invalid_analyte_set)
         dilution_scheme = self._default_dilution_scheme(svc)
@@ -321,7 +321,7 @@ class TestDilutionScheme(unittest.TestCase):
             return [(fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "D:5",
                                   True, volume=20),
                      fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "B:5",
-                                  False, target_concentration=100, target_volume=20))
+                                  False, requested_concentration_ngul=100, requested_volume=20))
                     ]
         svc = helpers.mock_artifact_service(invalid_analyte_set)
         dilution_scheme = self._default_dilution_scheme(svc)
@@ -334,7 +334,7 @@ class TestDilutionScheme(unittest.TestCase):
             return [(fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "D:5",
                                   True, volume=20, concentration=0),
                      fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "B:5",
-                                  False, target_concentration=100, target_volume=20))
+                                  False, requested_concentration_ngul=100, requested_volume=20))
                     ]
         svc = helpers.mock_artifact_service(invalid_analyte_set)
         dilution_scheme = self._default_dilution_scheme(svc)

@@ -60,18 +60,18 @@ def analyte_set_with_blank():
     return [
         (fake_analyte("cont1", "art7", "sample4", "sample4", "E:2", True, is_control=True),
          fake_analyte("cont2", "art8", "sample4", "sample4", "E:2", False, is_control=True,
-                      target_concentration=100, target_volume=20)),
+                      requested_concentration=100, requested_volume=20)),
         (fake_analyte("cont1", "art1", "sample1", "sample1", "B:2", True,
                       concentration=100, volume=30),
          fake_analyte("cont2", "art2", "sample1", "sample1", "B:2", False,
-                      target_concentration=100, target_volume=20)),
+                      requested_concentration=100, requested_volume=20)),
         (fake_analyte("cont1", "art3", "sample2", "sample2", "C:2", True,
                       concentration=100, volume=40),
          fake_analyte("cont2", "art4", "sample2", "sample2", "C:2", False,
-                      target_concentration=100, target_volume=20)),
+                      requested_concentration=100, requested_volume=20)),
         (fake_analyte("cont1", "art5", "sample3", "sample3", "D:2", True,
                       concentration=100, volume=50),
          fake_analyte("cont2", "art6", "sample3", "sample3", "D:2", False,
-                      target_concentration=100, target_volume=20)),
+                      requested_concentration=100, requested_volume=20)),
     ]
 

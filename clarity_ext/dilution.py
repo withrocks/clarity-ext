@@ -25,16 +25,29 @@ class TransferEndpoint(object):
         self.is_control = False
         if hasattr(aliquot, "is_control"):
             self.is_control = aliquot.is_control
-        self.requested_concentration = get_and_apply(
-            aliquot.__dict__, "target_concentration_ngul", None, float)
+        self.requested_concentration = self._referenced_requested_concentration(
+            aliquot, concentration_ref)
         self.requested_volume = get_and_apply(
-            aliquot.__dict__, "target_volume", None, float)
+            aliquot.__dict__, "requested_volume", None, float)
         self.well_index = None
         self.plate_pos = None
 
     def _referenced_concentration(self, aliquot=None, concentration_ref=None):
         if concentration_ref == CONCENTRATION_REF_NGUL:
             return aliquot.concentration_ngul
+        elif concentration_ref == CONCENTRATION_REF_NM:
+            return aliquot.concentration_nm
+        else:
+            raise NotImplementedError(
+                "Concentration ref {} not implemented".format(
+                    concentration_ref)
+            )
+
+    def _referenced_requested_concentration(self, aliquot=None, concentration_ref=None):
+        if concentration_ref == CONCENTRATION_REF_NGUL:
+            return aliquot.requested_concentration_ngul
+        elif concentration_ref == CONCENTRATION_REF_NM:
+            return aliquot.requested_concentration_nm
         else:
             raise NotImplementedError(
                 "Concentration ref {} not implemented".format(
