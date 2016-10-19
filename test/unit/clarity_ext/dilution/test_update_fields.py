@@ -2,6 +2,7 @@ import unittest
 from clarity_ext.dilution import DILUTION_WASTE_VOLUME
 from mock import MagicMock
 from clarity_ext.dilution import DilutionScheme
+from clarity_ext.dilution import CONCENTRATION_REF_NGUL
 from test.unit.clarity_ext import helpers
 from test.unit.clarity_ext.helpers import fake_analyte
 
@@ -10,7 +11,8 @@ class UpdateFieldsForDilutionTests(unittest.TestCase):
 
     def setUp(self):
         svc = helpers.mock_artifact_service(analyte_set_with_blank)
-        self.dilution_scheme = DilutionScheme(svc, "Hamilton")
+        self.dilution_scheme = DilutionScheme(
+            svc, "Hamilton", concentration_ref=CONCENTRATION_REF_NGUL)
 
         analyte_pair_by_dilute = self.dilution_scheme.aliquot_pair_by_transfer
         for dilute in self.dilution_scheme.transfers:

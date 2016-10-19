@@ -5,6 +5,8 @@ from clarity_ext.utils import get_and_apply
 DILUTION_WASTE_VOLUME = 1
 ROBOT_MIN_VOLUME = 2
 PIPETTING_MAX_VOLUME = 50
+CONCENTRATION_REF_NGUL = 1
+CONCENTRATION_REF_NM = 2
 
 
 class TransferEndpoint(object):
@@ -13,11 +15,12 @@ class TransferEndpoint(object):
     """
     # TODO: Handle tube racks
 
-    def __init__(self, aliquot):
+    def __init__(self, aliquot, concentration_ref=None):
         self.sample_name = aliquot.name
         self.well = aliquot.well
         self.container = aliquot.container
-        self.concentration = aliquot.concentration_ngul
+        self.concentration = self._referenced_concentration(
+            aliquot=aliquot, concentration_ref=concentration_ref)
         self.volume = aliquot.volume
         self.is_control = False
         if hasattr(aliquot, "is_control"):
@@ -28,6 +31,15 @@ class TransferEndpoint(object):
             aliquot.__dict__, "target_volume", None, float)
         self.well_index = None
         self.plate_pos = None
+
+    def _referenced_concentration(self, aliquot=None, concentration_ref=None):
+        if concentration_ref == CONCENTRATION_REF_NGUL:
+            return aliquot.concentration_ngul
+        else:
+            raise NotImplementedError(
+                "Concentration ref {} not implemented".format(
+                    concentration_ref)
+            )
 
 
 class SingleTransfer(object):
@@ -176,7 +188,8 @@ class RobotDeckPositioner(object):
 class DilutionScheme(object):
     """Creates a dilution scheme, given input and output analytes."""
 
-    def __init__(self, artifact_service, robot_name, scale_up_low_volumes=True):
+    def __init__(self, artifact_service, robot_name, scale_up_low_volumes=True,
+                 concentration_ref=None):
         """
         Calculates all derived values needed in dilute driver file.
         """
@@ -186,7 +199,8 @@ class DilutionScheme(object):
         # TODO: Is it safe to just check for the container for the first output
         # analyte?
         container = pairs[0].output_artifact.container
-        all_transfers = self._create_transfers(pairs)
+        all_transfers = self._create_transfers(
+            pairs, concentration_ref=concentration_ref)
         self.transfers = list(t for t in all_transfers if t.is_control is False)
 
         self.aliquot_pair_by_transfer = self._map_pair_and_transfers(pairs=pairs)
@@ -198,12 +212,14 @@ class DilutionScheme(object):
         self.do_positioning()
         self.sort_transfers()
 
-    def _create_transfers(self, aliquot_pairs):
+    def _create_transfers(self, aliquot_pairs, concentration_ref=None):
         # TODO: handle tube racks
         transfers = []
         for pair in aliquot_pairs:
-            source_endpoint = TransferEndpoint(pair.input_artifact)
-            destination_endpoint = TransferEndpoint(pair.output_artifact)
+            source_endpoint = TransferEndpoint(
+                pair.input_artifact, concentration_ref=concentration_ref)
+            destination_endpoint = TransferEndpoint(
+                pair.output_artifact, concentration_ref=concentration_ref)
             transfers.append(SingleTransfer(
                 source_endpoint, destination_endpoint, pair_id=id(pair)))
         return transfers

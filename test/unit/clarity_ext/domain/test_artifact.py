@@ -133,7 +133,8 @@ class TestArtifact(unittest.TestCase):
         for key in expected_analyte.__dict__:
             print("{}\t{}".format(key, expected_analyte.__dict__[key]))
 
-        self.assertEqual(expected_analyte.concentration_ngul, analyte.concentration_ngul)
+        self.assertEqual(expected_analyte.concentration_ngul,
+                         analyte.concentration_ngul)
         self.assertEqual(expected_analyte.id, analyte.id)
         self.assertEqual(expected_analyte.name, analyte.name)
         self.assertEqual(expected_analyte.well.__repr__(),

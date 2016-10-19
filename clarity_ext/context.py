@@ -1,4 +1,6 @@
 from clarity_ext.dilution import DilutionScheme
+from clarity_ext.dilution import CONCENTRATION_REF_NGUL
+from clarity_ext.dilution import CONCENTRATION_REF_NM
 from clarity_ext import UnitConversion
 from clarity_ext.repository.file_repository import FileRepository
 from clarity_ext.utils import lazyprop
@@ -43,6 +45,7 @@ class ExtensionContext(object):
         self.current_user = current_user
         self.step_repo = step_repo
         self.response = None
+        self.dilution_scheme = None
 
     @staticmethod
     def create(step_id, cache=False):
@@ -65,10 +68,10 @@ class ExtensionContext(object):
     def udfs(self):
         return self.step_repo.all_udfs()
 
-    @lazyprop
-    def dilution_scheme(self):
+    def init_dilution_scheme(self, concentration_ref=None):
         # TODO: The caller needs to provide the robot
-        return DilutionScheme(self.artifact_service, "Hamilton")
+        self.dilution_scheme = DilutionScheme(
+            self.artifact_service, "Hamilton", concentration_ref=concentration_ref)
 
     @lazyprop
     def shared_files(self):
