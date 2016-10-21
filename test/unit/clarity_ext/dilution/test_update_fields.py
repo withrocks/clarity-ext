@@ -10,9 +10,12 @@ from test.unit.clarity_ext.helpers import fake_analyte
 class UpdateFieldsForDilutionTests(unittest.TestCase):
 
     def setUp(self):
+        self.dilution_scheme = None
+
+    def _init_dilution_scheme(self, concentration_ref):
         svc = helpers.mock_artifact_service(analyte_set_with_blank)
         self.dilution_scheme = DilutionScheme(
-            svc, "Hamilton", concentration_ref=CONCENTRATION_REF_NGUL)
+            svc, "Hamilton", concentration_ref=concentration_ref)
 
         analyte_pair_by_dilute = self.dilution_scheme.aliquot_pair_by_transfer
         for dilute in self.dilution_scheme.transfers:
@@ -29,8 +32,8 @@ class UpdateFieldsForDilutionTests(unittest.TestCase):
 
             destination_analyte.volume = dilute.requested_volume
 
-
     def test_source_volume_update_1(self):
+        self._init_dilution_scheme(concentration_ref=CONCENTRATION_REF_NGUL)
         dilute = self.dilution_scheme.transfers[-1]
         expected = 29.0
         outcome = self.dilution_scheme.aliquot_pair_by_transfer[
@@ -39,6 +42,7 @@ class UpdateFieldsForDilutionTests(unittest.TestCase):
         self.assertEqual(expected, outcome)
 
     def test_source_volume_update_all(self):
+        self._init_dilution_scheme(concentration_ref=CONCENTRATION_REF_NGUL)
         source_volume_sum = 0
         for dilute in self.dilution_scheme.transfers:
             outcome = self.dilution_scheme.aliquot_pair_by_transfer[
@@ -48,6 +52,7 @@ class UpdateFieldsForDilutionTests(unittest.TestCase):
         self.assertEqual(expected_sum, source_volume_sum)
 
     def test_dilute_aliqout_matching(self):
+        self._init_dilution_scheme(concentration_ref=CONCENTRATION_REF_NGUL)
         aliquot_pair_by_transfer = self.dilution_scheme.aliquot_pair_by_transfer
         for transfer in self.dilution_scheme.transfers:
             source_aliquot = aliquot_pair_by_transfer[transfer].input_artifact
