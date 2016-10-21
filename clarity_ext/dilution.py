@@ -202,7 +202,7 @@ class DilutionScheme(object):
     """Creates a dilution scheme, given input and output analytes."""
 
     def __init__(self, artifact_service, robot_name, scale_up_low_volumes=True,
-                 concentration_ref=None):
+                 concentration_ref=None, include_blanks=False):
         """
         Calculates all derived values needed in dilute driver file.
         """
@@ -214,7 +214,8 @@ class DilutionScheme(object):
         container = pairs[0].output_artifact.container
         all_transfers = self._create_transfers(
             pairs, concentration_ref=concentration_ref)
-        self.transfers = list(t for t in all_transfers if t.is_control is False)
+        self.transfers = self._filtered_transfers(
+            all_transfers=all_transfers, include_blanks=include_blanks)
 
         self.aliquot_pair_by_transfer = self._map_pair_and_transfers(pairs=pairs)
         self.robot_deck_positioner = RobotDeckPositioner(
@@ -224,6 +225,12 @@ class DilutionScheme(object):
         self.split_up_high_volume_rows()
         self.do_positioning()
         self.sort_transfers()
+
+    def _filtered_transfers(self, all_transfers, include_blanks):
+        if include_blanks:
+            return all_transfers
+        else:
+            return list(t for t in all_transfers if t.is_control is False)
 
     def _create_transfers(self, aliquot_pairs, concentration_ref=None):
         # TODO: handle tube racks

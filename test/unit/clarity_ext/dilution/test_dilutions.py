@@ -14,9 +14,11 @@ class TestDilutionScheme(unittest.TestCase):
     based on fake data from the LIMS
     """
 
-    def _default_dilution_scheme(self, artifact_service, concentration_ref=CONCENTRATION_REF_NGUL):
+    def _default_dilution_scheme(self, artifact_service, concentration_ref=CONCENTRATION_REF_NGUL,
+                                 include_blanks=False):
         return DilutionScheme(artifact_service=artifact_service, robot_name="Hamilton",
-                              scale_up_low_volumes=True, concentration_ref=concentration_ref)
+                              scale_up_low_volumes=True, concentration_ref=concentration_ref,
+                              include_blanks=include_blanks)
 
     def test_dilution_scheme_hamilton_base(self):
         """Dilution scheme created by mocked analytes is correctly generated for Hamilton"""
@@ -261,10 +263,10 @@ class TestDilutionScheme(unittest.TestCase):
                               concentration=134, volume=40),
                  fake_result_file(artifact_id="sample-measurement2", name="sample2",
                                   container_id="cont1", well_key="B:7")),
-                (fake_analyte("cont-id2", "art-id3", "sample3", "art-name3", "B:7", True,
+                (fake_analyte("cont-id2", "art-id3", "sample3", "art-name3", "B:7", True, is_control=True,
                               concentration=134, volume=50),
                  fake_result_file(artifact_id="sample-measurement3", name="sample3",
-                                  container_id="cont1", well_key="B:7")),
+                                  container_id="cont1", well_key="C:7")),
                 (fake_analyte("cont-id2", "art-id4", "sample4", "art-name4", "E:12", True,
                               concentration=134, volume=60),
                  fake_result_file(artifact_id="sample-measurement4", name="sample4",
@@ -274,20 +276,24 @@ class TestDilutionScheme(unittest.TestCase):
 
         svc = helpers.mock_artifact_service(analyte_result_file_set)
 
-        dilution_scheme = self._default_dilution_scheme(svc)
+        dilution_scheme = self._default_dilution_scheme(svc, include_blanks=True)
 
         expected = [
-            ['art-name1', 36, 'DNA1', 4],
-            ['art-name2', 33, 'DNA2', 4],
-            ['art-name3', 50, 'DNA2', 4],
-            ['art-name4', 93, 'DNA2', 4]]
+            ['art-name1', 36, 'DNA1', 4, 0, 36, 'END1'],
+            ['art-name2', 33, 'DNA2', 4, 0, 50, 'END1'],
+            ['art-name3', 50, 'DNA2', 4, 0, 51, 'END1'],
+            ['art-name4', 93, 'DNA2', 4, 0, 93, 'END1']]
 
         # Test:
         actual = [
             [dilute.sample_name,
              dilute.source_well_index,
              dilute.source_plate_pos,
-             4] for dilute in dilution_scheme.transfers
+             4,
+             0,
+             dilute.target_well_index,
+             dilute.target_plate_pos,
+             ] for dilute in dilution_scheme.transfers
         ]
 
         # Assert:

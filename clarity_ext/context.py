@@ -68,10 +68,11 @@ class ExtensionContext(object):
     def udfs(self):
         return self.step_repo.all_udfs()
 
-    def init_dilution_scheme(self, concentration_ref=None):
+    def init_dilution_scheme(self, concentration_ref=None, include_blanks=False):
         # TODO: The caller needs to provide the robot
         self.dilution_scheme = DilutionScheme(
-            self.artifact_service, "Hamilton", concentration_ref=concentration_ref)
+            self.artifact_service, "Hamilton", concentration_ref=concentration_ref,
+            include_blanks=include_blanks)
 
     @lazyprop
     def shared_files(self):
