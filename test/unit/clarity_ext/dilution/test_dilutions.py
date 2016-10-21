@@ -2,6 +2,7 @@ import unittest
 from mock import MagicMock
 from clarity_ext.dilution import DilutionScheme
 from clarity_ext.dilution import CONCENTRATION_REF_NGUL
+from clarity_ext.dilution import CONCENTRATION_REF_NM
 from test.unit.clarity_ext.helpers import fake_analyte, fake_result_file
 from test.unit.clarity_ext import helpers
 from clarity_ext.service import ArtifactService
@@ -13,9 +14,9 @@ class TestDilutionScheme(unittest.TestCase):
     based on fake data from the LIMS
     """
 
-    def _default_dilution_scheme(self, artifact_service):
+    def _default_dilution_scheme(self, artifact_service, concentration_ref=CONCENTRATION_REF_NGUL):
         return DilutionScheme(artifact_service=artifact_service, robot_name="Hamilton",
-                              scale_up_low_volumes=True, concentration_ref=CONCENTRATION_REF_NGUL)
+                              scale_up_low_volumes=True, concentration_ref=concentration_ref)
 
     def test_dilution_scheme_hamilton_base(self):
         """Dilution scheme created by mocked analytes is correctly generated for Hamilton"""
@@ -28,6 +29,35 @@ class TestDilutionScheme(unittest.TestCase):
             ['art-name2', 33, 'DNA2', 14.9, 5.1, 17, 'END2'],
             ['art-name3', 50, 'DNA2', 14.9, 5.1, 44, 'END1'],
             ['art-name4', 93, 'DNA2', 14.9, 5.1, 69, 'END2']]
+
+        # Test:
+        actual = [
+            [dilute.sample_name,
+             dilute.source_well_index,
+             dilute.source_plate_pos,
+             round(dilute.sample_volume, 1),
+             round(dilute.buffer_volume, 1),
+             dilute.target_well_index,
+             dilute.target_plate_pos] for dilute in dilution_scheme.transfers
+        ]
+
+        validation_results = list(dilution_scheme.validate())
+
+        # Assert:
+        self.assertEqual(expected, actual)
+        self.assertEqual(0, len(validation_results))
+
+    def test_dilution_scheme_hamilton_nm(self):
+        """Dilution scheme based on nM concentration"""
+        # Setup:
+        svc = helpers.mock_artifact_service(two_containers_artifact_set_nm)
+        dilution_scheme = self._default_dilution_scheme(svc, concentration_ref=CONCENTRATION_REF_NM)
+
+        expected = [
+            ['art-name1', 36, 'DNA1', 14.3, 5.7, 34, 'END1'],
+            ['art-name2', 33, 'DNA2', 14.3, 5.7, 17, 'END2'],
+            ['art-name3', 50, 'DNA2', 14.3, 5.7, 44, 'END1'],
+            ['art-name4', 93, 'DNA2', 14.3, 5.7, 69, 'END2']]
 
         # Test:
         actual = [
@@ -341,6 +371,33 @@ class TestDilutionScheme(unittest.TestCase):
         actual = set(str(result) for result in dilution_scheme.validate())
         expected = set(["Error: Source concentration not set: cont-id1(D5)"])
         self.assertEqual(expected, actual)
+
+
+def two_containers_artifact_set_nm():
+    """
+    Returns a list of (inputs, outputs) fake analytes for a particular step.
+
+    Analytes have been sorted, as they would be when queried from the repository.
+    """
+    ret = [
+        (fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "D:5", True,
+                      concentration_nm=140, volume=20),
+         fake_analyte("cont-id3", "art-id1", "sample1", "art-name1", "B:5", False,
+                      requested_concentration_nm=100, requested_volume=20)),
+        (fake_analyte("cont-id2", "art-id2", "sample2", "art-name2", "A:5", True,
+                      concentration_nm=140, volume=40),
+         fake_analyte("cont-id4", "art-id2", "sample2", "art-name2", "A:3", False,
+                      requested_concentration_nm=100, requested_volume=20)),
+        (fake_analyte("cont-id2", "art-id3", "sample3", "art-name3", "B:7", True,
+                      concentration_nm=140, volume=50),
+         fake_analyte("cont-id3", "art-id3", "sample3", "art-name3", "D:6", False,
+                      requested_concentration_nm=100, requested_volume=20)),
+        (fake_analyte("cont-id2", "art-id4", "sample4", "art-name4", "E:12", True,
+                      concentration_nm=140, volume=60),
+         fake_analyte("cont-id4", "art-id4", "sample4", "art-name4", "E:9", False,
+                      requested_concentration_nm=100, requested_volume=20))
+    ]
+    return ret
 
 
 if __name__ == "__main__":
