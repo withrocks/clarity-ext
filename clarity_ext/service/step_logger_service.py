@@ -7,7 +7,8 @@ class StepLoggerService:
     """
     Provides support for logging to shared files in a step.
     """
-    def __init__(self, step_logger_name, file_service, raise_if_not_found=False, append=True):
+
+    def __init__(self, step_logger_name, file_service, raise_if_not_found=False, append=True, extension="log"):
         self.core_logger = logging.getLogger(__name__)
         self.step_logger_name = step_logger_name
         self.file_service = file_service
@@ -17,7 +18,7 @@ class StepLoggerService:
         self.NEW_LINE = "\r\n"
         try:
             mode = "ab" if append else "wb"
-            self.step_log = self.file_service.local_shared_file(step_logger_name, extension="log",
+            self.step_log = self.file_service.local_shared_file(step_logger_name, extension=extension,
                                                                 mode=mode, modify_attached=True)
         except SharedFileNotFound:
             if raise_if_not_found:

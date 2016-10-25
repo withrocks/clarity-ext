@@ -15,6 +15,7 @@ from clarity_ext.repository import StepRepository
 from clarity_ext.service import ArtifactService
 from test.integration.integration_test_service import IntegrationTest
 from clarity_ext.repository.step_repository import DEFAULT_UDF_MAP
+from clarity_ext.service.validation_service import ValidationService
 
 
 # Defines all classes that are expected to be extended. These are
@@ -305,6 +306,11 @@ class GeneralExtension(object):
         self.context = context
         self.logger = logging.getLogger(self.__class__.__module__)
         self.response = None
+        self.validation_service = ValidationService(
+            context=context, logger=self.logger)
+
+    def handle_validation(self, validation_results):
+        return self.validation_service.handle_validation(validation_results)
 
     @abstractmethod
     def integration_tests(self):
@@ -336,18 +342,6 @@ class DriverFileExtension(GeneralFileExtension):
     def shared_file(self):
         """Returns the name of the shared file that should include the newly generated file"""
         return "Sample List"
-
-    def handle_validation(self, validation_results):
-        # TODO: Move this code to a validation service
-        # TODO: Communicate this to the LIMS rather than throwing an exception
-        results = list(validation_results)
-        report = [repr(result) for result in results]
-        if len(results) > 0:
-            self.logger.debug(
-                "Validation errors, len = {}".format(len(results)))
-            for r in results:
-                self.logger.debug("{}".format(r))
-            raise ValueError("Validation errors: ".format(os.path.sep.join(report)))
 
     @abstractmethod
     def content(self):
@@ -388,4 +382,3 @@ class SampleSheetExtension(DriverFileExtension):
 class ExtensionTest(object):
     def __init__(self, pid):
         self.pid = pid
-
