@@ -236,10 +236,13 @@ class TestArtifact(unittest.TestCase):
         api_resource = MagicMock()
         api_resource.id = "id1"
         api_resource.name = "name1"
+        api_resource.udf = {"Has errors": 1}
+        udf_map = {"SharedResultFile": {"has_errors": "Has errors"}}
 
         shared_result_file = SharedResultFile.create_from_rest_resource(
-            api_resource=api_resource, udf_map=dict())
+            api_resource=api_resource, udf_map=udf_map)
         expected_shared_result_file = fake_shared_result_file("id1", "name1")
         self.assertEqual(expected_shared_result_file.id, shared_result_file.id)
         self.assertEqual(expected_shared_result_file.name,
                          shared_result_file.name)
+        self.assertEqual(True, shared_result_file.has_errors)

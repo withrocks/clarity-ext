@@ -191,5 +191,8 @@ DEFAULT_UDF_MAP = {
     "ResultFile": {
         "concentration_ngul": "Conc. Current (ng/ul)",
         "volume": "Current sample volume (ul)"
+    },
+    "SharedResultFile": {
+        "has_errors": "Has errors2",
     }
 }

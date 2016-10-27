@@ -204,11 +204,12 @@ class DilutionScheme(object):
     """Creates a dilution scheme, given input and output analytes."""
 
     def __init__(self, artifact_service, robot_name, scale_up_low_volumes=True,
-                 concentration_ref=None, include_blanks=False):
+                 concentration_ref=None, include_blanks=False, error_log_artifact=None):
         """
         Calculates all derived values needed in dilute driver file.
         """
         self.scale_up_low_volumes = scale_up_low_volumes
+        self.error_log_artifact = error_log_artifact
         pairs = artifact_service.all_aliquot_pairs()
 
         # TODO: Is it safe to just check for the container for the first output
