@@ -38,7 +38,8 @@ def fake_result_file(artifact_id=None, name=None, container_id=None, well_key=No
 
 
 def fake_analyte(container_id=None, artifact_id=None, sample_id=None, analyte_name=None,
-                 well_key=None, is_input=None, is_control=False, udf_map=None, **kwargs):
+                 well_key=None, is_input=None, is_control=False, udf_map=None, api_resource = None,
+                 **kwargs):
     """
     Creates a fake Analyte domain object
 
@@ -54,7 +55,6 @@ def fake_analyte(container_id=None, artifact_id=None, sample_id=None, analyte_na
     pos = ContainerPosition.create(well_key)
     well = Well(pos, container)
     sample = Sample(sample_id, sample_id, MagicMock())
-    api_resource = None
     if not udf_map:
         udf_map = DEFAULT_UDF_MAP['Analyte']
     analyte = Analyte(api_resource=api_resource, is_input=is_input,
