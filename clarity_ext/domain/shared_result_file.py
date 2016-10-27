@@ -24,6 +24,7 @@ class SharedResultFile(Artifact):
 
     def updated_rest_resource(self, original_rest_resource, updated_fields):
         _updated_rest_resource = \
-            super(self.__class__, self).updated_rest_resource(original_rest_resource, updated_fields)
+            super(self.__class__, self).updated_rest_resource(
+                original_rest_resource, updated_fields)
 
         return _updated_rest_resource, self.assigner.consume()
