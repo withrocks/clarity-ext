@@ -8,9 +8,10 @@ from clarity_ext.repository import StepRepository
 from clarity_ext import utils
 from clarity_ext.driverfile import OSService
 from clarity_ext.service.validation_service import ERRORS_AND_WARNING_ENTRY_NAME
+from clarity_ext.domain.udf import Udf
 
 
-class ExtensionContext(object):
+class ExtensionContext(Udf):
     """
     Defines context objects for extensions.
 
@@ -33,6 +34,8 @@ class ExtensionContext(object):
         :param step_repo: The repository for the current step
         :param cache: Set to True to use the cache folder (.cache) for downloaded files
         """
+        super(ExtensionContext, self).__init__(
+            api_resource=session.current_step, id=session.current_step_id)
         self.session = session
         self.cache = cache
         self.logger = step_logger_service
