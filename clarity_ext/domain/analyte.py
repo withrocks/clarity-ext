@@ -12,7 +12,8 @@ class Analyte(Aliquot):
     """
 
     def __init__(self, api_resource, is_input, id=None, samples=None, name=None, well=None,
-                 is_control=False, artifact_specific_udf_map=None, **kwargs):
+                 is_control=False, artifact_specific_udf_map=None, is_from_original=None,
+                 **kwargs):
         """
         Creates an analyte
         """
@@ -31,6 +32,7 @@ class Analyte(Aliquot):
             kwargs, "concentration_nm", None, float)
         self.volume = get_and_apply(kwargs, "volume", None, float)
         self.is_control = is_control
+        self.is_output_from_previous = is_from_original
 
     def __repr__(self):
         return "{} ({})".format(self.name, self.id)
@@ -59,10 +61,13 @@ class Analyte(Aliquot):
         # TODO: This code principally belongs to the genologics layer, but 'control-type' does not exist there
         if resource.root.find("control-type") is not None:
             is_control = True
+        # TODO: A better way to decide if analyte is output of a previous step?
+        is_from_original = (resource.id.find("2-") != 0)
         analyte = Analyte(api_resource=resource, is_input=is_input, id=resource.id,
                           samples=samples, name=resource.name,
                           well=well, is_control=is_control,
-                          artifact_specific_udf_map=analyte_udf_map, **kwargs)
+                          artifact_specific_udf_map=analyte_udf_map,
+                          is_from_original=is_from_original, **kwargs)
         analyte.api_resource = resource
         analyte.reagent_labels = resource.reagent_labels
 

@@ -25,6 +25,7 @@ class Aliquot(Artifact):
         self.concentration_ngul = None
         self.concentration_nm = None
         self.volume = None
+        self.is_from_original = False
 
     @staticmethod
     def create_well_from_rest(resource, container_repo):

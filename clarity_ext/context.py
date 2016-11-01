@@ -1,6 +1,4 @@
 from clarity_ext.dilution import DilutionScheme
-from clarity_ext.dilution import CONCENTRATION_REF_NGUL
-from clarity_ext.dilution import CONCENTRATION_REF_NM
 from clarity_ext import UnitConversion
 from clarity_ext.repository.file_repository import FileRepository
 from clarity_ext.utils import lazyprop
@@ -9,6 +7,7 @@ from clarity_ext.service import ArtifactService, FileService, StepLoggerService
 from clarity_ext.repository import StepRepository
 from clarity_ext import utils
 from clarity_ext.driverfile import OSService
+from clarity_ext.service.validation_service import ERRORS_AND_WARNING_ENTRY_NAME
 
 
 class ExtensionContext(object):
@@ -69,10 +68,16 @@ class ExtensionContext(object):
         return self.step_repo.all_udfs()
 
     def init_dilution_scheme(self, concentration_ref=None, include_blanks=False):
+        file_list = [file for file in self.shared_files if file.name ==
+                     ERRORS_AND_WARNING_ENTRY_NAME]
+        if not len(file_list) == 1:
+            raise ValueError("This step is not configured with the shared file entry for {}".format(
+                ERRORS_AND_WARNING_ENTRY_NAME))
+        error_log_artifact = file_list[0]
         # TODO: The caller needs to provide the robot
         self.dilution_scheme = DilutionScheme(
             self.artifact_service, "Hamilton", concentration_ref=concentration_ref,
-            include_blanks=include_blanks)
+            include_blanks=include_blanks, error_log_artifact=error_log_artifact)
 
     @lazyprop
     def shared_files(self):

@@ -1,6 +1,6 @@
-from clarity_ext.domain.validation import ValidationException, ValidationType
 import copy
 from clarity_ext.utils import get_and_apply
+from itertools import groupby
 
 DILUTION_WASTE_VOLUME = 1
 ROBOT_MIN_VOLUME = 2
@@ -25,6 +25,7 @@ class TransferEndpoint(object):
         self.is_control = False
         if hasattr(aliquot, "is_control"):
             self.is_control = aliquot.is_control
+        self.is_from_original = aliquot.is_from_original
         self.requested_concentration = self._referenced_requested_concentration(
             aliquot, concentration_ref)
         self.requested_volume = get_and_apply(
@@ -63,6 +64,7 @@ class SingleTransfer(object):
         self.pair_id = pair_id
         self.sample_name = source_endpoint.sample_name
         self.is_control = source_endpoint.is_control
+        self.is_source_from_original = source_endpoint.is_from_original
 
         self.source_endpoint = source_endpoint
         self.destination_endpoint = destination_endpoint
@@ -202,11 +204,12 @@ class DilutionScheme(object):
     """Creates a dilution scheme, given input and output analytes."""
 
     def __init__(self, artifact_service, robot_name, scale_up_low_volumes=True,
-                 concentration_ref=None, include_blanks=False):
+                 concentration_ref=None, include_blanks=False, error_log_artifact=None):
         """
         Calculates all derived values needed in dilute driver file.
         """
         self.scale_up_low_volumes = scale_up_low_volumes
+        self.error_log_artifact = error_log_artifact
         pairs = artifact_service.all_aliquot_pairs()
 
         # TODO: Is it safe to just check for the container for the first output
@@ -225,6 +228,18 @@ class DilutionScheme(object):
         self.split_up_high_volume_rows()
         self.do_positioning()
         self.sort_transfers()
+        self.grouped_transfers = list(self._grouped_transfers())
+
+    def _grouped_transfers(self):
+        """
+        Sometimes a sample transfer from source A to destination B is
+        split up on several rows, due to the max pipetting volume of 50 ul.
+        :return: An iterable group of transfers for a common destination well.
+        """
+        for key, transfer_group in groupby(
+                self.transfers, key=lambda t: "{}{}".format(
+                    t.target_container, t.target_well.position)):
+            yield list(transfer_group)
 
     def _filtered_transfers(self, all_transfers, include_blanks):
         if include_blanks:
@@ -377,30 +392,6 @@ class DilutionScheme(object):
                 transfer.target_well)
             transfer.target_plate_pos = self.robot_deck_positioner \
                 .target_plate_position_map[transfer.target_container.id]
-
-    def validate(self):
-        """
-        Yields validation errors or warnings
-
-        TODO: These validation errors should not be in clarity-ext (implementation specific)
-        """
-        def pos_str(transfer):
-            return "{}=>{}".format(transfer.source_well, transfer.target_well)
-
-        for transfer in self.transfers:
-            if not transfer.source_initial_volume:
-                yield ValidationException("Source volume is not set: {}".format(transfer.source_well))
-            if not transfer.source_concentration:
-                yield ValidationException("Source concentration not set: {}".format(transfer.source_well))
-            else:
-                if transfer.sample_volume < 2:
-                    yield ValidationException("Too low sample volume: " + pos_str(transfer))
-                elif transfer.sample_volume > 50:
-                    yield ValidationException("Too high sample volume: " + pos_str(transfer))
-                if transfer.has_to_evaporate:
-                    yield ValidationException("Sample has to be evaporated: " + pos_str(transfer), ValidationType.WARNING)
-                if transfer.buffer_volume > 50:
-                    yield ValidationException("Too high buffer volume: " + pos_str(transfer))
 
     def __str__(self):
         return "<DilutionScheme positioner={}>".format(self.robot_deck_positioner)

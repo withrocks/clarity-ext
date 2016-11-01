@@ -153,9 +153,10 @@ class StepRepository(object):
         response = []
         for artifact in artifacts:
             updated_fields = self._retrieve_updated_fields(artifact)
-            original_analyte_from_rest = artifact.api_resource
+            original_artifact_from_rest = artifact.api_resource
             updated_rest_resource, single_response = \
-                artifact.updated_rest_resource(original_analyte_from_rest, updated_fields)
+                artifact.updated_rest_resource(
+                    original_artifact_from_rest, updated_fields)
             response.append(single_response)
             update_queue.append(updated_rest_resource)
 
@@ -191,5 +192,8 @@ DEFAULT_UDF_MAP = {
     "ResultFile": {
         "concentration_ngul": "Conc. Current (ng/ul)",
         "volume": "Current sample volume (ul)"
+    },
+    "SharedResultFile": {
+        "has_errors": "Has errors2",
     }
 }

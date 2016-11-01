@@ -6,6 +6,8 @@ from clarity_ext.dilution import CONCENTRATION_REF_NM
 from test.unit.clarity_ext.helpers import fake_analyte, fake_result_file
 from test.unit.clarity_ext import helpers
 from clarity_ext.service import ArtifactService
+from clarity_ext.domain.validation import ValidationException
+from clarity_ext.domain.validation import ValidationType
 
 
 class TestDilutionScheme(unittest.TestCase):
@@ -43,7 +45,7 @@ class TestDilutionScheme(unittest.TestCase):
              dilute.target_plate_pos] for dilute in dilution_scheme.transfers
         ]
 
-        validation_results = list(dilution_scheme.validate())
+        validation_results = list(post_validate_dilution(dilution_scheme))
 
         # Assert:
         self.assertEqual(expected, actual)
@@ -72,7 +74,7 @@ class TestDilutionScheme(unittest.TestCase):
              dilute.target_plate_pos] for dilute in dilution_scheme.transfers
         ]
 
-        validation_results = list(dilution_scheme.validate())
+        validation_results = list(post_validate_dilution(dilution_scheme))
 
         # Assert:
         self.assertEqual(expected, actual)
@@ -299,44 +301,46 @@ class TestDilutionScheme(unittest.TestCase):
         # Assert:
         self.assertEqual(expected, actual)
 
-    # TODO: Add a test for buffer volume validation
-    @unittest.skip("Remove when error and warning checks are in place in scripts")
-    # Remove this test, and all other error and warning tests, when these checks are
-    # in place in the scripts
-    def test_dilution_scheme_too_high_sample_volume(self):
+    def test_dilution_scheme_evaporation_warning(self):
         def invalid_analyte_set():
             return [
                 (fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "D:5", True,
-                              concentration=100, volume=20),
+                              concentration_ngul=100, volume=20),
                  fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "B:5", False,
-                              requested_concentration_ngul=1000, requested_volume=20))
+                              requested_concentration_ngul=1000, requested_volume=2))
             ]
 
             return inputs, outputs
 
         repo = MagicMock()
-        logger_service = MagicMock()
         repo.all_artifacts = invalid_analyte_set
         svc = ArtifactService(repo)
-        dilution_scheme = DilutionScheme(svc, "Hamilton")
-        actual = set(str(result) for result in dilution_scheme.validate())
-        expected = set(["Error: Too high sample volume: cont-id1(D5)=>cont-id1(B5)",
-                      "Warning: Sample has to be evaporated: cont-id1(D5)=>cont-id1(B5)"])
+        dilution_scheme = self._default_dilution_scheme(svc)
+        actual = set(str(result)
+                     for result in post_validate_dilution(dilution_scheme))
+        expected = set(
+            ["Warning: art-name1, sample has to be evaporated (cont-id1(D5)=>cont-id1(B5))."])
         self.assertEqual(expected, actual)
 
-    def test_dilution_scheme_too_low_sample_volume(self):
+    def test_dilution_scheme_too_high_destination_volume(self):
         def invalid_analyte_set():
-            return [(fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "D:5",
-                                  True, concentration_ngul=100, volume=20),
-                     fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "B:5",
-                                  False, requested_concentration_ngul=2, requested_volume=20))
-                    ]
+            return [
+                (fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "D:5", True,
+                              concentration_ngul=100, volume=20),
+                 fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "B:5", False,
+                              requested_concentration_ngul=10, requested_volume=200))
+            ]
 
-        svc = helpers.mock_artifact_service(invalid_analyte_set)
-        dilution_scheme = DilutionScheme(
-            svc, "Hamilton", scale_up_low_volumes=False, concentration_ref=CONCENTRATION_REF_NGUL)
-        actual = set(str(result) for result in dilution_scheme.validate())
-        expected = set(["Error: Too low sample volume: cont-id1(D5)=>cont-id1(B5)"])
+            return inputs, outputs
+
+        repo = MagicMock()
+        repo.all_artifacts = invalid_analyte_set
+        svc = ArtifactService(repo)
+        dilution_scheme = self._default_dilution_scheme(svc)
+        actual = set(str(result)
+                     for result in post_validate_dilution(dilution_scheme))
+        expected = set(
+            ["Error: art-name1, too high destination volume (cont-id1(D5)=>cont-id1(B5))."])
         self.assertEqual(expected, actual)
 
     def test_dilution_scheme_source_volume_not_set(self):
@@ -348,8 +352,9 @@ class TestDilutionScheme(unittest.TestCase):
                     ]
         svc = helpers.mock_artifact_service(invalid_analyte_set)
         dilution_scheme = self._default_dilution_scheme(svc)
-        actual = set(str(result) for result in dilution_scheme.validate())
-        expected = set(["Error: Source volume is not set: cont-id1(D5)"])
+        actual = set(str(result)
+                     for result in pre_validate_dilution(dilution_scheme))
+        expected = set(["Error: art-name1, source volume is not set."])
         self.assertEqual(expected, actual)
 
     def test_dilution_scheme_source_concentration_not_set(self):
@@ -361,21 +366,23 @@ class TestDilutionScheme(unittest.TestCase):
                     ]
         svc = helpers.mock_artifact_service(invalid_analyte_set)
         dilution_scheme = self._default_dilution_scheme(svc)
-        actual = set(str(result) for result in dilution_scheme.validate())
-        expected = set(["Error: Source concentration not set: cont-id1(D5)"])
+        actual = set(str(result)
+                     for result in pre_validate_dilution(dilution_scheme))
+        expected = set(["Error: art-name1, source concentration not set."])
         self.assertEqual(expected, actual)
 
     def test_dilution_scheme_source_concentration_zero(self):
         def invalid_analyte_set():
             return [(fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "D:5",
-                                  True, volume=20, concentration=0),
+                                  True, volume=20, concentration_ngul=0),
                      fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "B:5",
                                   False, requested_concentration_ngul=100, requested_volume=20))
                     ]
         svc = helpers.mock_artifact_service(invalid_analyte_set)
         dilution_scheme = self._default_dilution_scheme(svc)
-        actual = set(str(result) for result in dilution_scheme.validate())
-        expected = set(["Error: Source concentration not set: cont-id1(D5)"])
+        actual = set(str(result)
+                     for result in pre_validate_dilution(dilution_scheme))
+        expected = set(["Error: art-name1, source concentration not set."])
         self.assertEqual(expected, actual)
 
 
@@ -404,6 +411,40 @@ def two_containers_artifact_set_nm():
                       requested_concentration_nm=100, requested_volume=20))
     ]
     return ret
+
+
+def pre_validate_dilution(dilution_scheme):
+    """
+    Check that all pertinent variables are initiated so that calculations
+    are possible to perform
+    """
+    for transfer in dilution_scheme.transfers:
+        if not transfer.source_initial_volume:
+            yield ValidationException("{}, source volume is not set.".format(transfer.sample_name))
+        if not transfer.source_concentration:
+            yield ValidationException("{}, source concentration not set.".format(transfer.sample_name))
+
+
+def post_validate_dilution(dilution_scheme):
+    """
+    Check calculation results if its conform to hardware restrictions
+    """
+    def pos_str(transfer):
+        return "{}=>{}".format(transfer.source_well, transfer.target_well)
+
+    for transfer_group in dilution_scheme.grouped_transfers:
+        total_volume = sum(map(lambda t: t.sample_volume +
+                               t.buffer_volume, transfer_group))
+        sample_name = transfer_group[0].sample_name
+        pos_spec = pos_str(transfer_group[0])
+        has_to_evaporate = transfer_group[0].has_to_evaporate
+
+        if total_volume > 100:
+            yield ValidationException("{}, too high destination volume ({}).".format(
+                sample_name, pos_spec))
+        if has_to_evaporate:
+            yield ValidationException("{}, sample has to be evaporated ({}).".format(
+                sample_name, pos_spec), ValidationType.WARNING)
 
 
 if __name__ == "__main__":
