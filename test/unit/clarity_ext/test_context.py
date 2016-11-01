@@ -36,3 +36,19 @@ class TestContext(unittest.TestCase):
         # Fetching a single output_container should throw in this case
         self.assertRaises(ValueError, input_should_raise)
         self.assertRaises(ValueError, output_should_raise)
+
+    def test_udf(self):
+        artifact_svc = helpers.mock_two_containers_artifact_service()
+        file_svc = MagicMock()
+        current_user = MagicMock()
+        step_logger_svc = MagicMock()
+        api_resource = MagicMock()
+        api_resource.udf = {"myudf": "udf_value"}
+        session = MagicMock()
+        session.current_step = api_resource
+        context = ExtensionContext(
+            session, artifact_svc, file_svc, current_user, step_logger_svc, None)
+        self.assertEqual(context.get_udf("myudf"), "udf_value")
+
+        context.set_udf("myudf", "another_value")
+        self.assertEqual(context.get_udf("myudf"), "another_value")
