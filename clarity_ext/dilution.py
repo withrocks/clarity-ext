@@ -18,7 +18,7 @@ class TransferEndpoint(object):
     # TODO: Handle tube racks
 
     def __init__(self, aliquot, concentration_ref=None):
-        self.sample_name = aliquot.name
+        self.aliquot_name = aliquot.name
         self.well = aliquot.well
         self.container = aliquot.container
         self.concentration = self._referenced_concentration(
@@ -64,7 +64,7 @@ class SingleTransfer(object):
 
     def __init__(self, source_endpoint, destination_endpoint=None, pair_id=None):
         self.pair_id = pair_id
-        self.sample_name = source_endpoint.sample_name
+        self.aliquot_name = source_endpoint.aliquot_name
         self.is_control = source_endpoint.is_control
         self.is_source_from_original = source_endpoint.is_from_original
 
@@ -78,6 +78,7 @@ class SingleTransfer(object):
         self.source_well_index = None
         self.source_plate_pos = None
 
+        self.target_aliquot_name = None
         self.target_well = None
         self.target_container = None
         self.requested_concentration = None
@@ -98,6 +99,7 @@ class SingleTransfer(object):
         self.target_container = destination_endpoint.container
         self.requested_concentration = destination_endpoint.requested_concentration
         self.requested_volume = destination_endpoint.requested_volume
+        self.target_aliquot_name = destination_endpoint.aliquot_name
 
     def __str__(self):
         source = "source({}/{}, conc={})".format(self.source_container,
@@ -107,7 +109,7 @@ class SingleTransfer(object):
         return "{} => {}".format(source, target)
 
     def __repr__(self):
-        return "<SingleTransfer {}>".format(self.sample_name)
+        return "<SingleTransfer {}>".format(self.aliquot_name)
 
 
 class EndpointPositioner(object):
@@ -394,7 +396,7 @@ class DilutionScheme(object):
         elif volume_calc_method == VOLUME_CALC_BY_CONC and make_pools is False:
             volume_calc_strategy = OneToOneConcentrationCalc()
         elif volume_calc_method == VOLUME_CALC_BY_CONC and make_pools is True:
-            pass
+            volume_calc_strategy = PoolConcentrationCalc()
         else:
             raise ValueError(
                 "Choice for volume calculation method is not implemented. \n"

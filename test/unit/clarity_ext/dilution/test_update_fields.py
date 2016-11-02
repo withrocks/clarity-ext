@@ -40,7 +40,7 @@ class UpdateFieldsForDilutionTests(unittest.TestCase):
         expected = 29.0
         outcome = self.dilution_scheme.aliquot_pair_by_transfer[
             dilute].input_artifact.volume
-        print(dilute.sample_name)
+        print(dilute.aliquot_name)
         self.assertEqual(expected, outcome)
 
     def test_source_volume_update_all(self):
@@ -58,9 +58,9 @@ class UpdateFieldsForDilutionTests(unittest.TestCase):
         aliquot_pair_by_transfer = self.dilution_scheme.aliquot_pair_by_transfer
         for transfer in self.dilution_scheme.transfers:
             source_aliquot = aliquot_pair_by_transfer[transfer].input_artifact
-            print("transfer sample name: {}".format(transfer.sample_name))
+            print("transfer sample name: {}".format(transfer.aliquot_name))
             print("source aliquot sample name: {}".format(source_aliquot.name))
-            self.assertEqual(transfer.sample_name, source_aliquot.name)
+            self.assertEqual(transfer.aliquot_name, source_aliquot.name)
 
 
 def analyte_set_with_blank():

@@ -40,7 +40,7 @@ class TestDilutionScheme(unittest.TestCase):
 
         # Test:
         actual = [
-            [dilute.sample_name,
+            [dilute.aliquot_name,
              dilute.source_well_index,
              dilute.source_plate_pos,
              round(dilute.sample_volume, 1),
@@ -69,7 +69,7 @@ class TestDilutionScheme(unittest.TestCase):
 
         # Test:
         actual = [
-            [dilute.sample_name,
+            [dilute.aliquot_name,
              dilute.source_well_index,
              dilute.source_plate_pos,
              round(dilute.sample_volume, 1),
@@ -122,7 +122,7 @@ class TestDilutionScheme(unittest.TestCase):
 
         # Test:
         actual = [
-            [dilute.sample_name,
+            [dilute.aliquot_name,
              dilute.source_well_index,
              dilute.source_plate_pos,
              round(dilute.sample_volume, 1),
@@ -173,7 +173,7 @@ class TestDilutionScheme(unittest.TestCase):
         ]
 
         actual = [
-            [dilute.sample_name,
+            [dilute.aliquot_name,
              dilute.source_well_index,
              dilute.source_plate_pos,
              round(dilute.sample_volume, 1),
@@ -241,7 +241,7 @@ class TestDilutionScheme(unittest.TestCase):
         ]
 
         actual = [
-            [dilute.sample_name,
+            [dilute.aliquot_name,
              dilute.source_well_index,
              dilute.source_plate_pos,
              round(dilute.sample_volume, 1),
@@ -293,7 +293,7 @@ class TestDilutionScheme(unittest.TestCase):
 
         # Test:
         actual = [
-            [dilute.sample_name,
+            [dilute.aliquot_name,
              dilute.source_well_index,
              dilute.source_plate_pos,
              4,
@@ -420,9 +420,9 @@ def pre_validate_dilution(dilution_scheme):
     """
     for transfer in dilution_scheme.transfers:
         if not transfer.source_initial_volume:
-            yield ValidationException("{}, source volume is not set.".format(transfer.sample_name))
+            yield ValidationException("{}, source volume is not set.".format(transfer.aliquot_name))
         if not transfer.source_concentration:
-            yield ValidationException("{}, source concentration not set.".format(transfer.sample_name))
+            yield ValidationException("{}, source concentration not set.".format(transfer.aliquot_name))
 
 
 def post_validate_dilution(dilution_scheme):
@@ -435,16 +435,16 @@ def post_validate_dilution(dilution_scheme):
     for transfer_group in dilution_scheme.grouped_transfers:
         total_volume = sum(map(lambda t: t.sample_volume +
                                t.buffer_volume, transfer_group))
-        sample_name = transfer_group[0].sample_name
+        aliquot_name = transfer_group[0].aliquot_name
         pos_spec = pos_str(transfer_group[0])
         has_to_evaporate = transfer_group[0].has_to_evaporate
 
         if total_volume > 100:
             yield ValidationException("{}, too high destination volume ({}).".format(
-                sample_name, pos_spec))
+                aliquot_name, pos_spec))
         if has_to_evaporate:
             yield ValidationException("{}, sample has to be evaporated ({}).".format(
-                sample_name, pos_spec), ValidationType.WARNING)
+                aliquot_name, pos_spec), ValidationType.WARNING)
 
 
 if __name__ == "__main__":
