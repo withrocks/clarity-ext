@@ -1,13 +1,14 @@
 from clarity_ext.domain.aliquot import Aliquot, Sample
+from clarity_ext import utils
 
 
 class ResultFile(Aliquot):
     """Encapsulates a ResultFile in Clarity"""
 
-    def __init__(self, api_resource, is_input, id=None, sample=None, name=None, well=None,
+    def __init__(self, api_resource, is_input, id=None, samples=None, name=None, well=None,
                  artifact_specific_udf_map=None, **kwargs):
         super(self.__class__, self).__init__(
-            api_resource, is_input=is_input, id=id, sample=sample, name=name, well=well,
+            api_resource, is_input=is_input, id=id, samples=samples, name=name, well=well,
             artifact_specific_udf_map=artifact_specific_udf_map, **kwargs)
 
     @staticmethod
@@ -26,9 +27,9 @@ class ResultFile(Aliquot):
 
         # TODO: sample should be put in a lazy property, and all samples in a step should be
         # loaded in one batch
-        sample = Sample.create_from_rest_resource(resource.samples[0])
+        samples = [Sample.create_from_rest_resource(sample) for sample in resource.samples]
         ret = ResultFile(api_resource=resource, is_input=is_input,
-                         id=resource.id, sample=sample, name=resource.name, well=well,
+                         id=resource.id, samples=samples, name=resource.name, well=well,
                          artifact_specific_udf_map=result_file_udf_map, **kwargs)
 
         return ret
@@ -45,6 +46,11 @@ class ResultFile(Aliquot):
         # Add ResultFile specific fields here ...
 
         return _updated_rest_resource, self.assigner.consume()
+
+    @property
+    def sample(self):
+        """Convenience property for fetching a single sample when only one is expected"""
+        return utils.single(self.samples)
 
     def __repr__(self):
         return self.id
