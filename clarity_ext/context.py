@@ -131,10 +131,22 @@ class ExtensionContext(Udf):
         # Clean up:
         self.file_service.cleanup()
 
-    def local_shared_file(self, name, mode="r", is_xml=False):
+    def local_shared_file(self, name, mode="r", is_xml=False, is_csv=False):
+        """
+        Downloads the file from the current step. The returned file is generally a regular
+        file-like object, but can be casted to an xml object or csv by passing in is_xml or is_csv.
+
+
+        NOTE: It would make sense to use constants instead of is_xml and is_csv, but since this
+        is designed to be used by non-developers, this might be more readable.
+        """
+        if is_xml and is_csv:
+            raise ValueError("More than one file type specifiers")
         f = self.file_service.local_shared_file(name, mode=mode)
         if is_xml:
             return self.file_service.parse_xml(f)
+        elif is_csv:
+            return self.file_service.parse_csv(f)
         else:
             return f
 

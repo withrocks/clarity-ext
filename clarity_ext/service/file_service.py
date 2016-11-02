@@ -33,6 +33,11 @@ class FileService:
             tree = objectify.parse(f)
             return tree.getroot()
 
+    def parse_csv(self, f):
+        with f:
+            return Csv(f)
+
+
     def local_shared_file(self, file_name, mode='r', extension="", modify_attached=False):
         """
         Downloads the local shared file and returns an open file-like object.
@@ -121,4 +126,41 @@ class FileService:
 
 class SharedFileNotFound(Exception):
     pass
+
+
+class Csv:
+    """A simple wrapper for csv files"""
+    def __init__(self, file, delim=","):
+        lines = list()
+        for line in file:
+            values = line.strip().split(delim)
+            csv_line = CsvLine(values, self)
+            lines.append(CsvLine(values, self))
+            if len(lines) == 1:
+                self.key_to_index = {key: ix for ix, key in enumerate(values)}
+
+        self.headers = lines[0]
+        self.data = lines[1:]
+
+
+class CsvLine:
+    """Represents one line in a CSV file, items can be added or removed like this were a dictionary"""
+    def __init__(self, line, csv):
+        self.line = line
+        self.csv = csv
+
+    def __getitem__(self, key):
+        index = self.csv.key_to_index[key]
+        return self.line[index]
+
+    def __setitem__(self, key, value):
+        index = self.csv.key_to_index[key]
+        self.line[index] = value
+
+    @property
+    def values(self):
+        return self.line
+
+    def __repr__(self):
+        return repr(self.values)
 
