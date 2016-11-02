@@ -38,7 +38,11 @@ class Well(DomainObjectMixin):
 
 
 class ContainerPosition(namedtuple("ContainerPosition", ["row", "col"])):
-    """Defines the position of the plate, (zero based)"""
+    """
+    Defines the position of the plate, (zero based)
+
+    Default representation is `<row as letter>:<column as number>`, e.g. `A:1`
+    """
     def __repr__(self):
         return "{}:{}".format(self.row_letter, self.col)
 
@@ -170,6 +174,9 @@ class Container(DomainObjectMixin):
         return list(self.enumerate_wells(order))
 
     def set_well(self, well_pos, artifact_name=None, artifact_id=None, artifact=None):
+        # We should support any position that ContainerPosition can handle:
+        if not isinstance(well_pos, ContainerPosition):
+            well_pos = ContainerPosition.create(well_pos)
 
         if well_pos not in self.wells:
             raise KeyError(
@@ -180,8 +187,16 @@ class Container(DomainObjectMixin):
         # TODO: Accept only an artifact
         self.wells[well_pos].artifact = artifact
 
+    def __iter__(self):
+        for well in self.enumerate_wells(order=self.DOWN_FIRST):
+            yield well
+
+    def __setitem__(self, key, value):
+        self.set_well(key, artifact=value)
+
+    def __getitem__(self, item):
+        return self.wells[item]
 
     def __repr__(self):
-        return "{}".format(self.id)
-
+        return "Container(id={})".format(self.id)
 
