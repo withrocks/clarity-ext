@@ -33,6 +33,9 @@ class DomainObjectMixin(object):
                 continue
             elif any(b[key] is i for i in cache):
                 continue
+            elif a[key].__class__.__name__ == "MagicMock" and a[key].__class__.__name__ == "MagicMock":
+                # filter out mocked fields
+                continue
             elif not self._eq_rec(a[key], b[key], cache):
                 return False
         return True

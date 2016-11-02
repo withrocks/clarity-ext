@@ -168,7 +168,8 @@ class ResponseFileService:
             yield "\t".join(row)
 
     def file_key(self, file_name):
-        match = re.match(r"(^24-\d+).*$", file_name)
+        # TODO: Files not matching with a ResultFile shouldn't be uploaded at all
+        match = re.match(r"(^(24|122)-\d+).*$", file_name)
         if match:
             return match.group(1)
         else:
