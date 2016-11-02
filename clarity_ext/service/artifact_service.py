@@ -33,7 +33,7 @@ class ArtifactService:
         """
         outputs = (outp for inp, outp in self.all_artifacts())
         shared_files = (
-            outp for outp in outputs if outp.generation_type == Artifact.PER_ALL_INPUTS)
+            outp for outp in outputs if isinstance(outp, SharedResultFile))
         ret = list(utils.unique(shared_files, lambda f: f.id))
         assert len(ret) == 0 or isinstance(ret[0], SharedResultFile)
         return ret
