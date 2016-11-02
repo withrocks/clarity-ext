@@ -3,6 +3,7 @@ from clarity_ext.dilution import DILUTION_WASTE_VOLUME
 from mock import MagicMock
 from clarity_ext.dilution import DilutionScheme
 from clarity_ext.dilution import CONCENTRATION_REF_NGUL
+from clarity_ext.dilution import VOLUME_CALC_BY_CONC
 from test.unit.clarity_ext import helpers
 from test.unit.clarity_ext.helpers import fake_analyte
 
@@ -14,8 +15,9 @@ class UpdateFieldsForDilutionTests(unittest.TestCase):
 
     def _init_dilution_scheme(self, concentration_ref):
         svc = helpers.mock_artifact_service(analyte_set_with_blank)
-        self.dilution_scheme = DilutionScheme(
-            svc, "Hamilton", concentration_ref=concentration_ref)
+        self.dilution_scheme = DilutionScheme.create(
+            artifact_service=svc, robot_name="Hamilton",
+            concentration_ref=concentration_ref, volume_calc_method=VOLUME_CALC_BY_CONC)
 
         analyte_pair_by_dilute = self.dilution_scheme.aliquot_pair_by_transfer
         for dilute in self.dilution_scheme.transfers:
