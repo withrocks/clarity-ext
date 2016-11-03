@@ -188,14 +188,18 @@ class Container(DomainObjectMixin):
         self.wells[well_pos].artifact = artifact
 
     def __iter__(self):
-        for well in self.enumerate_wells(order=self.DOWN_FIRST):
-            yield well
+        return self.enumerate_wells(order=self.DOWN_FIRST)
 
     def __setitem__(self, key, value):
         self.set_well(key, artifact=value)
 
-    def __getitem__(self, item):
-        return self.wells[item]
+    def __contains__(self, item):
+        return item in self.wells
+
+    def __getitem__(self, well_pos):
+        if not isinstance(well_pos, ContainerPosition):
+            well_pos = ContainerPosition.create(well_pos)
+        return self.wells[well_pos]
 
     def __repr__(self):
         return "Container(id={})".format(self.id)
