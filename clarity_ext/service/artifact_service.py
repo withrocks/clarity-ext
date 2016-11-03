@@ -22,7 +22,7 @@ class ArtifactService:
 
     def all_artifacts(self):
         # NOTE: The underlying REST library does also do some caching, but since this library wraps
-        # objects, some benefit may be gotten by caching on this level too.
+        # objects, some benefit may be achieved by caching on this level too.
         if not self._artifacts:
             self._artifacts = self.step_repository.all_artifacts()
         return self._artifacts
@@ -160,3 +160,11 @@ class ArtifactService:
             self._parent_input_artifacts_by_sample_id = {
                 utils.single(current.samples).id: current for current in parent_input_artifacts}
         return self._parent_input_artifacts_by_sample_id[sample.id]
+
+    def all_output_result_files(self):
+        """
+        Returns all individual output `ResultFile`s. These are generated "per input".
+        """
+        return [output for _, output in self.all_artifacts()
+                if output.generation_type == output.PER_INPUT]
+
