@@ -37,7 +37,6 @@ class FileService:
         with f:
             return Csv(f)
 
-
     def local_shared_file(self, file_name, mode='r', extension="", modify_attached=False):
         """
         Downloads the local shared file and returns an open file-like object.
@@ -130,17 +129,26 @@ class SharedFileNotFound(Exception):
 
 class Csv:
     """A simple wrapper for csv files"""
-    def __init__(self, file, delim=","):
+    def __init__(self, file_stream, delim=","):
+        if isinstance(file_stream, basestring):
+            with open(file_stream, "r") as fs:
+                self._init_from_file_stream(fs, delim)
+        else:
+            self._init_from_file_stream(file_stream, delim)
+
+    def _init_from_file_stream(self, file_stream, delim):
         lines = list()
-        for line in file:
+        for line in file_stream:
             values = line.strip().split(delim)
             csv_line = CsvLine(values, self)
-            lines.append(CsvLine(values, self))
+            lines.append(csv_line)
             if len(lines) == 1:
                 self.key_to_index = {key: ix for ix, key in enumerate(values)}
-
-        self.headers = lines[0]
+        self.header = lines[0]
         self.data = lines[1:]
+
+    def __iter__(self):
+        return iter(self.data)
 
 
 class CsvLine:
