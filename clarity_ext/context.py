@@ -70,7 +70,8 @@ class ExtensionContext(Udf):
     def udfs(self):
         return self.step_repo.all_udfs()
 
-    def init_dilution_scheme(self, concentration_ref=None, include_blanks=False):
+    def init_dilution_scheme(self, concentration_ref=None, include_blanks=False,
+                             volume_calc_method=None, make_pools=False):
         file_list = [file for file in self.shared_files if file.name ==
                      ERRORS_AND_WARNING_ENTRY_NAME]
         if not len(file_list) == 1:
@@ -78,9 +79,11 @@ class ExtensionContext(Udf):
                 ERRORS_AND_WARNING_ENTRY_NAME))
         error_log_artifact = file_list[0]
         # TODO: The caller needs to provide the robot
-        self.dilution_scheme = DilutionScheme(
-            self.artifact_service, "Hamilton", concentration_ref=concentration_ref,
-            include_blanks=include_blanks, error_log_artifact=error_log_artifact)
+        self.dilution_scheme = DilutionScheme.create(
+            artifact_service=self.artifact_service, robot_name="Hamilton",
+            concentration_ref=concentration_ref, include_blanks=include_blanks,
+            error_log_artifact=error_log_artifact,
+            volume_calc_method=volume_calc_method, make_pools=make_pools)
 
     @lazyprop
     def shared_files(self):

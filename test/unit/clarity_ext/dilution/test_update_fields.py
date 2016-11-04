@@ -3,6 +3,7 @@ from clarity_ext.dilution import DILUTION_WASTE_VOLUME
 from mock import MagicMock
 from clarity_ext.dilution import DilutionScheme
 from clarity_ext.dilution import CONCENTRATION_REF_NGUL
+from clarity_ext.dilution import VOLUME_CALC_BY_CONC
 from test.unit.clarity_ext import helpers
 from test.unit.clarity_ext.helpers import fake_analyte
 
@@ -14,8 +15,9 @@ class UpdateFieldsForDilutionTests(unittest.TestCase):
 
     def _init_dilution_scheme(self, concentration_ref):
         svc = helpers.mock_artifact_service(analyte_set_with_blank)
-        self.dilution_scheme = DilutionScheme(
-            svc, "Hamilton", concentration_ref=concentration_ref)
+        self.dilution_scheme = DilutionScheme.create(
+            artifact_service=svc, robot_name="Hamilton",
+            concentration_ref=concentration_ref, volume_calc_method=VOLUME_CALC_BY_CONC)
 
         analyte_pair_by_dilute = self.dilution_scheme.aliquot_pair_by_transfer
         for dilute in self.dilution_scheme.transfers:
@@ -38,7 +40,7 @@ class UpdateFieldsForDilutionTests(unittest.TestCase):
         expected = 29.0
         outcome = self.dilution_scheme.aliquot_pair_by_transfer[
             dilute].input_artifact.volume
-        print(dilute.sample_name)
+        print(dilute.aliquot_name)
         self.assertEqual(expected, outcome)
 
     def test_source_volume_update_all(self):
@@ -56,9 +58,9 @@ class UpdateFieldsForDilutionTests(unittest.TestCase):
         aliquot_pair_by_transfer = self.dilution_scheme.aliquot_pair_by_transfer
         for transfer in self.dilution_scheme.transfers:
             source_aliquot = aliquot_pair_by_transfer[transfer].input_artifact
-            print("transfer sample name: {}".format(transfer.sample_name))
+            print("transfer sample name: {}".format(transfer.aliquot_name))
             print("source aliquot sample name: {}".format(source_aliquot.name))
-            self.assertEqual(transfer.sample_name, source_aliquot.name)
+            self.assertEqual(transfer.aliquot_name, source_aliquot.name)
 
 
 def analyte_set_with_blank():

@@ -101,16 +101,15 @@ class StepRepository(object):
             raise NotImplementedError(
                 "Generation type {} is not implemented".format(output_gen_type))
 
-        output_type = output_info["output-type"]
-        if output_type == "ResultFile":
+        if isinstance(output, ResultFile):
             output.output_type = Artifact.OUTPUT_TYPE_RESULT_FILE
-        elif output_type == "Analyte":
+        elif isinstance(output, Analyte):
             output.output_type = Artifact.OUTPUT_TYPE_ANALYTE
-        elif output_type == "SharedResultFile":
+        elif isinstance(output, SharedResultFile):
             output.output_type = Artifact.OUTPUT_TYPE_SHARED_RESULT_FILE
         else:
             raise NotImplementedError(
-                "Output type {} is not implemented".format(output_type))
+                "Output type {} is not implemented".format(output.__class__.__name__))
 
         # Add a reference to the other object for convenience:
         input.output = output

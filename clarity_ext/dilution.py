@@ -1,12 +1,14 @@
 import copy
 from clarity_ext.utils import get_and_apply
 from itertools import groupby
+from clarity_ext.dilution_strategies import *
 
 DILUTION_WASTE_VOLUME = 1
-ROBOT_MIN_VOLUME = 2
 PIPETTING_MAX_VOLUME = 50
 CONCENTRATION_REF_NGUL = 1
 CONCENTRATION_REF_NM = 2
+VOLUME_CALC_FIXED = 1
+VOLUME_CALC_BY_CONC = 2
 
 
 class TransferEndpoint(object):
@@ -16,7 +18,7 @@ class TransferEndpoint(object):
     # TODO: Handle tube racks
 
     def __init__(self, aliquot, concentration_ref=None):
-        self.sample_name = aliquot.name
+        self.aliquot_name = aliquot.name
         self.well = aliquot.well
         self.container = aliquot.container
         self.concentration = self._referenced_concentration(
@@ -62,7 +64,7 @@ class SingleTransfer(object):
 
     def __init__(self, source_endpoint, destination_endpoint=None, pair_id=None):
         self.pair_id = pair_id
-        self.sample_name = source_endpoint.sample_name
+        self.aliquot_name = source_endpoint.aliquot_name
         self.is_control = source_endpoint.is_control
         self.is_source_from_original = source_endpoint.is_from_original
 
@@ -76,6 +78,7 @@ class SingleTransfer(object):
         self.source_well_index = None
         self.source_plate_pos = None
 
+        self.target_aliquot_name = None
         self.target_well = None
         self.target_container = None
         self.requested_concentration = None
@@ -96,6 +99,7 @@ class SingleTransfer(object):
         self.target_container = destination_endpoint.container
         self.requested_concentration = destination_endpoint.requested_concentration
         self.requested_volume = destination_endpoint.requested_volume
+        self.target_aliquot_name = destination_endpoint.aliquot_name
 
     def __str__(self):
         source = "source({}/{}, conc={})".format(self.source_container,
@@ -105,7 +109,7 @@ class SingleTransfer(object):
         return "{} => {}".format(source, target)
 
     def __repr__(self):
-        return "<SingleTransfer {}>".format(self.sample_name)
+        return "<SingleTransfer {}>".format(self.aliquot_name)
 
 
 class EndpointPositioner(object):
@@ -204,12 +208,14 @@ class DilutionScheme(object):
     """Creates a dilution scheme, given input and output analytes."""
 
     def __init__(self, artifact_service, robot_name, scale_up_low_volumes=True,
-                 concentration_ref=None, include_blanks=False, error_log_artifact=None):
+                 concentration_ref=None, include_blanks=False, error_log_artifact=None,
+                 volume_calc_strategy=None):
         """
         Calculates all derived values needed in dilute driver file.
         """
         self.scale_up_low_volumes = scale_up_low_volumes
         self.error_log_artifact = error_log_artifact
+        self.volume_calc_strategy = volume_calc_strategy
         pairs = artifact_service.all_aliquot_pairs()
 
         # TODO: Is it safe to just check for the container for the first output
@@ -265,25 +271,8 @@ class DilutionScheme(object):
 
     def calculate_transfer_volumes(self):
         # Handle volumes etc.
-        for transfer in self.transfers:
-            try:
-                transfer.sample_volume = \
-                    transfer.requested_concentration * transfer.requested_volume / \
-                    transfer.source_concentration
-                transfer.buffer_volume = \
-                    max(transfer.requested_volume - transfer.sample_volume, 0)
-                transfer.has_to_evaporate = \
-                    (transfer.requested_volume - transfer.sample_volume) < 0
-                if self.scale_up_low_volumes and transfer.sample_volume < ROBOT_MIN_VOLUME:
-                    scale_factor = float(
-                        ROBOT_MIN_VOLUME / transfer.sample_volume)
-                    transfer.sample_volume *= scale_factor
-                    transfer.buffer_volume *= scale_factor
-                    transfer.scaled_up = True
-            except (TypeError, ZeroDivisionError) as e:
-                transfer.sample_volume = None
-                transfer.buffer_volume = None
-                transfer.has_to_evaporate = None
+        self.volume_calc_strategy.calculate_transfer_volumes(
+            transfers=self.transfers, scale_up_low_volumes=self.scale_up_low_volumes)
 
     def split_up_high_volume_rows(self):
         """
@@ -395,3 +384,27 @@ class DilutionScheme(object):
 
     def __str__(self):
         return "<DilutionScheme positioner={}>".format(self.robot_deck_positioner)
+
+    @staticmethod
+    def create(artifact_service, robot_name, scale_up_low_volumes=True,
+               concentration_ref=None, include_blanks=False, error_log_artifact=None,
+               volume_calc_method=None, make_pools=False):
+        volume_calc_strategy = None
+
+        if volume_calc_method == VOLUME_CALC_FIXED:
+            volume_calc_strategy = FixedVolumeCalc()
+        elif volume_calc_method == VOLUME_CALC_BY_CONC and make_pools is False:
+            volume_calc_strategy = OneToOneConcentrationCalc()
+        elif volume_calc_method == VOLUME_CALC_BY_CONC and make_pools is True:
+            volume_calc_strategy = PoolConcentrationCalc()
+        else:
+            raise ValueError(
+                "Choice for volume calculation method is not implemented. \n"
+                "volume calc method:  {}\n"
+                "make pools: {}".format(volume_calc_method, make_pools))
+
+        return DilutionScheme(
+            artifact_service=artifact_service, robot_name=robot_name,
+            scale_up_low_volumes=scale_up_low_volumes,
+            concentration_ref=concentration_ref, include_blanks=include_blanks,
+            error_log_artifact=error_log_artifact, volume_calc_strategy=volume_calc_strategy)

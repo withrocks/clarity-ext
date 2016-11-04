@@ -37,7 +37,7 @@ def fake_result_file(artifact_id=None, name=None, container_id=None, well_key=No
     return ret
 
 
-def fake_analyte(container_id=None, artifact_id=None, sample_id=None, analyte_name=None,
+def fake_analyte(container_id=None, artifact_id=None, sample_ids=None, analyte_name=None,
                  well_key=None, is_input=None, is_control=False, udf_map=None, api_resource=None,
                  **kwargs):
     """
@@ -54,12 +54,14 @@ def fake_analyte(container_id=None, artifact_id=None, sample_id=None, analyte_na
     container = fake_container(container_id)
     pos = ContainerPosition.create(well_key)
     well = Well(pos, container)
-    sample = Sample(sample_id, sample_id, MagicMock())
+    if not isinstance(sample_ids, list):
+        sample_ids = [sample_ids]
+    samples = [Sample(id, id, MagicMock()) for id in sample_ids]
     if not udf_map:
         udf_map = DEFAULT_UDF_MAP['Analyte']
     analyte = Analyte(api_resource=api_resource, is_input=is_input,
                       name=analyte_name, well=well, is_control=is_control,
-                      sample=sample, artifact_specific_udf_map=udf_map, **kwargs)
+                      samples=samples, artifact_specific_udf_map=udf_map, **kwargs)
     analyte.id = artifact_id
     analyte.generation_type = Artifact.PER_INPUT
     well.artifact = analyte
@@ -153,3 +155,21 @@ def two_containers_artifact_set():
                       requested_concentration_ngul=100, requested_volume=20))
     ]
     return ret
+
+
+def print_out_dict(object_list, caption):
+    print("{}:".format(caption))
+    print("-----------------------------------------")
+    for o in object_list:
+        print("{}:".format(o))
+        for key in o.__dict__:
+            print("{} {}".format(key, o.__dict__[key]))
+        print("-----------------------------------------\n")
+
+
+def print_list(object_list, caption):
+    print("{}:".format(caption))
+    print("-------------------------------------------")
+    for o in object_list:
+        print("{}".format(o))
+    print("-------------------------------------------\n")

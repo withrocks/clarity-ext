@@ -3,6 +3,8 @@ from mock import MagicMock
 from clarity_ext.dilution import DilutionScheme
 from clarity_ext.dilution import CONCENTRATION_REF_NGUL
 from clarity_ext.dilution import CONCENTRATION_REF_NM
+from clarity_ext.dilution import VOLUME_CALC_BY_CONC
+from clarity_ext.dilution import VOLUME_CALC_FIXED
 from test.unit.clarity_ext.helpers import fake_analyte, fake_result_file
 from test.unit.clarity_ext import helpers
 from clarity_ext.service import ArtifactService
@@ -17,10 +19,12 @@ class TestDilutionScheme(unittest.TestCase):
     """
 
     def _default_dilution_scheme(self, artifact_service, concentration_ref=CONCENTRATION_REF_NGUL,
-                                 include_blanks=False):
-        return DilutionScheme(artifact_service=artifact_service, robot_name="Hamilton",
-                              scale_up_low_volumes=True, concentration_ref=concentration_ref,
-                              include_blanks=include_blanks)
+                                 include_blanks=False, volume_calc_method=VOLUME_CALC_BY_CONC,
+                                 scale_up_low_volumes=True):
+        return DilutionScheme.create(artifact_service=artifact_service, robot_name="Hamilton",
+                                     scale_up_low_volumes=scale_up_low_volumes,
+                                     concentration_ref=concentration_ref,
+                                     include_blanks=include_blanks, volume_calc_method=volume_calc_method)
 
     def test_dilution_scheme_hamilton_base(self):
         """Dilution scheme created by mocked analytes is correctly generated for Hamilton"""
@@ -36,7 +40,7 @@ class TestDilutionScheme(unittest.TestCase):
 
         # Test:
         actual = [
-            [dilute.sample_name,
+            [dilute.aliquot_name,
              dilute.source_well_index,
              dilute.source_plate_pos,
              round(dilute.sample_volume, 1),
@@ -65,7 +69,7 @@ class TestDilutionScheme(unittest.TestCase):
 
         # Test:
         actual = [
-            [dilute.sample_name,
+            [dilute.aliquot_name,
              dilute.source_well_index,
              dilute.source_plate_pos,
              round(dilute.sample_volume, 1),
@@ -118,7 +122,7 @@ class TestDilutionScheme(unittest.TestCase):
 
         # Test:
         actual = [
-            [dilute.sample_name,
+            [dilute.aliquot_name,
              dilute.source_well_index,
              dilute.source_plate_pos,
              round(dilute.sample_volume, 1),
@@ -169,7 +173,7 @@ class TestDilutionScheme(unittest.TestCase):
         ]
 
         actual = [
-            [dilute.sample_name,
+            [dilute.aliquot_name,
              dilute.source_well_index,
              dilute.source_plate_pos,
              round(dilute.sample_volume, 1),
@@ -237,7 +241,7 @@ class TestDilutionScheme(unittest.TestCase):
         ]
 
         actual = [
-            [dilute.sample_name,
+            [dilute.aliquot_name,
              dilute.source_well_index,
              dilute.source_plate_pos,
              round(dilute.sample_volume, 1),
@@ -278,7 +282,8 @@ class TestDilutionScheme(unittest.TestCase):
 
         svc = helpers.mock_artifact_service(analyte_result_file_set)
 
-        dilution_scheme = self._default_dilution_scheme(svc, include_blanks=True)
+        dilution_scheme = self._default_dilution_scheme(
+            svc, include_blanks=True, volume_calc_method=VOLUME_CALC_FIXED)
 
         expected = [
             ['art-name1', 36, 'DNA1', 4, 0, 36, 'END1'],
@@ -288,7 +293,7 @@ class TestDilutionScheme(unittest.TestCase):
 
         # Test:
         actual = [
-            [dilute.sample_name,
+            [dilute.aliquot_name,
              dilute.source_well_index,
              dilute.source_plate_pos,
              4,
@@ -310,8 +315,6 @@ class TestDilutionScheme(unittest.TestCase):
                               requested_concentration_ngul=1000, requested_volume=2))
             ]
 
-            return inputs, outputs
-
         repo = MagicMock()
         repo.all_artifacts = invalid_analyte_set
         svc = ArtifactService(repo)
@@ -331,12 +334,9 @@ class TestDilutionScheme(unittest.TestCase):
                               requested_concentration_ngul=10, requested_volume=200))
             ]
 
-            return inputs, outputs
-
-        repo = MagicMock()
-        repo.all_artifacts = invalid_analyte_set
-        svc = ArtifactService(repo)
-        dilution_scheme = self._default_dilution_scheme(svc)
+        svc = helpers.mock_artifact_service(invalid_analyte_set)
+        dilution_scheme = self._default_dilution_scheme(
+            artifact_service=svc, scale_up_low_volumes=False)
         actual = set(str(result)
                      for result in post_validate_dilution(dilution_scheme))
         expected = set(
@@ -420,9 +420,9 @@ def pre_validate_dilution(dilution_scheme):
     """
     for transfer in dilution_scheme.transfers:
         if not transfer.source_initial_volume:
-            yield ValidationException("{}, source volume is not set.".format(transfer.sample_name))
+            yield ValidationException("{}, source volume is not set.".format(transfer.aliquot_name))
         if not transfer.source_concentration:
-            yield ValidationException("{}, source concentration not set.".format(transfer.sample_name))
+            yield ValidationException("{}, source concentration not set.".format(transfer.aliquot_name))
 
 
 def post_validate_dilution(dilution_scheme):
@@ -435,16 +435,16 @@ def post_validate_dilution(dilution_scheme):
     for transfer_group in dilution_scheme.grouped_transfers:
         total_volume = sum(map(lambda t: t.sample_volume +
                                t.buffer_volume, transfer_group))
-        sample_name = transfer_group[0].sample_name
+        aliquot_name = transfer_group[0].aliquot_name
         pos_spec = pos_str(transfer_group[0])
         has_to_evaporate = transfer_group[0].has_to_evaporate
 
         if total_volume > 100:
             yield ValidationException("{}, too high destination volume ({}).".format(
-                sample_name, pos_spec))
+                aliquot_name, pos_spec))
         if has_to_evaporate:
             yield ValidationException("{}, sample has to be evaporated ({}).".format(
-                sample_name, pos_spec), ValidationType.WARNING)
+                aliquot_name, pos_spec), ValidationType.WARNING)
 
 
 if __name__ == "__main__":
