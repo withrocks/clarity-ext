@@ -325,6 +325,25 @@ class TestDilutionScheme(unittest.TestCase):
             ["Warning: art-name1, sample has to be evaporated (cont-id1(D5)=>cont-id1(B5))."])
         self.assertEqual(expected, actual)
 
+    def test_dilution_scheme_scaled_up_warning(self):
+        def invalid_analyte_set():
+            return [
+                (fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "D:5", True,
+                              concentration_ngul=100, volume=20),
+                 fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "B:5", False,
+                              requested_concentration_ngul=10, requested_volume=2))
+            ]
+
+        repo = MagicMock()
+        repo.all_artifacts = invalid_analyte_set
+        svc = ArtifactService(repo)
+        dilution_scheme = self._default_dilution_scheme(svc)
+        actual = set(str(result)
+                     for result in post_validate_dilution(dilution_scheme))
+        expected = set(
+            ["Warning: art-name1, sample volume is scaled up due to pipetting min volume of 2 ul (cont-id1(D5)=>cont-id1(B5))."])
+        self.assertEqual(expected, actual)
+
     def test_dilution_scheme_too_high_destination_volume(self):
         def invalid_analyte_set():
             return [
@@ -385,6 +404,34 @@ class TestDilutionScheme(unittest.TestCase):
         expected = set(["Error: art-name1, source concentration not set."])
         self.assertEqual(expected, actual)
 
+    def test_requested_concentration_not_set(self):
+        def invalid_analyte_set():
+            return [(fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "D:5",
+                                  True, volume=20, concentration_ngul=10),
+                     fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "B:5",
+                                  False, requested_volume=20))
+                    ]
+        svc = helpers.mock_artifact_service(invalid_analyte_set)
+        dilution_scheme = self._default_dilution_scheme(svc)
+        actual = set(str(result)
+                     for result in pre_validate_dilution(dilution_scheme))
+        expected = set(["Error: art-name1, target concentration is not set."])
+        self.assertEqual(expected, actual)
+
+    def test_requested_volume_not_set(self):
+        def invalid_analyte_set():
+            return [(fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "D:5",
+                                  True, volume=20, concentration_ngul=10),
+                     fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "B:5",
+                                  False, requested_concentration_ngul=20))
+                    ]
+        svc = helpers.mock_artifact_service(invalid_analyte_set)
+        dilution_scheme = self._default_dilution_scheme(svc)
+        actual = set(str(result)
+                     for result in pre_validate_dilution(dilution_scheme))
+        expected = set(["Error: art-name1, target volume is not set."])
+        self.assertEqual(expected, actual)
+
 
 def two_containers_artifact_set_nm():
     """
@@ -423,6 +470,10 @@ def pre_validate_dilution(dilution_scheme):
             yield ValidationException("{}, source volume is not set.".format(transfer.aliquot_name))
         if not transfer.source_concentration:
             yield ValidationException("{}, source concentration not set.".format(transfer.aliquot_name))
+        if not transfer.requested_concentration:
+            yield ValidationException("{}, target concentration is not set.".format(transfer.aliquot_name))
+        if not transfer.requested_volume:
+            yield ValidationException("{}, target volume is not set.".format(transfer.aliquot_name))
 
 
 def post_validate_dilution(dilution_scheme):
@@ -433,18 +484,17 @@ def post_validate_dilution(dilution_scheme):
         return "{}=>{}".format(transfer.source_well, transfer.target_well)
 
     for transfer_group in dilution_scheme.grouped_transfers:
-        total_volume = sum(map(lambda t: t.sample_volume +
-                               t.buffer_volume, transfer_group))
-        aliquot_name = transfer_group[0].aliquot_name
-        pos_spec = pos_str(transfer_group[0])
-        has_to_evaporate = transfer_group[0].has_to_evaporate
+        total_volume = sum(map(lambda t: t.sample_volume + t.buffer_volume, transfer_group))
 
         if total_volume > 100:
             yield ValidationException("{}, too high destination volume ({}).".format(
-                aliquot_name, pos_spec))
-        if has_to_evaporate:
+                transfer_group[0].aliquot_name, pos_str(transfer_group[0])))
+        if transfer_group[0].has_to_evaporate:
             yield ValidationException("{}, sample has to be evaporated ({}).".format(
-                aliquot_name, pos_spec), ValidationType.WARNING)
+                transfer_group[0].aliquot_name, pos_str(transfer_group[0])), ValidationType.WARNING)
+        if transfer_group[0].scaled_up:
+            yield ValidationException("{}, sample volume is scaled up due to pipetting min volume of 2 ul ({}).".format(
+                transfer_group[0].aliquot_name, pos_str(transfer_group[0])), ValidationType.WARNING)
 
 
 if __name__ == "__main__":
