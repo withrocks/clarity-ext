@@ -5,13 +5,12 @@ from setuptools import find_packages, setup
 
 # Add that to the dev reqs file for now, since it's not needed when running
 dependencies = ['click', 'genologics', 'requests-cache', 'pyyaml', 'nose', 'PyPDF2',
-                'lxml', 'coverage', 'pep8radius']
+                'lxml', 'coverage', 'pep8radius', 'mock']
 
 setup(
     name='clarity-ext',
     version='0.1.0',
     url='https://github.com/withrocks/clarity-ext',
-    license='BSD',
     author='withrocks',
     author_email='withrocks',
     description='Main entry point for Clarity extensions in the SNP&SEQ installation',
