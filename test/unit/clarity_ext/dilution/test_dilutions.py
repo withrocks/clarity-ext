@@ -47,7 +47,7 @@ class TestDilutionScheme(unittest.TestCase):
              round(dilute.sample_volume, 1),
              round(dilute.buffer_volume, 1),
              dilute.target_well_index,
-             dilute.target_plate_pos] for dilute in dilution_scheme.transfers
+             dilute.target_plate_pos] for dilute in dilution_scheme.split_row_transfers
         ]
 
         validation_results = list(post_validate_dilution(dilution_scheme))
@@ -76,7 +76,7 @@ class TestDilutionScheme(unittest.TestCase):
              round(dilute.sample_volume, 1),
              round(dilute.buffer_volume, 1),
              dilute.target_well_index,
-             dilute.target_plate_pos] for dilute in dilution_scheme.transfers
+             dilute.target_plate_pos] for dilute in dilution_scheme.split_row_transfers
         ]
 
         validation_results = list(post_validate_dilution(dilution_scheme))
@@ -129,7 +129,7 @@ class TestDilutionScheme(unittest.TestCase):
              round(dilute.sample_volume, 1),
              round(dilute.buffer_volume, 1),
              dilute.target_well_index,
-             dilute.target_plate_pos] for dilute in dilution_scheme.transfers
+             dilute.target_plate_pos] for dilute in dilution_scheme.split_row_transfers
         ]
 
         # Assert:
@@ -180,16 +180,24 @@ class TestDilutionScheme(unittest.TestCase):
              round(dilute.sample_volume, 1),
              round(dilute.buffer_volume, 1),
              dilute.target_well_index,
-             dilute.target_plate_pos] for dilute in dilution_scheme.transfers
+             dilute.target_plate_pos] for dilute in dilution_scheme.split_row_transfers
         ]
-        self.assertEqual(dilution_scheme.transfers[0].has_to_evaporate, False)
-        self.assertEqual(dilution_scheme.transfers[1].has_to_evaporate, False)
-        self.assertEqual(dilution_scheme.transfers[2].has_to_evaporate, True)
-        self.assertEqual(dilution_scheme.transfers[3].has_to_evaporate, False)
-        self.assertEqual(dilution_scheme.transfers[0].scaled_up, True)
-        self.assertEqual(dilution_scheme.transfers[1].scaled_up, True)
-        self.assertEqual(dilution_scheme.transfers[2].scaled_up, True)
-        self.assertEqual(dilution_scheme.transfers[3].scaled_up, False)
+        self.assertEqual(dilution_scheme.split_row_transfers[
+                         0].has_to_evaporate, False)
+        self.assertEqual(dilution_scheme.split_row_transfers[
+                         1].has_to_evaporate, False)
+        self.assertEqual(dilution_scheme.split_row_transfers[
+                         2].has_to_evaporate, True)
+        self.assertEqual(dilution_scheme.split_row_transfers[
+                         3].has_to_evaporate, False)
+        self.assertEqual(dilution_scheme.split_row_transfers[
+                         0].scaled_up, True)
+        self.assertEqual(dilution_scheme.split_row_transfers[
+                         1].scaled_up, True)
+        self.assertEqual(dilution_scheme.split_row_transfers[
+                         2].scaled_up, True)
+        self.assertEqual(dilution_scheme.split_row_transfers[
+                         3].scaled_up, False)
         self.assertEqual(expected, actual)
 
     def test_split_rows_for_high_volume(self):
@@ -248,7 +256,7 @@ class TestDilutionScheme(unittest.TestCase):
              round(dilute.sample_volume, 1),
              round(dilute.buffer_volume, 1),
              dilute.target_well_index,
-             dilute.target_plate_pos] for dilute in dilution_scheme.transfers
+             dilute.target_plate_pos] for dilute in dilution_scheme.split_row_transfers
         ]
 
         print("actual:")
@@ -301,7 +309,7 @@ class TestDilutionScheme(unittest.TestCase):
              0,
              dilute.target_well_index,
              dilute.target_plate_pos,
-             ] for dilute in dilution_scheme.transfers
+             ] for dilute in dilution_scheme.split_row_transfers
         ]
 
         # Assert:
@@ -472,7 +480,7 @@ def pre_validate_dilution(dilution_scheme):
     Check that all pertinent variables are initiated so that calculations
     are possible to perform
     """
-    for transfer in dilution_scheme.transfers:
+    for transfer in dilution_scheme.unsplit_transfers:
         if not transfer.source_initial_volume:
             yield ValidationException("{}, source volume is not set.".format(transfer.aliquot_name))
         if not transfer.source_concentration:
@@ -490,18 +498,16 @@ def post_validate_dilution(dilution_scheme):
     def pos_str(transfer):
         return "{}=>{}".format(transfer.source_well, transfer.target_well)
 
-    for transfer_group in dilution_scheme.grouped_transfers:
-        total_volume = sum(map(lambda t: t.sample_volume + t.buffer_volume, transfer_group))
-
-        if total_volume > 100:
+    for t in dilution_scheme.unsplit_transfers:
+        if t.sample_volume + t.buffer_volume > 100:
             yield ValidationException("{}, too high destination volume ({}).".format(
-                transfer_group[0].aliquot_name, pos_str(transfer_group[0])))
-        if transfer_group[0].has_to_evaporate:
+                t.aliquot_name, pos_str(t)))
+        if t.has_to_evaporate:
             yield ValidationException("{}, sample has to be evaporated ({}).".format(
-                transfer_group[0].aliquot_name, pos_str(transfer_group[0])), ValidationType.WARNING)
-        if transfer_group[0].scaled_up:
+                t.aliquot_name, pos_str(t)), ValidationType.WARNING)
+        if t.scaled_up:
             yield ValidationException("{}, sample volume is scaled up due to pipetting min volume of 2 ul ({}).".format(
-                transfer_group[0].aliquot_name, pos_str(transfer_group[0])), ValidationType.WARNING)
+                t.aliquot_name, pos_str(t)), ValidationType.WARNING)
 
 
 if __name__ == "__main__":
