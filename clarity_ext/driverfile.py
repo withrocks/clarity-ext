@@ -5,6 +5,7 @@ from genologics.epp import attach_file
 from genologics.entities import *
 from clarity_ext.utils import lazyprop
 import re
+import codecs
 
 
 class OSService(object):
@@ -63,9 +64,17 @@ class GeneralFileService(object):
         # The file needs to be opened in binary form to ensure that Windows line endings are used if specified
         with self.os_service.open_file(full_path, 'wb') as f:
             self.logger.debug("Writing output to {}.".format(full_path))
-            newline = self.extension.newline()
-            for line in self.specific_file_service.content():
-                f.write(line + newline)
+            # Content should be either a string or something else we can iterate over, in which case we need newline
+            content = self.specific_file_service.content()
+            if isinstance(content, basestring):
+                try:
+                    f.write(content)
+                except UnicodeEncodeError:
+                    f.write(content.encode("utf-8"))
+            else:
+                newline = self.extension.newline()
+                for line in content:
+                    f.write(line + newline)
         return full_path
 
     def _upload(self, local_file, commit, artifacts_to_stdout):

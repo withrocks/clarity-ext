@@ -39,7 +39,7 @@ class Well(DomainObjectMixin):
 
 class ContainerPosition(namedtuple("ContainerPosition", ["row", "col"])):
     """
-    Defines the position of the plate, (zero based)
+    Defines the position of an item in a container, (zero based)
 
     Default representation is `<row as letter>:<column as number>`, e.g. `A:1`
     """
@@ -49,7 +49,7 @@ class ContainerPosition(namedtuple("ContainerPosition", ["row", "col"])):
     @staticmethod
     def create(repr):
         """
-        Creates a PlatePosition from different representations. Supported formats:
+        Creates a ContainerPosition from different representations. Supported formats:
             "<row as A-Z>:<col as int>"
             "<row as int>:<col as int>"
             (<row>, <col>)
