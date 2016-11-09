@@ -1,6 +1,8 @@
 from __future__ import print_function
 import importlib
 import os
+import sys
+import codecs
 import shutil
 from clarity_ext.driverfile import DriverFileService, ResponseFileService
 from clarity_ext.driverfile import OSService
@@ -16,6 +18,7 @@ from clarity_ext.service import ArtifactService
 from test.integration.integration_test_service import IntegrationTest
 from clarity_ext.repository.step_repository import DEFAULT_UDF_MAP
 from clarity_ext.service.validation_service import ValidationService
+from jinja2 import Template
 
 
 # Defines all classes that are expected to be extended. These are
@@ -374,6 +377,44 @@ class SampleSheetExtension(DriverFileExtension):
         # TODO: The example shows commas in each line. Is that actually required?
         arg_list = list(args) + [""] * (self.column_count - len(args))
         return ",".join(map(str, arg_list))
+
+
+class TemplateExtension(DriverFileExtension):
+    """
+    Creates driver files from templates
+    """
+    __metaclass__ = ABCMeta
+
+    NONE = "<none>"
+
+    def __init__(self, context):
+        super(TemplateExtension, self).__init__(context)
+        file_name = sys.modules[self.__module__].__file__
+        self.template_dir = os.path.dirname(file_name)
+        self.module_name = self.__module__.split(".")[-1]
+
+        # Search for a template with the same name as the module:
+        candidates = list()
+        for candidate_file in os.listdir(self.template_dir):
+            if candidate_file.startswith(self.module_name + ".templ."):
+                candidates.append(candidate_file)
+        if len(candidates) > 1:
+            raise ValueError("More than one template file found: ", ",".join(candidates))
+        self.default_template_name = candidates[0] if len(candidates) == 1 else None
+
+    @property
+    def template_path(self):
+        """Returns the name of the template. By default, it will use the convention of returning the template
+        named `<current module>.templ.*` if one is found."""
+        return os.path.join(self.template_dir, self.default_template_name)
+
+    def content(self):
+        with open(self.template_path, 'r') as fs:
+            text = fs.read()
+            text = codecs.decode(text, "utf-8")
+            template = Template(text)
+            rendered = template.render(ext=self)
+            return rendered
 
 
 class ExtensionTest(object):
