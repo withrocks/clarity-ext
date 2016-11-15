@@ -123,13 +123,14 @@ class Container(DomainObjectMixin):
         """
         size = PlateSize(width=resource.type.x_dimension[
                          "size"], height=resource.type.y_dimension["size"])
-        if resource.type.name == "96 well plate":
+
+        if resource.type.name.startswith("96 well plate"):
             container_type = Container.CONTAINER_TYPE_96_WELLS_PLATE
-        elif resource.type.name == "Tube":
+        elif resource.type.name.startswith("Tube"):
             container_type = Container.CONTAINER_TYPE_TUBE
-        elif resource.type.name == "Strip Tube":
+        elif resource.type.name.startswith("Strip Tube"):
             container_type = Container.CONTAINER_TYPE_STRIP_TUBE
-        elif resource.type.name == "Patterned Flow Cell":
+        elif resource.type.name.startswith("Patterned Flow Cell"):
             container_type = Container.CONTAINER_TYPE_PATTERNED_FLOW_CELL
         else:
             raise NotImplementedError(
