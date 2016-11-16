@@ -1,0 +1,29 @@
+from clarity_ext.extensions import TemplateExtension
+
+
+class Extension(TemplateExtension):
+    """
+    TODO: Add a description
+    OPTIONAL: Rename the associated template file to <name>.<extension>.j2
+    """
+
+    def shared_file(self):
+        # TODO: Add the name of the file handle as it appears in the LIMS UI
+        return "Sample List"
+
+    def filename(self):
+        # TODO: Add the name of this particular file instance
+        return "sample_list.csv"
+
+    # TODO: If required add any methods required in the template, for example:
+    def artifacts(self):
+        for well in self.context.output_container:
+            if not well.artifact:
+                continue
+            artifact = well.artifact
+            artifact.extra_info = "42"
+            yield artifact
+
+    def integration_tests(self):
+        # TODO: Add a valid step ID
+        yield "24-1234"

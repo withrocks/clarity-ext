@@ -4,6 +4,7 @@ import click
 import logging
 from clarity_ext.integration import IntegrationTestService
 from clarity_ext.extensions import ExtensionService
+from clarity_ext.tool.template_generator import TemplateNotFoundException, TemplateGenerator
 import os
 import yaml
 
@@ -73,6 +74,45 @@ def extension(module, mode, args, cache):
                         "Refer to the file 'Step log' if available or {} on the application server for details."
                         .format(os.path.join(ExtensionService.PRODUCTION_LOGS_DIR,
                                              ExtensionService.PRODUCTION_LOG_NAME)))
+
+
+@main.command()
+def templates():
+    """
+    Lists all available templates
+    """
+    click.echo("Available templates:")
+    template_generator = TemplateGenerator()
+    for template in template_generator.list_templates():
+        if template.name != "_base":
+            click.echo("  {}".format(template))
+
+    click.echo()
+    click.echo("Create from template by executing:")
+    click.echo("  clarity-ext create <template-name> <package>")
+
+
+@main.command()
+@click.argument("template")
+@click.argument("package")
+def create(template, package):
+    """
+    Creates a new extension from a template.
+    """
+    click.echo("Creating a new '{}' extension in package '{}'...".format(template, package))
+    template_generator = TemplateGenerator()
+    try:
+        template_generator.create(template, package)
+    except TemplateNotFoundException:
+        click.echo("ERROR: Can't find template called: {}".format(template))
+
+
+@main.command("fix-pycharm")
+@click.argument("package")
+def fix_pycharm(package):
+    template_generator = TemplateGenerator()
+    template_generator.fix_pycharm(package)
+
 
 if __name__ == "__main__":
     main()
