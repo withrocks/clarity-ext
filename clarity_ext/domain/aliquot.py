@@ -1,7 +1,7 @@
 from clarity_ext.domain.artifact import Artifact
-from clarity_ext.utils import get_and_apply
 from clarity_ext.domain.common import DomainObjectMixin
 from clarity_ext.domain.container import ContainerPosition
+from clarity_ext.domain.udf import DomainObjectWithUdfsMixin
 
 
 class Aliquot(Artifact):
@@ -48,9 +48,16 @@ class Aliquot(Artifact):
         return well
 
 
-class Sample(DomainObjectMixin):
+class Sample(DomainObjectWithUdfsMixin):
 
-    def __init__(self, sample_id, name, project):
+    def __init__(self, sample_id, name, project, udfs=None):
+        """
+        :param sample_id: The ID of the sample
+        :param name: The name of the sample
+        :param project: The project domain object
+        :param udfs: A dictionary of udfs
+        """
+        super(Sample, self).__init__(udfs)
         self.id = sample_id
         self.name = name
         self.project = project
@@ -61,7 +68,7 @@ class Sample(DomainObjectMixin):
     @staticmethod
     def create_from_rest_resource(resource):
         project = Project(resource.project.name) if resource.project else None
-        sample = Sample(resource.id, resource.name, project)
+        sample = Sample(resource.id, resource.name, project, resource.udf)
         return sample
 
 
