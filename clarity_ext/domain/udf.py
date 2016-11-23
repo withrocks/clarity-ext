@@ -19,8 +19,7 @@ class Udf(DomainObjectMixin):
         self.assigner = AssignLogger(self)
         self.api_resource = api_resource
         if api_resource:
-            attributes, self.udfs_to_attributes = self._create_automap(
-                api_resource.udf)
+            attributes, self.udfs_to_attributes = DomainObjectWithUdfsMixin.create_automap(api_resource.udf)
             self.__dict__.update(attributes)
 
     @lazyprop
@@ -70,7 +69,29 @@ class Udf(DomainObjectMixin):
     def commit(self):
         self.api_resource.put()
 
-    def _create_automap(self, original_udfs):
+
+class DomainObjectWithUdfsMixin(DomainObjectMixin):
+    """
+    A mixin to add to domain objects that have UDFs.
+
+    NOTE: This will eventually replace the Udf mixin above with the following changes:
+        - Only uses the `automap` feature, doesn't expect a UDF map from the caller
+        - Remembers the original state of the UDFs as a basis of comparison when updating
+        - Udfs can be assigned directly without using set_udf, which will lead to the value
+          being updated.
+
+    Until the mixin has entirely replaced it, both will be available.
+    """
+    def __init__(self, udfs=None):
+        """
+        :param udfs: A dictionary of user defined fields.
+        """
+        if udfs:
+            attributes, self.udfs_to_attributes = self.create_automap(udfs)
+            self.__dict__.update(attributes)
+
+    @classmethod
+    def create_automap(cls, original_udfs):
         """
         Given a dictionary of UDFs, returns a new dictionary that uses Python naming conventions instead.
 
@@ -82,12 +103,13 @@ class Udf(DomainObjectMixin):
         # resource UDFs.
         udfs_to_attributes = dict()
         for key, value in original_udfs.items():
-            attrib_name = self._automap_name(key)
+            attrib_name = cls.automap_name(key)
             attributes[attrib_name] = value
             udfs_to_attributes[key] = attrib_name
         return attributes, udfs_to_attributes
 
-    def _automap_name(self, original_udf_name):
+    @classmethod
+    def automap_name(cls, original_udf_name):
         """
         Maps a UDF name from Clarity to one that matches Python naming conventions
 
