@@ -2,7 +2,12 @@ from __future__ import print_function
 import os
 import shutil
 import logging
+import importlib
+import pkgutil
 from driverfile import DriverFileIntegrationTests
+
+
+logger = logging.getLogger(__name__)
 
 
 # Creates an integration test config file based on convention
@@ -11,11 +16,13 @@ class ConfigFromConventionProvider(object):
 
     @classmethod
     def _enumerate_modules(cls, root_name):
-        import importlib
-        import pkgutil
         root = importlib.import_module(root_name)
         for loader, module_name, is_pkg in pkgutil.walk_packages(root.__path__):
-            module = loader.find_module(module_name).load_module(module_name)
+            try:
+                module = loader.find_module(module_name).load_module(module_name)
+            except SyntaxError:
+                logger.warning("Syntax error in module {}".format(module_name))
+                pass
             yield module
 
     @classmethod

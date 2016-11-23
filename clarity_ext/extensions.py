@@ -394,9 +394,13 @@ class TemplateExtension(DriverFileExtension):
         self.module_name = self.__module__.split(".")[-1]
 
         # Search for a template with the same name as the module:
+        # If the module is called `example_tapestation_file.py`, this will
+        # search for any file that starts with `example_tapestation_file` and
+        # ends with j2 (the default jinja template extension)
         candidates = list()
         for candidate_file in os.listdir(self.template_dir):
-            if candidate_file.startswith(self.module_name + ".templ."):
+            candidate_file_parts = candidate_file.split(".")
+            if candidate_file_parts[0] == self.module_name and candidate_file_parts[-1] == "j2":
                 candidates.append(candidate_file)
         if len(candidates) > 1:
             raise ValueError("More than one template file found: ", ",".join(candidates))
