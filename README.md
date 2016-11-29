@@ -1,4 +1,8 @@
 # clarity-ext
+
+[![Build Status](https://travis-ci.org/Molmed/clarity-ext.svg?branch=develop)](https://travis-ci.org/Molmed/clarity-ext)
+[![Code Climate](https://codeclimate.com/github/Molmed/clarity-ext/badges/gpa.svg)](https://codeclimate.com/github/Molmed/clarity-ext)
+
 NOTE: Work in progress (pre-alpha). This document is also in pre-alpha.
 
 Provides a library for extending Clarity LIMS in a more developer-friendly way.
