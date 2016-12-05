@@ -15,7 +15,8 @@ class ClaritySession(object):
         self.api = api
         api.check_version()
         self.current_step_id = current_step_id
-        self.current_step = Process(self.api, id=current_step_id)
+        if current_step_id:
+            self.current_step = Process(self.api, id=current_step_id)
 
     @staticmethod
     def create(current_step_id):
