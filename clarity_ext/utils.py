@@ -1,6 +1,8 @@
 import requests_cache
 import os
 import shutil
+import hashlib
+import logging
 
 
 # http://stackoverflow.com/a/3013910/282024
@@ -91,3 +93,26 @@ def unique(items, fn):
         if key not in seen:
             seen.add(key)
             yield item
+
+
+def dir_tree(path):
+    """
+    Dumps the directory tree to the debug log, including a SHA1 hash of each file.
+    No-op if debug log is off.
+    """
+
+    def file_hash(path):
+        """Returns the SHA1 hash of the file"""
+        sha1 = hashlib.sha1()
+        with open(path, "rb") as fs:
+            sha1.update(fs.read())
+            return sha1.hexdigest()
+
+    ret = list()
+    ret.append("Contents of '{}':".format(path))
+    for root, dirs, files in os.walk(path):
+        for f in files:
+            full_path = os.path.join(root, f)
+            ret.append("\t{}: {}".format(file_hash(full_path)[0:7], full_path))
+
+    return os.linesep.join(ret)

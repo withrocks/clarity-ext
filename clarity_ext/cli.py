@@ -7,6 +7,7 @@ from clarity_ext.extensions import ExtensionService
 from clarity_ext.tool.template_generator import TemplateNotFoundException, TemplateGenerator
 import os
 import yaml
+import time
 
 config = None
 logger = None
@@ -38,7 +39,6 @@ def validate(module):
     Validates the extension if there exists frozen data for it.
     Can use regex to match extensions.
     """
-    import time
     t1 = time.time()
     integration_svc = IntegrationTestService()
     validation_exceptions = integration_svc.validate(module, config)
@@ -65,9 +65,31 @@ def extension(module, mode, args, cache):
     :param args: Dynamic parameters to the extension
     :param cache: Specifies if the cache should be used. If None, the default for `mode` will be used.
     """
+    global config
     try:
-        extension_svc = ExtensionService()
-        extension_svc.execute(module, mode, args, config, use_cache=cache)
+        extension_svc = ExtensionService(lambda msg: print(msg))
+        if not config:
+            config = {
+                "test_root_path": "./clarity_ext_scripts/int_tests",
+                "frozen_root_path": "./clarity_ext_scripts/int_tests",
+                "exec_root_path": "."
+            }
+            logger.debug("Configuration not provided, using default: {}".format(config))
+
+        # Parse the run arguments list:
+        if args and isinstance(args, basestring):
+            separated = args.split(" ")
+            key_values = (argument.split("=") for argument in separated)
+            args = [{key: value for key, value in key_values}]
+
+        if mode == extension_svc.RUN_MODE_FREEZE:
+            extension_svc.run_freeze(config, args, module)
+        elif mode == ExtensionService.RUN_MODE_TEST:
+            extension_svc.run_test(config, args, module, True, cache)
+        elif mode == ExtensionService.RUN_MODE_EXEC:
+            extension_svc.run_exec(config, args, module)
+        else:
+            raise NotImplementedError("Mode '{}' is not implemented".format(mode))
     except Exception:
         logger.exception("Exception while running extension")
         raise Exception("There was an exception while running the extension. " +

@@ -99,9 +99,6 @@ class GeneralFileService(object):
                 print f.read()
             print "---"
 
-    def file_key(self, file_name):
-        return self.specific_file_service.file_key(file_name)
-
 
 class DriverFileService:
     def __init__(self, extension, shared_file_name, os_service, logger=None):
@@ -133,13 +130,6 @@ class DriverFileService:
 
     def content(self):
         return self.extension.content()
-
-    def file_key(self, file_name):
-        match = re.match(r"(^92-\d+).*$", file_name)
-        if match:
-            return match.group(1)
-        else:
-            return None
 
     @lazyprop
     def artifact(self):
@@ -175,14 +165,6 @@ class ResponseFileService:
         self.extension.execute()
         for row in self.extension.context.response:
             yield "\t".join(row)
-
-    def file_key(self, file_name):
-        # TODO: Files not matching with a ResultFile shouldn't be uploaded at all
-        match = re.match(r"(^(24|122)-\d+).*$", file_name)
-        if match:
-            return match.group(1)
-        else:
-            return None
 
     def print_log(self):
         pass
