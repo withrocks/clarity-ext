@@ -22,8 +22,7 @@ class ExtensionContext(Udf):
     able to access the underlying services if needed.
     """
 
-    def __init__(self, session, artifact_service, file_service, current_user, step_logger_service, step_repo,
-                 cache=False):
+    def __init__(self, session, artifact_service, file_service, current_user, step_logger_service, step_repo):
         """
         Initializes the context.
 
@@ -37,7 +36,6 @@ class ExtensionContext(Udf):
         super(ExtensionContext, self).__init__(
             api_resource=session.current_step, id=session.current_step_id)
         self.session = session
-        self.cache = cache
         self.logger = step_logger_service
         self.units = UnitConversion()
         self._update_queue = []
@@ -50,7 +48,7 @@ class ExtensionContext(Udf):
         self.dilution_scheme = None
 
     @staticmethod
-    def create(step_id, cache=False):
+    def create(step_id):
         """
         Creates a context with all required services set up. This is the way
         a context is meant to be created in production and integration tests,
@@ -63,8 +61,7 @@ class ExtensionContext(Udf):
         file_repository = FileRepository(session)
         file_service = FileService(artifact_service, file_repository, False, OSService())
         step_logger_service = StepLoggerService("Step log", file_service)
-        return ExtensionContext(session, artifact_service, file_service, current_user, step_logger_service, step_repo,
-                                cache=cache)
+        return ExtensionContext(session, artifact_service, file_service, current_user, step_logger_service, step_repo)
 
     @property
     def udfs(self):
