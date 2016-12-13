@@ -79,7 +79,7 @@ class FileService:
                     self.logger.info("Downloading file {} (artifact={} '{}')"
                                      .format(file.id, artifact.id, artifact.name))
                     self.file_repo.copy_remote_file(file.id, local_path)
-                    self.logger.info("Download completed, path='{}'".format(local_path))
+                    self.logger.info("Download completed, path='{}'".format(os.path.relpath(local_path)))
 
                     if self.should_cache:
                         if not os.path.exists(cache_directory):
@@ -118,7 +118,7 @@ class FileService:
         for path in self._local_shared_files:
             if os.path.exists(path):
                 self.logger.info("Local shared file '{}' will be removed to ensure "
-                                 "that it won't be uploaded again".format(path))
+                                 "that it won't be uploaded again".format(os.path.relpath(path)))
                 # TODO: Handle exception
                 os.remove(path)
 

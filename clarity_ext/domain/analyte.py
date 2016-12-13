@@ -35,7 +35,10 @@ class Analyte(Aliquot):
         self.is_output_from_previous = is_from_original
 
     def __repr__(self):
-        return "{} ({})".format(self.name, self.id)
+        typename = type(self).__name__
+        if self.is_input is not None:
+            typename = ("Input" if self.is_input else "Output") + typename
+        return "{}<{} ({})>".format(typename, self.name, self.id)
 
     @staticmethod
     def create_from_rest_resource(resource, is_input, udf_map, container_repo):

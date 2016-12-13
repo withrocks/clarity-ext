@@ -8,9 +8,11 @@ from clarity_ext.tool.template_generator import TemplateNotFoundException, Templ
 import os
 import yaml
 import time
+from clarity_ext.extensions import ResultsDifferFromFrozenData
 
 config = None
-logger = None
+logger = logging.getLogger(__name__)
+log_level = None
 
 
 @click.group()
@@ -19,17 +21,22 @@ def main(level):
     """
     :param level: ["DEBUG", "INFO", "WARN", "ERROR"]
     :param cache: Set to a cache name if running from a cache (or caching)
-                This is used to ensure reproducible and fast integration tests
+                  This is used to ensure reproducible and fast integration tests
     :return:
     """
     global config
     global logger
-    ExtensionService.initialize_logging(level.upper())
-    logger = logging.getLogger(__name__)
+    global log_level
+    log_level = level
 
     if os.path.exists("clarity-ext.config"):
         with open("clarity-ext.config", "r") as f:
             config = yaml.load(f)
+
+
+def default_logging():
+    global log_level
+    logging.basicConfig(level=log_level)
 
 
 @main.command()
@@ -39,6 +46,7 @@ def validate(module):
     Validates the extension if there exists frozen data for it.
     Can use regex to match extensions.
     """
+    default_logging()
     t1 = time.time()
     integration_svc = IntegrationTestService()
     validation_exceptions = integration_svc.validate(module, config)
@@ -63,11 +71,10 @@ def extension(module, mode, args, cache):
         freeze: Freeze an already created test (move from test-run to test-frozen)
         validate: Test the code locally, then compare with the frozen directory
     :param args: Dynamic parameters to the extension
-    :param cache: Specifies if the cache should be used. If None, the default for `mode` will be used.
     """
     global config
+    default_logging()
     try:
-        extension_svc = ExtensionService(lambda msg: print(msg))
         if not config:
             config = {
                 "test_root_path": "./clarity_ext_scripts/int_tests",
@@ -82,20 +89,33 @@ def extension(module, mode, args, cache):
             key_values = (argument.split("=") for argument in separated)
             args = [{key: value for key, value in key_values}]
 
-        if mode == extension_svc.RUN_MODE_FREEZE:
+        validate_against_frozen = True # Indicates a run that should ignore the frozen directory
+        if mode == "test-fresh":
+            mode = "test"
+            validate_against_frozen = False
+
+        extension_svc = ExtensionService(lambda msg: print(msg))
+        if mode == ExtensionService.RUN_MODE_FREEZE:
             extension_svc.run_freeze(config, args, module)
         elif mode == ExtensionService.RUN_MODE_TEST:
-            extension_svc.run_test(config, args, module, True, cache)
+            extension_svc.set_log_strategy(log_level, True, False, True)
+            try:
+                extension_svc.run_test(config, args, module, True, cache, validate_against_frozen)
+            except ResultsDifferFromFrozenData as ex:
+                print("Results differ from frozen data: " + ex.message)
         elif mode == ExtensionService.RUN_MODE_EXEC:
+            extension_svc.set_log_strategy(log_level, True, True, True, "/opt/clarity-ext/logs", "extensions.log")
             extension_svc.run_exec(config, args, module)
         else:
             raise NotImplementedError("Mode '{}' is not implemented".format(mode))
     except Exception:
         logger.exception("Exception while running extension")
-        raise Exception("There was an exception while running the extension. " +
-                        "Refer to the file 'Step log' if available or {} on the application server for details."
-                        .format(os.path.join(ExtensionService.PRODUCTION_LOGS_DIR,
-                                             ExtensionService.PRODUCTION_LOG_NAME)))
+        # Throw a more helpful exception that will be shown in the GUI.
+        msg = "There was an exception while running the extension. " + \
+              "Refer to the file 'Step log' if available."
+        if extension_svc.rotating_file_path:
+            msg += " The application log is available in {}.".format(extension_svc.rotating_file_path)
+        raise Exception(msg)
 
 
 @main.command()

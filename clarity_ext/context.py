@@ -22,7 +22,8 @@ class ExtensionContext(Udf):
     able to access the underlying services if needed.
     """
 
-    def __init__(self, session, artifact_service, file_service, current_user, step_logger_service, step_repo):
+    def __init__(self, session, artifact_service, file_service, current_user,
+                 step_logger_service, step_repo, test_mode=False):
         """
         Initializes the context.
 
@@ -32,6 +33,8 @@ class ExtensionContext(Udf):
         :param step_logger_service: Provides access to logging via the context.
         :param step_repo: The repository for the current step
         :param cache: Set to True to use the cache folder (.cache) for downloaded files
+        :param test_mode: If set to True, extensions may behave slightly differently when testing, in particular
+                          returning a constant time.
         """
         super(ExtensionContext, self).__init__(
             api_resource=session.current_step, id=session.current_step_id)
@@ -46,9 +49,11 @@ class ExtensionContext(Udf):
         self.step_repo = step_repo
         self.response = None
         self.dilution_scheme = None
+        self.disable_commits = False
+        self.test_mode = test_mode
 
     @staticmethod
-    def create(step_id):
+    def create(step_id, test_mode=False):
         """
         Creates a context with all required services set up. This is the way
         a context is meant to be created in production and integration tests,
@@ -61,7 +66,8 @@ class ExtensionContext(Udf):
         file_repository = FileRepository(session)
         file_service = FileService(artifact_service, file_repository, False, OSService())
         step_logger_service = StepLoggerService("Step log", file_service)
-        return ExtensionContext(session, artifact_service, file_service, current_user, step_logger_service, step_repo)
+        return ExtensionContext(session, artifact_service, file_service, current_user,
+                                step_logger_service, step_repo, test_mode=test_mode)
 
     @property
     def udfs(self):
@@ -168,5 +174,5 @@ class ExtensionContext(Udf):
 
     def commit(self):
         """Commits all objects that have been added via the update method, using batch processing if possible"""
-        self.response = self.artifact_service.update_artifacts(self._update_queue)
+        self.response = self.artifact_service.update_artifacts(self._update_queue, self.disable_commits)
 

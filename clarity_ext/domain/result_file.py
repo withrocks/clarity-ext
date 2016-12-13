@@ -53,4 +53,5 @@ class ResultFile(Aliquot):
         return utils.single(self.samples)
 
     def __repr__(self):
-        return self.id
+        typename = type(self).__name__
+        return "{}<{} ({})>".format(typename, self.name, self.id)

@@ -3,6 +3,9 @@ from clarity_ext.domain.common import DomainObjectMixin
 from clarity_ext.utils import lazyprop
 from clarity_ext.domain.common import AssignLogger
 from clarity_ext.unit_conversion import UnitConversion
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class Udf(DomainObjectMixin):
@@ -30,6 +33,10 @@ class Udf(DomainObjectMixin):
         self.assigner = AssignLogger(self)
 
     def set_udf(self, name, value, from_unit=None, to_unit=None):
+        # Log which UDFs have been set. This is used by integration tests that test
+        # if the UDFs have been tested without actually updating the backend.
+        logger.info("{object}[{udf}] := {value}".format(udf=name, value=value,
+                                                      object=self))
         if from_unit:
             units = UnitConversion()
             value = units.convert(value, from_unit, to_unit)

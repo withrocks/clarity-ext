@@ -28,3 +28,7 @@ class SharedResultFile(Artifact):
                 original_rest_resource, updated_fields)
 
         return _updated_rest_resource, self.assigner.consume()
+
+    def __repr__(self):
+        typename = type(self).__name__
+        return "{}<{} ({})>".format(typename, self.name, self.id)

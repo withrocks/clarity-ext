@@ -25,10 +25,13 @@ class IntegrationTest:
     """
 
     def __init__(self, pid=None, run_argument_dict=None, update_matrix_by_limsid=None,
-                 update_matrix_by_artnames=None):
+                 update_matrix_by_artnames=None, commit=True):
+        """
+        :param commit: Set to False to override all calls to commit on the context object.
+        """
         self.run_argument_dict = {}
         if pid:
-            self.run_argument_dict = {"pid": pid}
+            self.run_argument_dict = {"pid": pid, "commit": commit}
         if run_argument_dict:
             self.run_argument_dict.update(run_argument_dict)
 
@@ -38,9 +41,16 @@ class IntegrationTest:
         self.preparer = None
         self.preparer = IntegrationTestPrepare(
             update_matrix_by_limsid=update_matrix_by_limsid, update_matrix_by_artnames=update_matrix_by_artnames)
+        self.commit = commit
 
     def pid(self):
         return self.run_argument_dict["pid"]
+
+    def __getitem__(self, item):
+        return self.run_argument_dict[item]
+
+    def __repr__(self):
+        return repr(self.run_argument_dict)
 
 
 class IntegrationTestPrepare:

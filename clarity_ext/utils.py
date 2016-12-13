@@ -3,6 +3,7 @@ import os
 import shutil
 import hashlib
 import logging
+from contextlib import contextmanager
 
 
 # http://stackoverflow.com/a/3013910/282024
@@ -116,3 +117,27 @@ def dir_tree(path):
             ret.append("\t{}: {}".format(file_hash(full_path)[0:7], full_path))
 
     return os.linesep.join(ret)
+
+
+def get_default_log_formatter(use_timestamp):
+    """Creates a formatter with the default format [time] [name] [level] [message]"""
+    format = "%(name)s - %(levelname)s - %(message)s"
+    if use_timestamp:
+        format = "%(asctime)s - " + format
+    return logging.Formatter(format)
+
+
+@contextmanager
+def add_log_file_handler(path, use_timestamp, filter=None, mode='w'):
+    """
+    Adds a file handler to the root handler. Creates a new file if one exists.
+    Within a `with` statement, the handler will be removed when out of context.
+    """
+    root_logger = logging.getLogger('')
+    file_handler = logging.FileHandler(path, mode=mode)
+    file_handler.setFormatter(get_default_log_formatter(use_timestamp))
+    file_handler.addFilter(filter)
+    root_logger.addHandler(file_handler)
+    yield
+    root_logger.removeHandler(file_handler)
+
