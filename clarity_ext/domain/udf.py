@@ -62,7 +62,7 @@ class DomainObjectWithUdfMixin(DomainObjectMixin):
         """
         assert self.api_resource is not None
 
-        # TODO: I wanted to take a deep copy, but that doesn't work.
+        # TODO: It would be preferable to copy the object, but that didn't work out of the box.
         # The problem now is that if the update doesn't work out,
         # the api resource will not be in sync, which could lead to subtle errors.
         # new_api_resource = copy.deepcopy(self.api_resource)

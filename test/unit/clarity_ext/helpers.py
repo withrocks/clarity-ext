@@ -1,8 +1,8 @@
 from clarity_ext.domain import Container
 from mock import MagicMock
-from clarity_ext.service import ArtifactService, FileService
 from clarity_ext.repository.step_repository import StepRepository
 from clarity_ext.context import ExtensionContext
+from clarity_ext.service import ArtifactService, FileService, ClarityService
 from clarity_ext.domain.analyte import Analyte
 from clarity_ext.domain.container import Well
 from clarity_ext.domain.container import ContainerPosition
@@ -175,7 +175,15 @@ def mock_context(artifact_service=None, step_repo=None):
     return ExtensionContext(session=session, artifact_service=artifact_service,
                             file_service=file_service,
                             current_user=current_user, step_logger_service=step_logger_service,
+                            clarity_service=MagicMock(),
                             step_repo=step_repo)
+
+
+def mock_clarity_service(artifact_set):
+    repo = MagicMock()
+    repo.all_artifacts = artifact_set
+    svc = ClarityService(repo)
+    return svc
 
 
 def mock_file_service(artifact_set):

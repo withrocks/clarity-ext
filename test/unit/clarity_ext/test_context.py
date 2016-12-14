@@ -8,23 +8,12 @@ class TestContext(unittest.TestCase):
 
     def test_context(self):
         """Can create an ExtensionContext"""
-        session = MagicMock()
-        artifact_svc = MagicMock()
-        file_svc = MagicMock()
-        current_user = MagicMock()
-        step_logger_svc = MagicMock()
-        context = ExtensionContext(session, artifact_svc, file_svc, current_user, step_logger_svc, None)
+        context = self._mock_context()
         self.assertIsNotNone(context)
 
     def test_input_output_container_throws(self):
-        session = MagicMock()
-        artifact_svc = helpers.mock_two_containers_artifact_service()
-        file_svc = MagicMock()
-        current_user = MagicMock()
-        step_logger_svc= MagicMock()
-        context = ExtensionContext(session, artifact_svc, file_svc, current_user, step_logger_svc, None)
-
-        containers = artifact_svc.all_input_containers()
+        context = self._mock_context()
+        containers = context.artifact_service.all_input_containers()
         self.assertEqual(2, len(containers), "Test data not correctly setup")
 
         def input_should_raise():
@@ -37,3 +26,12 @@ class TestContext(unittest.TestCase):
         self.assertRaises(ValueError, input_should_raise)
         self.assertRaises(ValueError, output_should_raise)
 
+    def _mock_context(self):
+        session = MagicMock()
+        artifact_svc = helpers.mock_two_containers_artifact_service()
+        file_svc = MagicMock()
+        current_user = MagicMock()
+        step_logger_svc= MagicMock()
+        clarity_svc = MagicMock()
+        return ExtensionContext(session, artifact_svc, file_svc, current_user, step_logger_svc, None,
+                                clarity_svc)

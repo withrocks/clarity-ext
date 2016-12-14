@@ -141,6 +141,7 @@ class Container(DomainObjectMixin):
         ret.size = size
         for artifact in api_artifacts:
             ret.set_well(artifact.location[1], artifact)
+        ret.api_resource = resource
         return ret
 
     @lazyprop
