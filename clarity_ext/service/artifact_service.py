@@ -115,7 +115,15 @@ class ArtifactService:
         assert len(ret) == 0 or isinstance(ret[0], ResultFile)
         return ret
 
-    def update_artifacts(self, update_queue):
+    def update_artifacts(self, update_queue, whatif=False):
+        """
+        :param update_queue: The items to be updated
+        :param whatif: True if artifacts shouldn't be updated (log only)
+        """
+        if whatif:
+            self.logger.info("A request for updating artifacts was ignored. "
+                             "View log to see which properties have changed.")
+            return
         response = self.step_repository.update_artifacts(update_queue)
         return response
 

@@ -18,17 +18,16 @@ from test.integration.integration_test_service import IntegrationTest
 from clarity_ext.repository.step_repository import DEFAULT_UDF_MAP
 from clarity_ext.service.validation_service import ValidationService
 from jinja2 import Template
+import time
+import random
 
 
 # Defines all classes that are expected to be extended. These are
 # also imported to the top-level module
-
-# TODO: use Python 3 and add typing hints
-
-
 class ExtensionService(object):
 
     RUN_MODE_TEST = "test"
+    RUN_MODE_TEST_FRESH = "test-fresh"
     RUN_MODE_FREEZE = "freeze"
     RUN_MODE_EXEC = "exec"
 
@@ -36,36 +35,42 @@ class ExtensionService(object):
     CACHE_NAME = ".http_cache"
     CACHE_ARTIFACTS_DIR = ".cache"
 
-    PRODUCTION_LOGS_DIR = "/opt/clarity-ext/logs"
-    PRODUCTION_LOG_NAME = "extensions.log"
-
     def __init__(self, msg_handler):
         """
         :param msg_handler: A callable that receives messages to a user using the application interactively
         """
         self.logger = logging.getLogger(__name__)
         self.msg = msg_handler
+        self.rotating_file_path = None
 
-    @classmethod
-    def initialize_logging(cls, level):
-        """
-        Initializes logging for the application. Should be called once in the entry point.
+    def set_log_strategy(self, level, log_to_stdout, log_to_file, use_timestamp,
+                         rotating_log_dir=None, rotating_log_name=None):
 
-        Everything is logged to a console handler. By convention, if the directory "/opt/clarity-ext/logs" exists,
-        the logger will also log to that.
-        """
-        formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-        console_handler = logging.StreamHandler()
-        console_handler.setFormatter(formatter)
         root_logger = logging.getLogger('')
-        root_logger.addHandler(console_handler)
+        for handler in root_logger.handlers:
+            root_logger.removeHandler(handler)
         root_logger.setLevel(level)
 
-        if os.path.exists(cls.PRODUCTION_LOGS_DIR):
-            file_name = os.path.join(cls.PRODUCTION_LOGS_DIR, cls.PRODUCTION_LOG_NAME)
-            rotating_handler = logging.handlers.RotatingFileHandler(file_name, maxBytes=10 * (2**20), backupCount=5)
+        formatter = utils.get_default_log_formatter(use_timestamp)
+        if log_to_stdout:
+            console_handler = logging.StreamHandler()
+            console_handler.setFormatter(formatter)
+            root_logger.addHandler(console_handler)
+
+        # Log to the current directory if the rotating directory doesn't exist.
+        if log_to_file:
+            warn_dir_missing = False
+            if not os.path.exists(rotating_log_dir):
+                warn_dir_missing = True
+                rotating_log_dir = os.path.abspath(".")
+            self.rotating_file_path = os.path.join(rotating_log_dir, rotating_log_name)
+            rotating_handler = logging.handlers.RotatingFileHandler(
+                self.rotating_file_path, maxBytes=10 * (2**20), backupCount=5)
             rotating_handler.setFormatter(formatter)
             root_logger.addHandler(rotating_handler)
+
+            if warn_dir_missing:
+                logging.warn("The rotating log directory {} doesn't exist. Logging to ./ instead".format(rotating_log_dir))
 
     def _get_run_path(self, pid, module, mode, config):
         """Fetches the run path based on different modes of execution"""
@@ -93,34 +98,56 @@ class ExtensionService(object):
             path = self._get_run_path(pid, module, self.RUN_MODE_EXEC, config)
             self._run(path, pid, module, False, False)
 
-    def run_test(self, config, run_arguments_list, module, artifacts_to_stdout, use_cache):
+    def run_test(self, config, run_arguments_list, module, artifacts_to_stdout, use_cache, validate_against_frozen):
         self.msg("To execute from Clarity:")
         self.msg("  clarity-ext extension --args '{}' {} {}".format(
             "pid={processLuid}",
             module, self.RUN_MODE_EXEC))
+        self.msg("To run a fresh test (ignores the frozen test's cache)")
+        self.msg("  clarity-ext extension '{}' test-fresh".format(module))
         self.msg("To freeze the latest test run (set as reference data for future validations):")
         self.msg("  clarity-ext extension {} {}".format(
             module, self.RUN_MODE_FREEZE))
 
         if use_cache is None:
             use_cache = True
-        self._set_cache(use_cache)
-        instance = self._get_extension(module)(None)
+        if use_cache:
+            self._set_cache(use_cache)
 
-        self._prepare_runs(instance)  # Required to support certain tests
         if not run_arguments_list:
             run_arguments_list = self._gather_runs(module, True)
 
         for run_arguments in run_arguments_list:
             pid = run_arguments["pid"]
+            commit = run_arguments["commit"]
             path = self._get_run_path(pid, module, self.RUN_MODE_TEST, config)
-            frozen_path = self._get_run_path(pid, module, self.RUN_MODE_FREEZE, config)
-            self._prepare_frozen_test(path, frozen_path)
-            self._run(path, pid, module, artifacts_to_stdout, False)
-            try:
-                self._validate_against_frozen(path, frozen_path)
-            except NoFrozenDataFoundException:
-                self.msg("No frozen data was found at {}".format(frozen_path))
+
+            if validate_against_frozen:
+                frozen_path = self._get_run_path(pid, module, self.RUN_MODE_FREEZE, config)
+                self._prepare_frozen_test(path, frozen_path)
+            else:
+                self._prepare_fresh_test(path)
+
+            with utils.add_log_file_handler(os.path.join(path, "extensions.log"), False, ExtensionTestLogFilter()):
+                self._run(path, pid, module, artifacts_to_stdout, False, disable_context_commit=not commit, test_mode=True)
+
+            if validate_against_frozen:
+                try:
+                    self._validate_against_frozen(path, frozen_path)
+                except NoFrozenDataFoundException:
+                    self.msg("No frozen data was found at {}".format(frozen_path))
+
+    def _prepare_fresh_test(self, path):
+        """
+        Prepares a test where a cache from the frozen directory should not be used, but a
+        new cache might be generated
+        """
+        if os.path.exists(path):
+            self.logger.info("Cleaning run directory '{}'".format(path))
+            utils.clean_directory(path)
+        else:
+            self.logger.info("Creating an empty run directory at {}".format(path))
+            os.makedirs(path)
 
     def _prepare_frozen_test(self, path, frozen_path):
         self.logger.info("Preparing frozen test at '{}'".format(frozen_path))
@@ -171,9 +198,6 @@ class ExtensionService(object):
             test_path = self._get_run_path(pid, module, self.RUN_MODE_TEST, config)
             frozen_path = self._get_run_path(pid, module, self.RUN_MODE_FREEZE, config)
 
-            if self.logger.isEnabledFor(logging.DEBUG):
-                self.logger.debug(utils.dir_tree(test_path))
-                self.logger.debug(utils.dir_tree(frozen_path))
             if os.path.exists(frozen_path):
                 self.logger.info("Removing old frozen directory '{}'".format(frozen_path))
                 shutil.rmtree(frozen_path)
@@ -185,14 +209,14 @@ class ExtensionService(object):
 
     def _gather_runs(self, module, require_tests=True):
         def parse_run_argument(in_argument):
+            # The run argument can be either an IntegrationTest or just a string (pid)
             if isinstance(in_argument, IntegrationTest):
-                return in_argument.run_argument_dict
-            if isinstance(in_argument, str):
-                return {"pid": in_argument}
-            elif isinstance(in_argument, dict):
-                return in_argument
+                test = in_argument
+            elif isinstance(in_argument, basestring):
+                test = IntegrationTest(pid=in_argument)
             else:
-                return in_argument.__dict__
+                raise ValueError("Unexpected run argument type")
+            return test
 
         instance = self._get_extension(module)(None)
         ret = map(parse_run_argument, instance.integration_tests())
@@ -216,21 +240,23 @@ class ExtensionService(object):
         module_obj = importlib.import_module(module)
         return getattr(module_obj, "Extension")
 
-    def _run(self, path, pid, module, artifacts_to_stdout, commit):
+    def _run(self, path, pid, module, artifacts_to_stdout, upload_files, disable_context_commit=False, test_mode=False):
         path = os.path.abspath(path)
-        self.logger.info("Running extension {module} for pid={pid}".format(module=module, pid=pid))
+        self.logger.info("Running extension {module} for pid={pid}, test_mode={test_mode}".format(
+            module=module, pid=pid, test_mode=test_mode))
         self.logger.info(" - Path={}".format(path))
         extension = self._get_extension(module)
         old_dir = os.getcwd()
         os.chdir(path)
         self.logger.info("Executing at {}".format(path))
-        context = ExtensionContext.create(pid)
+        context = ExtensionContext.create(pid, test_mode=test_mode)
+        context.disable_commits = disable_context_commit
         instance = extension(context)
         os_service = OSService()
         if issubclass(extension, DriverFileExtension):
             file_svc = DriverFileService.create_file_service(
                 instance, instance.shared_file(), self.logger, os_service)
-            file_svc.execute(commit=commit, artifacts_to_stdout=artifacts_to_stdout)
+            file_svc.execute(commit=upload_files, artifacts_to_stdout=artifacts_to_stdout)
         elif issubclass(extension, GeneralExtension):
             instance.execute()
         else:
@@ -246,8 +272,9 @@ class ExtensionService(object):
             if len(diff_report) > 0:
                 msg = []
                 for type, key, diff in diff_report:
-                    msg.append("{} ({})".format(key, type))
+                    msg.append("{} ({}).".format(key, type))
                     msg.append(diff)
+                    msg.append(path + " " + frozen_path)
                 raise ResultsDifferFromFrozenData("\n".join(msg))
         else:
             raise NoFrozenDataFoundException(frozen_path)
@@ -315,6 +342,16 @@ class RunDirectoryInfo(object):
             if len(diff) > 0:
                 yield ("uploaded", key, "".join(diff[0:10]))
 
+        # Compare the log files:
+        log_file_a = os.path.join(self.path, "extensions.log")
+        log_file_b = os.path.join(other.path, "extensions.log")
+        if os.path.exists(log_file_a):
+            if not os.path.exists(log_file_b):
+                raise Exception("Log file exists at {} but not at {}".format(self.path, other.path))
+            diff = self.compare_files(log_file_a, log_file_b)
+            if len(diff) > 0:
+                yield ("logs", "extensions.log", "".join(diff[0:10]))
+
 
 class GeneralExtension(object):
     """
@@ -335,6 +372,16 @@ class GeneralExtension(object):
         self.response = None
         self.validation_service = ValidationService(
             context=context, logger=self.logger)
+        # Expose the IntegrationTest type like this so it doesn't need to be imported
+        self.test = IntegrationTest
+
+    @lazyprop
+    def random(self):
+        """Provides a random object. Seeds from a constant if context.test_mode is on"""
+        if self.context.test_mode:
+            return random.Random(0)  # Seed from a constant
+        else:
+            return random.Random()
 
     def handle_validation(self, validation_results):
         return self.validation_service.handle_validation(validation_results)
@@ -344,9 +391,19 @@ class GeneralExtension(object):
         """Returns `DriverFileTest`s that should be run to validate the code"""
         pass
 
-    def test(self, pid):
-        """Creates a test instance suitable for this extension"""
-        return ExtensionTest(pid=pid)
+    def localtime(self):
+        # Returns the current time, but returns a constant time when running in test mode
+        # Used to make sure that the basic built-in integration tests always use the same time.
+        if self.context.test_mode:
+            return 2016, 12, 12, 12, 43, 36, 0, 347, 0
+        else:
+            return time.localtime()
+
+    def time(self, fmt, time_tuple=None):
+        from time import strftime
+        if time_tuple is None:
+            time_tuple = self.localtime()
+        return strftime(fmt, time_tuple)
 
 
 class DriverFileExtension(GeneralExtension):
@@ -446,3 +503,14 @@ class NoTestsFoundException(Exception):
 
 class NoFrozenDataFoundException(Exception):
     pass
+
+
+class ExtensionTestLogFilter(logging.Filter):
+    """A filter applied to log handlers used during testing. Filters to only the namespaces required."""
+    def filter(self, record):
+        if not record.name.startswith("clarity_"):
+            return False
+        else:
+            if record.name.startswith("clarity_ext.extensions"):
+                return False
+            return True

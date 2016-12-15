@@ -1,6 +1,7 @@
 import logging
 import time
 from clarity_ext.service.file_service import SharedFileNotFound
+from clarity_ext.utils import lazyprop
 
 
 class StepLoggerService:
@@ -12,19 +13,25 @@ class StepLoggerService:
         self.core_logger = logging.getLogger(__name__)
         self.step_logger_name = step_logger_name
         self.file_service = file_service
+        self.raise_if_not_found = raise_if_not_found
+        self.append = append
+        self.extension = extension
 
         # Use Windows line endings for now, since most clients are currently Windows.
         # TODO: This should be configurable.
         self.NEW_LINE = "\r\n"
+
+    @lazyprop
+    def step_log(self):
         try:
-            mode = "ab" if append else "wb"
-            self.step_log = self.file_service.local_shared_file(step_logger_name, extension=extension,
-                                                                mode=mode, modify_attached=True)
+            mode = "ab" if self.append else "wb"
+            return self.file_service.local_shared_file(self.step_logger_name, extension=self.extension,
+                                                       mode=mode, modify_attached=True)
         except SharedFileNotFound:
-            if raise_if_not_found:
+            if self.raise_if_not_found:
                 raise
             else:
-                self.step_log = None
+                return None
 
     def _log(self, level, msg):
         if self.step_log:
