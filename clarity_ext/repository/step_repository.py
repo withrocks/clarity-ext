@@ -4,6 +4,7 @@ from clarity_ext.domain.result_file import ResultFile
 from clarity_ext.domain.shared_result_file import SharedResultFile
 from clarity_ext.repository.container_repository import ContainerRepository
 from clarity_ext.domain.user import User
+from clarity_ext.domain import ProcessType
 import copy
 
 
@@ -17,22 +18,13 @@ class StepRepository(object):
     to do that.
     """
 
-    def __init__(self, session, udf_map=None):
+    def __init__(self, session):
         """
         Creates a new StepRepository
 
         :param session: A session object for connecting to Clarity
-        :param udf_map: A map between domain objects and user defined fields. See `DEFAULT_UDF_MAP` for details
         """
         self.session = session
-        self.udf_map = udf_map or DEFAULT_UDF_MAP
-        self.orig_state_cache = dict()
-
-    def all_udfs(self):
-        """
-        Returns the UDFs on the current step
-        """
-        return self.session.current_step.udf
 
     def all_artifacts(self):
         """
@@ -51,7 +43,7 @@ class StepRepository(object):
         for simplified use of the API. If optimal performance is required, use the underlying REST API
         instead.
         """
-        input_output_maps = self.session.current_step.input_output_maps
+        input_output_maps = self.session.current_step.api_resource.input_output_maps
         artifact_keys = set()
         for input, output in input_output_maps:
             artifact_keys.add(input["uri"])
@@ -62,24 +54,22 @@ class StepRepository(object):
             input['uri'] = artifacts_by_uri[input['uri'].uri]
             output['uri'] = artifacts_by_uri[output['uri'].uri]
 
+        # Artifacts do not contain UDFs that have not been given a value. Since the domain objects returned
+        # must know all UDFs available, we fetch them here:
+        process_type = self.get_process_type()
+
         ret = []
-        # TODO: Ensure that the container repo fetches all containers in one batch call:
+        # TODO: Ensure that the container repo fetches all containers in one
+        # batch call:
         container_repo = ContainerRepository()
         for input_res, output_res in input_output_maps:
             input, output = self._wrap_input_output(
-                input_res, output_res, container_repo)
+                input_res, output_res, container_repo, process_type)
             ret.append((input, output))
-
-        self._add_to_orig_state_cache(ret)
         return ret
 
-    def _add_to_orig_state_cache(self, artifact_tuple_list):
-        artifact_set = set(list(sum(artifact_tuple_list, ())))
-        artifact_dict = {artifact.id: copy.copy(artifact) for artifact in artifact_set}
-        artifact_dict.update(self.orig_state_cache)
-        self.orig_state_cache = artifact_dict
+    def _wrap_input_output(self, input_info, output_info, container_repo, process_type):
 
-    def _wrap_input_output(self, input_info, output_info, container_repo):
         # Create a map of all containers, so we can fill in it while building
         # domain objects.
 
@@ -89,9 +79,9 @@ class StepRepository(object):
         output_resource = output_info["uri"]
         output_gen_type = output_info["output-generation-type"]
         input = self._wrap_artifact(
-            input_resource, container_repo, gen_type="Input", is_input=True)
+            input_resource, container_repo, gen_type="Input", is_input=True, process_type=process_type)
         output = self._wrap_artifact(output_resource, container_repo,
-                                     gen_type=output_gen_type, is_input=False)
+                                     gen_type=output_gen_type, is_input=False, process_type=process_type)
 
         if output_gen_type == "PerInput":
             output.generation_type = Artifact.PER_INPUT
@@ -117,17 +107,17 @@ class StepRepository(object):
 
         return input, output
 
-    def _wrap_artifact(self, artifact, container_repo, gen_type, is_input):
+    def _wrap_artifact(self, artifact, container_repo, gen_type, is_input, process_type):
         """
         Wraps an artifact in a domain object, if one exists. The domain objects provide logic
         convenient methods for working with the domain object in extensions.
         """
         if artifact.type == "Analyte":
-            wrapped = Analyte.create_from_rest_resource(artifact, is_input, self.udf_map, container_repo)
+            wrapped = Analyte.create_from_rest_resource(artifact, is_input, container_repo, process_type)
         elif artifact.type == "ResultFile" and gen_type == "PerInput":
-            wrapped = ResultFile.create_from_rest_resource(artifact, is_input, self.udf_map, container_repo)
+            wrapped = ResultFile.create_from_rest_resource(artifact, is_input, container_repo, process_type)
         elif artifact.type == "ResultFile" and gen_type == "PerAllInputs":
-            wrapped = SharedResultFile.create_from_rest_resource(artifact, self.udf_map)
+            wrapped = SharedResultFile.create_from_rest_resource(artifact, process_type)
         else:
             raise Exception("Unknown type and gen_type combination {}, {}".format(
                 artifact.type, gen_type))
@@ -145,54 +135,15 @@ class StepRepository(object):
             yield self._wrap_artifact(artifact)
 
     def update_artifacts(self, artifacts):
-        """
-        Updates each entry in objects to db
-        """
-        update_queue = []
-        response = []
-        for artifact in artifacts:
-            updated_fields = self._retrieve_updated_fields(artifact)
-            original_artifact_from_rest = artifact.api_resource
-            updated_rest_resource, single_response = \
-                artifact.updated_rest_resource(
-                    original_artifact_from_rest, updated_fields)
-            response.append(single_response)
-            update_queue.append(updated_rest_resource)
-
-        self.session.api.put_batch(update_queue)
-        return sum(response, [])
-
-    def _retrieve_updated_fields(self, updated_artifact):
-        orig_art = self.orig_state_cache[updated_artifact.id]
-        return updated_artifact.differing_fields(orig_art)
+        """Updates all the artifact resources"""
+        self.session.api.put_batch(artifacts)
 
     def current_user(self):
         current_user_resource = self.session.current_step.technician
         return User.create_from_rest_resource(current_user_resource)
 
+    def get_process_type(self):
+        """Returns the process type of the current process"""
+        self.session.current_step.api_resource.type.get()
+        return ProcessType.create_from_resource(self.session.current_step.api_resource.type)
 
-
-
-"""
-The default UDF map. Certain features of the library depend on some fields existing on the domain
-objects that are only available through UDFs. To make the library usable without having to define
-exactly the same names in different implementations, a different UDF map can be provided for
-different setups. TODO: Make the UDF map configurable in the settings for the clarity-ext tool.
-"""
-DEFAULT_UDF_MAP = {
-    "Analyte": {
-        "concentration_ngul": "Conc. Current (ng/ul)",
-        "concentration_nm": "Conc. Current (nM)",
-        "requested_concentration_ngul": "Target conc. (ng/ul)",
-        "requested_concentration_nm": "Target conc. (nM)",
-        "requested_volume": "Target vol. (ul)",
-        "volume": "Current sample volume (ul)"
-    },
-    "ResultFile": {
-        "concentration_ngul": "Conc. Current (ng/ul)",
-        "volume": "Current sample volume (ul)"
-    },
-    "SharedResultFile": {
-        "has_errors": "Has errors2",
-    }
-}

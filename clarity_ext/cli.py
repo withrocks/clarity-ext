@@ -109,10 +109,9 @@ def extension(module, mode, args, cache):
             extension_svc.run_exec(config, args, module)
         else:
             raise NotImplementedError("Mode '{}' is not implemented".format(mode))
-    except Exception:
+    except Exception as ex:
         logger.exception("Exception while running extension")
-        # Throw a more helpful exception that will be shown in the GUI.
-        msg = "There was an exception while running the extension. " + \
+        msg = "There was an exception while running the extension: '{}'. ".format(ex.message) + \
               "Refer to the file 'Step log' if available."
         if extension_svc.rotating_file_path:
             msg += " The application log is available in {}.".format(extension_svc.rotating_file_path)

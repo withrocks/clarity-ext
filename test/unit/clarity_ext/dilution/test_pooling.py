@@ -1,5 +1,4 @@
 import unittest
-from mock import MagicMock
 from clarity_ext.dilution import DilutionScheme
 from clarity_ext.dilution import CONCENTRATION_REF_NM
 from clarity_ext.dilution import VOLUME_CALC_BY_CONC
@@ -8,14 +7,6 @@ from clarity_ext.domain.validation import ValidationType
 from test.unit.clarity_ext.helpers import fake_analyte
 from test.unit.clarity_ext.helpers import print_list
 from test.unit.clarity_ext import helpers
-
-
-UDF_MAP = {
-            "requested_concentration_nm": "Target Concentration",
-            "requested_volume": "Target Volume",
-            "concentration_nm": "Conc",
-            "volume": "Vol"
-          }
 
 
 class TestLibraryPooling(unittest.TestCase):
@@ -29,17 +20,17 @@ class TestLibraryPooling(unittest.TestCase):
         def pooled_analyte_set():
             samples = ["sample1", "sample2", "sample3"]
             pool = fake_analyte("cont2", "art4", samples, "Pool1", "B:4",
-                                is_input=False, udf_map=UDF_MAP,
-                                requested_concentration_nm=15, requested_volume=40)
+                                is_input=False,
+                                requested_concentration_nm=15.0, requested_volume=40.0)
             return [
-                (fake_analyte("cont1", "art1", "sample1", "analyte1", "A:1", is_input=True, udf_map=UDF_MAP,
-                              concentration_nm=10, volume=300),
+                (fake_analyte("cont1", "art1", "sample1", "analyte1", "A:1", is_input=True,
+                              concentration_nm=10.0, volume=300.0),
                  pool),
-                (fake_analyte("cont1", "art2", "sample2", "analyte2", "A:2", is_input=True, udf_map=UDF_MAP,
-                              concentration_nm=25, volume=300),
+                (fake_analyte("cont1", "art2", "sample2", "analyte2", "A:2", is_input=True,
+                              concentration_nm=25.0, volume=300.0),
                  pool),
-                (fake_analyte("cont1", "art3", "sample3", "analyte3", "A:3", is_input=True, udf_map=UDF_MAP,
-                              concentration_nm=30, volume=300),
+                (fake_analyte("cont1", "art3", "sample3", "analyte3", "A:3", is_input=True,
+                              concentration_nm=30.0, volume=300.0),
                  pool),
             ]
 
@@ -163,29 +154,29 @@ class TestLibraryPooling(unittest.TestCase):
         def invalid_analyte_set():
             samples = ["sample1", "sample2", "sample3"]
             pool1 = fake_analyte("cont2", "art4", samples, "Pool1", "B:4",
-                                is_input=False, udf_map=UDF_MAP,
+                                is_input=False,
                                 requested_concentration_nm=15, requested_volume=40)
             samples = ["sample4", "sample5", "sample6"]
             pool2 = fake_analyte("cont2", "art5", samples, "Pool2", "C:4",
-                                is_input=False, udf_map=UDF_MAP,
+                                is_input=False,
                                 requested_concentration_nm=15, requested_volume=101)
             return [
-                (fake_analyte("cont1", "art1", "sample1", "analyte1", "A:1", is_input=True, udf_map=UDF_MAP,
+                (fake_analyte("cont1", "art1", "sample1", "analyte1", "A:1", is_input=True,
                               concentration_nm=10, volume=300),
                  pool1),
-                (fake_analyte("cont1", "art2", "sample2", "analyte2", "B:1", is_input=True, udf_map=UDF_MAP,
+                (fake_analyte("cont1", "art2", "sample2", "analyte2", "B:1", is_input=True,
                               concentration_nm=25, volume=300),
                  pool1),
-                (fake_analyte("cont1", "art3", "sample3", "analyte3", "C:1", is_input=True, udf_map=UDF_MAP,
+                (fake_analyte("cont1", "art3", "sample3", "analyte3", "C:1", is_input=True,
                               concentration_nm=30, volume=300),
                  pool1),
-                (fake_analyte("cont1", "art4", "sample4", "analyte4", "A:2", is_input=True, udf_map=UDF_MAP,
+                (fake_analyte("cont1", "art4", "sample4", "analyte4", "A:2", is_input=True,
                               concentration_nm=10, volume=300),
                  pool2),
-                (fake_analyte("cont1", "art5", "sample5", "analyte5", "B:2", is_input=True, udf_map=UDF_MAP,
+                (fake_analyte("cont1", "art5", "sample5", "analyte5", "B:2", is_input=True,
                               concentration_nm=25, volume=300),
                  pool2),
-                (fake_analyte("cont1", "art6", "sample6", "analyte6", "C:2", is_input=True, udf_map=UDF_MAP,
+                (fake_analyte("cont1", "art6", "sample6", "analyte6", "C:2", is_input=True,
                               concentration_nm=30, volume=300),
                  pool2),
             ]
@@ -201,29 +192,29 @@ class TestLibraryPooling(unittest.TestCase):
         def invalid_analyte_set():
             samples = ["sample1", "sample2", "sample3"]
             pool1 = fake_analyte("cont2", "art4", samples, "Pool1", "B:4",
-                                is_input=False, udf_map=UDF_MAP,
+                                is_input=False,
                                 requested_concentration_nm=15, requested_volume=40)
             samples = ["sample4", "sample5", "sample6"]
             pool2 = fake_analyte("cont2", "art5", samples, "Pool2", "C:4",
-                                is_input=False, udf_map=UDF_MAP,
+                                is_input=False,
                                 requested_concentration_nm=40, requested_volume=70)
             return [
-                (fake_analyte("cont1", "art1", "sample1", "analyte1", "A:1", is_input=True, udf_map=UDF_MAP,
+                (fake_analyte("cont1", "art1", "sample1", "analyte1", "A:1", is_input=True,
                               concentration_nm=10, volume=300),
                  pool1),
-                (fake_analyte("cont1", "art2", "sample2", "analyte2", "B:1", is_input=True, udf_map=UDF_MAP,
+                (fake_analyte("cont1", "art2", "sample2", "analyte2", "B:1", is_input=True,
                               concentration_nm=25, volume=300),
                  pool1),
-                (fake_analyte("cont1", "art3", "sample3", "analyte3", "C:1", is_input=True, udf_map=UDF_MAP,
+                (fake_analyte("cont1", "art3", "sample3", "analyte3", "C:1", is_input=True,
                               concentration_nm=30, volume=300),
                  pool1),
-                (fake_analyte("cont1", "art4", "sample4", "analyte4", "A:2", is_input=True, udf_map=UDF_MAP,
+                (fake_analyte("cont1", "art4", "sample4", "analyte4", "A:2", is_input=True,
                               concentration_nm=10, volume=300),
                  pool2),
-                (fake_analyte("cont1", "art5", "sample5", "analyte5", "B:2", is_input=True, udf_map=UDF_MAP,
+                (fake_analyte("cont1", "art5", "sample5", "analyte5", "B:2", is_input=True,
                               concentration_nm=25, volume=300),
                  pool2),
-                (fake_analyte("cont1", "art6", "sample6", "analyte6", "C:2", is_input=True, udf_map=UDF_MAP,
+                (fake_analyte("cont1", "art6", "sample6", "analyte6", "C:2", is_input=True,
                               concentration_nm=30, volume=300),
                  pool2),
             ]
@@ -240,29 +231,29 @@ class TestLibraryPooling(unittest.TestCase):
         def invalid_analyte_set():
             samples = ["sample1", "sample2", "sample3"]
             pool1 = fake_analyte("cont2", "art4", samples, "Pool1", "B:4",
-                                is_input=False, udf_map=UDF_MAP,
+                                is_input=False,
                                 requested_concentration_nm=15, requested_volume=40)
             samples = ["sample4", "sample5", "sample6"]
             pool2 = fake_analyte("cont2", "art5", samples, "Pool2", "C:4",
-                                is_input=False, udf_map=UDF_MAP,
+                                is_input=False,
                                 requested_concentration_nm=30, requested_volume=30)
             return [
-                (fake_analyte("cont1", "art1", "sample1", "analyte1", "A:1", is_input=True, udf_map=UDF_MAP,
+                (fake_analyte("cont1", "art1", "sample1", "analyte1", "A:1", is_input=True,
                               concentration_nm=10, volume=300),
                  pool1),
-                (fake_analyte("cont1", "art2", "sample2", "analyte2", "B:1", is_input=True, udf_map=UDF_MAP,
+                (fake_analyte("cont1", "art2", "sample2", "analyte2", "B:1", is_input=True,
                               concentration_nm=25, volume=300),
                  pool1),
-                (fake_analyte("cont1", "art3", "sample3", "analyte3", "C:1", is_input=True, udf_map=UDF_MAP,
+                (fake_analyte("cont1", "art3", "sample3", "analyte3", "C:1", is_input=True,
                               concentration_nm=30, volume=300),
                  pool1),
-                (fake_analyte("cont1", "art4", "sample4", "analyte4", "A:2", is_input=True, udf_map=UDF_MAP,
+                (fake_analyte("cont1", "art4", "sample4", "analyte4", "A:2", is_input=True,
                               concentration_nm=10, volume=300),
                  pool2),
-                (fake_analyte("cont1", "art5", "sample5", "analyte5", "B:2", is_input=True, udf_map=UDF_MAP,
+                (fake_analyte("cont1", "art5", "sample5", "analyte5", "B:2", is_input=True,
                               concentration_nm=25, volume=300),
                  pool2),
-                (fake_analyte("cont1", "art6", "sample6", "analyte6", "C:2", is_input=True, udf_map=UDF_MAP,
+                (fake_analyte("cont1", "art6", "sample6", "analyte6", "C:2", is_input=True,
                               concentration_nm=30, volume=300),
                  pool2),
             ]
@@ -279,30 +270,30 @@ class TestLibraryPooling(unittest.TestCase):
         def invalid_analyte_set():
             samples = ["sample1", "sample2", "sample3"]
             pool1 = fake_analyte("cont2", "art4", samples, "Pool1", "B:4",
-                                is_input=False, udf_map=UDF_MAP,
-                                requested_concentration_nm=15, requested_volume=5)
+                                is_input=False,
+                                requested_concentration_nm=15.0, requested_volume=5.0)
             samples = ["sample4", "sample5", "sample6"]
             pool2 = fake_analyte("cont2", "art5", samples, "Pool2", "C:4",
-                                is_input=False, udf_map=UDF_MAP,
-                                requested_concentration_nm=10, requested_volume=40)
+                                is_input=False,
+                                requested_concentration_nm=10.0, requested_volume=40.0)
             return [
-                (fake_analyte("cont1", "art1", "sample1", "analyte1", "A:1", is_input=True, udf_map=UDF_MAP,
-                              concentration_nm=10, volume=300),
+                (fake_analyte("cont1", "art1", "sample1", "analyte1", "A:1", is_input=True,
+                              concentration_nm=10.0, volume=300.0),
                  pool1),
-                (fake_analyte("cont1", "art2", "sample2", "analyte2", "B:1", is_input=True, udf_map=UDF_MAP,
-                              concentration_nm=25, volume=300),
+                (fake_analyte("cont1", "art2", "sample2", "analyte2", "B:1", is_input=True,
+                              concentration_nm=25.0, volume=300.0),
                  pool1),
-                (fake_analyte("cont1", "art3", "sample3", "analyte3", "C:1", is_input=True, udf_map=UDF_MAP,
-                              concentration_nm=30, volume=300),
+                (fake_analyte("cont1", "art3", "sample3", "analyte3", "C:1", is_input=True,
+                              concentration_nm=30.0, volume=300.0),
                  pool1),
-                (fake_analyte("cont1", "art4", "sample4", "analyte4", "A:2", is_input=True, udf_map=UDF_MAP,
-                              concentration_nm=10, volume=300),
+                (fake_analyte("cont1", "art4", "sample4", "analyte4", "A:2", is_input=True,
+                              concentration_nm=10.0, volume=300.0),
                  pool2),
-                (fake_analyte("cont1", "art5", "sample5", "analyte5", "B:2", is_input=True, udf_map=UDF_MAP,
-                              concentration_nm=25, volume=300),
+                (fake_analyte("cont1", "art5", "sample5", "analyte5", "B:2", is_input=True,
+                              concentration_nm=25.0, volume=300.0),
                  pool2),
-                (fake_analyte("cont1", "art6", "sample6", "analyte6", "C:2", is_input=True, udf_map=UDF_MAP,
-                              concentration_nm=30, volume=300),
+                (fake_analyte("cont1", "art6", "sample6", "analyte6", "C:2", is_input=True,
+                              concentration_nm=30.0, volume=300.0),
                  pool2),
             ]
 
@@ -318,30 +309,30 @@ class TestLibraryPooling(unittest.TestCase):
         def invalid_analyte_set():
             samples = ["sample1", "sample2", "sample3"]
             pool1 = fake_analyte("cont2", "art4", samples, "Pool1", "B:4",
-                                is_input=False, udf_map=UDF_MAP,
-                                requested_concentration_nm=15, requested_volume=40)
+                                is_input=False,
+                                requested_concentration_nm=15.0, requested_volume=40.0)
             samples = ["sample4", "sample5", "sample6"]
             pool2 = fake_analyte("cont2", "art5", samples, "Pool2", "C:4",
-                                is_input=False, udf_map=UDF_MAP,
-                                requested_concentration_nm=7, requested_volume=80)
+                                is_input=False,
+                                requested_concentration_nm=7.0, requested_volume=80.0)
             return [
-                (fake_analyte("cont1", "art1", "sample1", "analyte1", "A:1", is_input=True, udf_map=UDF_MAP,
-                              concentration_nm=10, volume=300),
+                (fake_analyte("cont1", "art1", "sample1", "analyte1", "A:1", is_input=True,
+                              concentration_nm=10.0, volume=300.0),
                  pool1),
-                (fake_analyte("cont1", "art2", "sample2", "analyte2", "B:1", is_input=True, udf_map=UDF_MAP,
-                              concentration_nm=25, volume=300),
+                (fake_analyte("cont1", "art2", "sample2", "analyte2", "B:1", is_input=True,
+                              concentration_nm=25.0, volume=300.0),
                  pool1),
-                (fake_analyte("cont1", "art3", "sample3", "analyte3", "C:1", is_input=True, udf_map=UDF_MAP,
-                              concentration_nm=30, volume=300),
+                (fake_analyte("cont1", "art3", "sample3", "analyte3", "C:1", is_input=True,
+                              concentration_nm=30.0, volume=300.0),
                  pool1),
-                (fake_analyte("cont1", "art4", "sample4", "analyte4", "A:2", is_input=True, udf_map=UDF_MAP,
-                              concentration_nm=3, volume=300),
+                (fake_analyte("cont1", "art4", "sample4", "analyte4", "A:2", is_input=True,
+                              concentration_nm=3.0, volume=300.0),
                  pool2),
-                (fake_analyte("cont1", "art5", "sample5", "analyte5", "B:2", is_input=True, udf_map=UDF_MAP,
-                              concentration_nm=25, volume=300),
+                (fake_analyte("cont1", "art5", "sample5", "analyte5", "B:2", is_input=True,
+                              concentration_nm=25.0, volume=300.0),
                  pool2),
-                (fake_analyte("cont1", "art6", "sample6", "analyte6", "C:2", is_input=True, udf_map=UDF_MAP,
-                              concentration_nm=180, volume=300),
+                (fake_analyte("cont1", "art6", "sample6", "analyte6", "C:2", is_input=True,
+                              concentration_nm=180.0, volume=300.0),
                  pool2),
             ]
 
@@ -380,30 +371,30 @@ class TestLibraryPooling(unittest.TestCase):
 def two_pool_analyte_set():
     samples = ["sample1", "sample2", "sample3"]
     pool1 = fake_analyte("cont2", "art4", samples, "Pool1", "B:4",
-                        is_input=False, udf_map=UDF_MAP,
-                        requested_concentration_nm=15, requested_volume=40)
+                        is_input=False,
+                        requested_concentration_nm=15.0, requested_volume=40.0)
     samples = ["sample4", "sample5", "sample6"]
     pool2 = fake_analyte("cont2", "art5", samples, "Pool2", "C:4",
-                        is_input=False, udf_map=UDF_MAP,
-                        requested_concentration_nm=15, requested_volume=40)
+                        is_input=False,
+                        requested_concentration_nm=15.0, requested_volume=40.0)
     return [
-        (fake_analyte("cont1", "art1", "sample1", "analyte1", "A:1", is_input=True, udf_map=UDF_MAP,
-                      concentration_nm=10, volume=300),
+        (fake_analyte("cont1", "art1", "sample1", "analyte1", "A:1", is_input=True,
+                      concentration_nm=10.0, volume=300.0),
          pool1),
-        (fake_analyte("cont1", "art4", "sample4", "analyte4", "A:2", is_input=True, udf_map=UDF_MAP,
-                      concentration_nm=10, volume=300),
+        (fake_analyte("cont1", "art4", "sample4", "analyte4", "A:2", is_input=True,
+                      concentration_nm=10.0, volume=300.0),
          pool2),
-        (fake_analyte("cont1", "art2", "sample2", "analyte2", "B:1", is_input=True, udf_map=UDF_MAP,
-                      concentration_nm=25, volume=300),
+        (fake_analyte("cont1", "art2", "sample2", "analyte2", "B:1", is_input=True,
+                      concentration_nm=25.0, volume=300.0),
          pool1),
-        (fake_analyte("cont1", "art3", "sample3", "analyte3", "C:1", is_input=True, udf_map=UDF_MAP,
-                      concentration_nm=30, volume=300),
+        (fake_analyte("cont1", "art3", "sample3", "analyte3", "C:1", is_input=True,
+                      concentration_nm=30.0, volume=300.0),
          pool1),
-        (fake_analyte("cont1", "art5", "sample5", "analyte5", "B:2", is_input=True, udf_map=UDF_MAP,
-                      concentration_nm=25, volume=300),
+        (fake_analyte("cont1", "art5", "sample5", "analyte5", "B:2", is_input=True,
+                      concentration_nm=25.0, volume=300.0),
          pool2),
-        (fake_analyte("cont1", "art6", "sample6", "analyte6", "C:2", is_input=True, udf_map=UDF_MAP,
-                      concentration_nm=30, volume=300),
+        (fake_analyte("cont1", "art6", "sample6", "analyte6", "C:2", is_input=True,
+                      concentration_nm=30.0, volume=300.0),
          pool2),
     ]
 

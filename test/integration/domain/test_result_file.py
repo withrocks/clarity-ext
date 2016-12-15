@@ -1,5 +1,5 @@
 import unittest
-from clarity_ext.domain import Container, ResultFile
+from clarity_ext.domain import Container
 from clarity_ext.context import ExtensionContext
 import os
 

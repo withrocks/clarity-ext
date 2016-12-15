@@ -66,6 +66,7 @@ class OneToOneConcentrationCalc:
                     transfer.buffer_volume *= scale_factor
                     transfer.scaled_up = True
             except (TypeError, ZeroDivisionError) as e:
+                # TODO: Remove catch-all exception handlers
                 transfer.sample_volume = None
                 transfer.buffer_volume = None
                 transfer.has_to_evaporate = None
@@ -132,6 +133,9 @@ class PoolConcentrationCalc:
                     t.buffer_volume *= scale_factor
                     t.scaled_up = True
             except ZeroDivisionError:
+                # TODO: Move this catch-all exception handler. Can cause difficult to debug issues
+                # when code is refactored
+
                 # Zero sample volume indicates an error that should be caught
                 # later by validation
                 pass

@@ -10,6 +10,7 @@ from test.unit.clarity_ext import helpers
 from clarity_ext.service import ArtifactService
 from clarity_ext.domain.validation import ValidationException
 from clarity_ext.domain.validation import ValidationType
+from clarity_ext import utils
 
 
 class TestDilutionScheme(unittest.TestCase):
@@ -204,25 +205,25 @@ class TestDilutionScheme(unittest.TestCase):
         def high_volume_analyte_set():
             return [
                 (fake_analyte("cont-id1", "art1-id1", "sample1", "sample1", "B:2", True,
-                              concentration_ngul=10),
+                              concentration_ngul=10.0),
                  fake_analyte("cont-id1", "art1-id2", "sample1", "sample1", "B:2", False,
-                              requested_concentration_ngul=50, requested_volume=10)),
+                              requested_concentration_ngul=50.0, requested_volume=10.0)),
                 (fake_analyte("cont-id1", "art1-id3", "sample2", "sample2", "C:2", True,
-                              concentration_ngul=10),
+                              concentration_ngul=10.0),
                  fake_analyte("cont-id1", "art1-id4", "sample2", "sample2", "C:2", False,
-                              requested_concentration_ngul=10, requested_volume=51)),
+                              requested_concentration_ngul=10.0, requested_volume=51.0)),
                 (fake_analyte("cont-id1", "art1-id5", "sample3", "sample3", "D:2", True,
-                              concentration_ngul=100),
+                              concentration_ngul=100.0),
                  fake_analyte("cont-id1", "art1-id6", "sample3", "sample3", "D:2", False,
-                              requested_concentration_ngul=2, requested_volume=50)),
+                              requested_concentration_ngul=2.0, requested_volume=50.0)),
                 (fake_analyte("cont-id1", "art1-id7", "sample4", "sample4", "E:2", True,
-                              concentration_ngul=100),
+                              concentration_ngul=100.0),
                  fake_analyte("cont-id1", "art1-id8", "sample4", "sample4", "E:2", False,
-                              requested_concentration_ngul=10, requested_volume=150)),
+                              requested_concentration_ngul=10.0, requested_volume=150.0)),
                 (fake_analyte("cont-id1", "art1-id9", "sample5", "sample5", "F:2", True,
-                              concentration_ngul=100),
+                              concentration_ngul=100.0),
                  fake_analyte("cont-id1", "art1-id10", "sample5", "sample5", "F:2", False,
-                              requested_concentration_ngul=60, requested_volume=150)),
+                              requested_concentration_ngul=60.0, requested_volume=150.0)),
             ]
 
         svc = helpers.mock_artifact_service(high_volume_analyte_set)
@@ -310,15 +311,21 @@ class TestDilutionScheme(unittest.TestCase):
         def invalid_analyte_set():
             return [
                 (fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "D:5", True,
-                              concentration_ngul=100, volume=20),
+                              concentration_ngul=100.0, volume=200),
                  fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "B:5", False,
-                              requested_concentration_ngul=1000, requested_volume=2))
+                              requested_concentration_ngul=1000.0, requested_volume=2.0))
             ]
 
         repo = MagicMock()
         repo.all_artifacts = invalid_analyte_set
         svc = ArtifactService(repo)
         dilution_scheme = self._default_dilution_scheme(svc)
+        self.assertEqual(1, len(dilution_scheme.transfers))
+        transfer = utils.single(dilution_scheme.transfers)
+        self.assertEqual(transfer.buffer_volume, 0)
+        self.assertEqual(transfer.has_to_evaporate, True)
+        self.assertTrue(isinstance(transfer.requested_volume, float))
+
         actual = set(str(result)
                      for result in post_validate_dilution(dilution_scheme))
         expected = set(
@@ -329,9 +336,9 @@ class TestDilutionScheme(unittest.TestCase):
         def invalid_analyte_set():
             return [
                 (fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "D:5", True,
-                              concentration_ngul=100, volume=20),
+                              concentration_ngul=100.0, volume=20.0),
                  fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "B:5", False,
-                              requested_concentration_ngul=10, requested_volume=2))
+                              requested_concentration_ngul=10.0, requested_volume=2.0))
             ]
 
         repo = MagicMock()
@@ -441,21 +448,21 @@ def two_containers_artifact_set_nm():
     """
     ret = [
         (fake_analyte("cont-id1", "art-id1", "sample1", "art-name1", "D:5", True,
-                      concentration_nm=140, volume=20),
+                      concentration_nm=140.0, volume=20.0),
          fake_analyte("cont-id3", "art-id1", "sample1", "art-name1", "B:5", False,
-                      requested_concentration_nm=100, requested_volume=20)),
+                      requested_concentration_nm=100.0, requested_volume=20.0)),
         (fake_analyte("cont-id2", "art-id2", "sample2", "art-name2", "A:5", True,
-                      concentration_nm=140, volume=40),
+                      concentration_nm=140.0, volume=40.0),
          fake_analyte("cont-id4", "art-id2", "sample2", "art-name2", "A:3", False,
-                      requested_concentration_nm=100, requested_volume=20)),
+                      requested_concentration_nm=100.0, requested_volume=20.0)),
         (fake_analyte("cont-id2", "art-id3", "sample3", "art-name3", "B:7", True,
-                      concentration_nm=140, volume=50),
+                      concentration_nm=140.0, volume=50.0),
          fake_analyte("cont-id3", "art-id3", "sample3", "art-name3", "D:6", False,
-                      requested_concentration_nm=100, requested_volume=20)),
+                      requested_concentration_nm=100.0, requested_volume=20.0)),
         (fake_analyte("cont-id2", "art-id4", "sample4", "art-name4", "E:12", True,
-                      concentration_nm=140, volume=60),
+                      concentration_nm=140.0, volume=60.0),
          fake_analyte("cont-id4", "art-id4", "sample4", "art-name4", "E:9", False,
-                      requested_concentration_nm=100, requested_volume=20))
+                      requested_concentration_nm=100.0, requested_volume=20.0))
     ]
     return ret
 

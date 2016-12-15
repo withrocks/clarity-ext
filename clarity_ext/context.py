@@ -8,10 +8,9 @@ from clarity_ext.repository import StepRepository
 from clarity_ext import utils
 from clarity_ext.driverfile import OSService
 from clarity_ext.service.validation_service import ERRORS_AND_WARNING_ENTRY_NAME
-from clarity_ext.domain.udf import Udf
 
 
-class ExtensionContext(Udf):
+class ExtensionContext(object):
     """
     Defines context objects for extensions.
 
@@ -36,8 +35,6 @@ class ExtensionContext(Udf):
         :param test_mode: If set to True, extensions may behave slightly differently when testing, in particular
                           returning a constant time.
         """
-        super(ExtensionContext, self).__init__(
-            api_resource=session.current_step, id=session.current_step_id)
         self.session = session
         self.logger = step_logger_service
         self.units = UnitConversion()
@@ -47,7 +44,6 @@ class ExtensionContext(Udf):
         self.file_service = file_service
         self.current_user = current_user
         self.step_repo = step_repo
-        self.response = None
         self.dilution_scheme = None
         self.disable_commits = False
         self.test_mode = test_mode
@@ -68,10 +64,6 @@ class ExtensionContext(Udf):
         step_logger_service = StepLoggerService("Step log", file_service)
         return ExtensionContext(session, artifact_service, file_service, current_user,
                                 step_logger_service, step_repo, test_mode=test_mode)
-
-    @property
-    def udfs(self):
-        return self.step_repo.all_udfs()
 
     def init_dilution_scheme(self, concentration_ref=None, include_blanks=False,
                              volume_calc_method=None, make_pools=False):
@@ -174,5 +166,4 @@ class ExtensionContext(Udf):
 
     def commit(self):
         """Commits all objects that have been added via the update method, using batch processing if possible"""
-        self.response = self.artifact_service.update_artifacts(self._update_queue, self.disable_commits)
-
+        self.artifact_service.update_artifacts(self._update_queue, self.disable_commits)

@@ -1,8 +1,8 @@
-from clarity_ext.domain.udf import Udf
+from clarity_ext.domain.udf import DomainObjectWithUdfMixin
 from clarity_ext.domain.common import DomainObjectMixin
 
 
-class Artifact(Udf):
+class Artifact(DomainObjectWithUdfMixin):
     """
     Represents any input or output artifact from the Clarity server, e.g. an Analyte
     or a ResultFile.
@@ -14,9 +14,8 @@ class Artifact(Udf):
     OUTPUT_TYPE_ANALYTE = 2
     OUTPUT_TYPE_SHARED_RESULT_FILE = 3
 
-    def __init__(self, api_resource=None, id=None, name=None, artifact_specific_udf_map=None):
-        super(Artifact, self).__init__(api_resource=api_resource, id=id,
-                                       entity_specific_udf_map=artifact_specific_udf_map)
+    def __init__(self, api_resource=None, id=None, name=None, udf_map=None):
+        super(Artifact, self).__init__(api_resource=api_resource, id=id, udf_map=udf_map)
         self.is_input = None  # Set to true if this is an input artifact
         self.generation_type = None  # Set to PER_INPUT or PER_ALL_INPUTS if applicable
         self.name = name

@@ -15,7 +15,6 @@ from clarity_ext import ClaritySession
 from clarity_ext.repository import StepRepository
 from clarity_ext.service import ArtifactService
 from test.integration.integration_test_service import IntegrationTest
-from clarity_ext.repository.step_repository import DEFAULT_UDF_MAP
 from clarity_ext.service.validation_service import ValidationService
 from jinja2 import Template
 import time
@@ -88,7 +87,7 @@ class ExtensionService(object):
 
     def _artifact_service(self, pid):
         session = ClaritySession.create(pid)
-        step_repo = StepRepository(session, DEFAULT_UDF_MAP)
+        step_repo = StepRepository(session)
         return ArtifactService(step_repo)
 
     def run_exec(self, config, run_arguments_list, module):

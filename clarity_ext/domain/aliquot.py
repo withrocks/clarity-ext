@@ -1,16 +1,12 @@
 from clarity_ext.domain.artifact import Artifact
-from clarity_ext.domain.common import DomainObjectMixin
+from clarity_ext.domain.udf import DomainObjectMixin, DomainObjectWithUdfMixin
 from clarity_ext.domain.container import ContainerPosition
-from clarity_ext.domain.udf import DomainObjectWithUdfsMixin
 
 
 class Aliquot(Artifact):
 
-    def __init__(self, api_resource, is_input, id=None, samples=None, name=None, well=None,
-                 artifact_specific_udf_map=None, **kwargs):
-        super(Aliquot, self).__init__(
-            api_resource=api_resource, id=id, name=name,
-            artifact_specific_udf_map=artifact_specific_udf_map)
+    def __init__(self, api_resource, is_input, id=None, samples=None, name=None, well=None, udf_map=None):
+        super(Aliquot, self).__init__(api_resource=api_resource, id=id, name=name, udf_map=udf_map)
         self.samples = samples
         self.well = well
         self.is_input = is_input
@@ -19,12 +15,6 @@ class Aliquot(Artifact):
             well.artifact = self
         else:
             self.container = None
-        self.requested_concentration_ngul = None
-        self.requested_concentration_nm = None
-        self.requested_volume = None
-        self.concentration_ngul = None
-        self.concentration_nm = None
-        self.volume = None
         self.is_from_original = False
 
     @staticmethod
@@ -48,7 +38,7 @@ class Aliquot(Artifact):
         return well
 
 
-class Sample(DomainObjectWithUdfsMixin):
+class Sample(DomainObjectWithUdfMixin):
 
     def __init__(self, sample_id, name, project, udfs=None):
         """
@@ -72,7 +62,7 @@ class Sample(DomainObjectWithUdfsMixin):
         return sample
 
 
-class Project(DomainObjectMixin):
+class Project(DomainObjectWithUdfMixin):
     def __init__(self, name):
         self.name = name
 
