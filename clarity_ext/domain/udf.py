@@ -179,10 +179,13 @@ class UdfMapping(object):
     def expand_udfs(api_resource, process_output):
         """Expands udfs for a resouces, given the information in the process output. Handles a usability issue
         in the API, where we don't get values for UDFs that are not defined"""
-        ret = dict()
-        for definition in process_output.field_definitions:
-            ret[definition] = api_resource.udf.get(definition, None)
-        return ret
+
+        # The UDF can be defined either in the api_process' udf dictionary or
+        # in the process_output, or both:
+        all_udfs = set()
+        all_udfs.update([key for key, value in api_resource.udf.items()])  # keys() is not available
+        all_udfs.update(process_output.field_definitions)
+        return {key: api_resource.udf.get(key, None) for key in all_udfs}
 
     def __str__(self):
         return str({key: self[key].value for key in self.py_names})
