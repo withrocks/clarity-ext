@@ -75,7 +75,7 @@ class IntegrationTestPrepare:
             udf_name = update_row[1]
             value = update_row[2]
             artifact = artifact_dict[art_id]
-            artifact.set_udf(udf_name, value)
+            artifact.udf_map[udf_name] = value
             update_queue.append(artifact)
 
         artifact_service.update_artifacts(update_queue)

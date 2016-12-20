@@ -23,7 +23,7 @@ class TestResultFile(unittest.TestCase):
         new_value = random.randint(1, 100)
         if original_value == new_value:
             new_value += 1
-        result_file.set_udf(udf_name, new_value)
+        result_file.udf_map[udf_name] = new_value
         context.update(result_file)
         context.commit()
 

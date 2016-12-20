@@ -1,33 +1,25 @@
 from clarity_ext.domain.artifact import Artifact
-from clarity_ext.utils import get_and_apply
+from clarity_ext.domain.udf import UdfMapping
+from clarity_ext import utils
 
 
 class SharedResultFile(Artifact):
 
-    def __init__(self, api_resource=None, id=None, name=None, artifact_specific_udf_map=None,
-                 **kwargs):
-        super(SharedResultFile, self).__init__(
-            api_resource=api_resource, id=id, name=name,
-            artifact_specific_udf_map=artifact_specific_udf_map)
-        self.has_errors = bool(get_and_apply(kwargs, "has_errors", 0, int))
+    def __init__(self, api_resource=None, id=None, name=None, udf_map=None):
+        super(SharedResultFile, self).__init__(api_resource=api_resource,
+                                               id=id,
+                                               name=name,
+                                               udf_map=udf_map)
 
     @staticmethod
-    def create_from_rest_resource(api_resource, udf_map=None):
-        shared_result_file_udf_map = udf_map.get("SharedResultFile", dict())
-        name = api_resource.name
-        specific_udf_map = udf_map["SharedResultFile"]
-        kwargs = {key: api_resource.udf.get(
-            specific_udf_map[key], None) for key in specific_udf_map}
-
-        return SharedResultFile(api_resource=api_resource, id=api_resource.id, name=name,
-                                artifact_specific_udf_map=shared_result_file_udf_map, **kwargs)
-
-    def updated_rest_resource(self, original_rest_resource, updated_fields):
-        _updated_rest_resource = \
-            super(self.__class__, self).updated_rest_resource(
-                original_rest_resource, updated_fields)
-
-        return _updated_rest_resource, self.assigner.consume()
+    def create_from_rest_resource(resource, process_type=None):
+        name = resource.name
+        process_output = utils.single([process_output for process_output in process_type.process_outputs
+                                       if process_output.output_generation_type == "PerAllInputs" and
+                                       process_output.artifact_type == "ResultFile"])
+        udfs = UdfMapping.expand_udfs(resource, process_output)
+        udf_map = UdfMapping(udfs)
+        return SharedResultFile(api_resource=resource, id=resource.id, name=name, udf_map=udf_map)
 
     def __repr__(self):
         typename = type(self).__name__

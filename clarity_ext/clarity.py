@@ -1,7 +1,8 @@
 from genologics.lims import Lims
 from genologics.config import BASEURI, USERNAME, PASSWORD
-from genologics.entities import Process
+import genologics.entities
 import requests
+from clarity_ext.domain.process import Process
 
 
 class ClaritySession(object):
@@ -16,7 +17,8 @@ class ClaritySession(object):
         api.check_version()
         self.current_step_id = current_step_id
         if current_step_id:
-            self.current_step = Process(self.api, id=current_step_id)
+            process_api_resource = genologics.entities.Process(self.api, id=current_step_id)
+            self.current_step = Process.create_from_rest_resource(process_api_resource)
 
     @staticmethod
     def create(current_step_id):

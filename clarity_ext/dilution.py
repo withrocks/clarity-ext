@@ -23,23 +23,37 @@ class TransferEndpoint(object):
         self.container = aliquot.container
         self.concentration = self._referenced_concentration(
             aliquot=aliquot, concentration_ref=concentration_ref)
-        self.volume = aliquot.volume
+        # TODO: Temporary fix. This udf is not available on all objects
+        #       The same goes for all other AttributeErrors in this commit 
+        try:
+            self.volume = aliquot.udf_current_sample_volume_ul
+        except AttributeError:
+            self.volume = None
         self.is_control = False
         if hasattr(aliquot, "is_control"):
             self.is_control = aliquot.is_control
         self.is_from_original = aliquot.is_from_original
         self.requested_concentration = self._referenced_requested_concentration(
             aliquot, concentration_ref)
-        self.requested_volume = get_and_apply(
-            aliquot.__dict__, "requested_volume", None, float)
+
+        try:
+            self.requested_volume = aliquot.udf_target_vol_ul
+        except AttributeError:
+            self.requested_volume = None
         self.well_index = None
         self.plate_pos = None
 
     def _referenced_concentration(self, aliquot=None, concentration_ref=None):
         if concentration_ref == CONCENTRATION_REF_NGUL:
-            return aliquot.concentration_ngul
+            try:
+                return aliquot.udf_conc_current_ngul
+            except AttributeError:
+                return None
         elif concentration_ref == CONCENTRATION_REF_NM:
-            return aliquot.concentration_nm
+            try:
+                return aliquot.udf_conc_current_nm
+            except AttributeError:
+                return None
         else:
             raise NotImplementedError(
                 "Concentration ref {} not implemented".format(
@@ -48,9 +62,15 @@ class TransferEndpoint(object):
 
     def _referenced_requested_concentration(self, aliquot=None, concentration_ref=None):
         if concentration_ref == CONCENTRATION_REF_NGUL:
-            return aliquot.requested_concentration_ngul
+            try:
+                return aliquot.udf_target_conc_ngul
+            except AttributeError:
+                return None
         elif concentration_ref == CONCENTRATION_REF_NM:
-            return aliquot.requested_concentration_nm
+            try:
+                return aliquot.udf_target_conc_nm
+            except AttributeError:
+                return None
         else:
             raise NotImplementedError(
                 "Concentration ref {} not implemented".format(

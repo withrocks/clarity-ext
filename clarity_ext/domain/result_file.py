@@ -1,26 +1,38 @@
 from clarity_ext.domain.aliquot import Aliquot, Sample
 from clarity_ext import utils
+from clarity_ext.domain.udf import UdfMapping
 
 
 class ResultFile(Aliquot):
     """Encapsulates a ResultFile in Clarity"""
 
     def __init__(self, api_resource, is_input, id=None, samples=None, name=None, well=None,
-                 artifact_specific_udf_map=None, **kwargs):
-        super(self.__class__, self).__init__(
-            api_resource, is_input=is_input, id=id, samples=samples, name=name, well=well,
-            artifact_specific_udf_map=artifact_specific_udf_map, **kwargs)
+                 udf_map=None):
+        """
+        :param api_resource: The original API resource
+        :param is_input: True if this is an input analyte, false if not
+        :param samples:
+        :param name: Name of the result file
+        :param well: Well (location, TODO rename) of the result file
+        :param udf_map: A list of UdfMappingInfo objects 
+        """
+        # TODO: Get rid of the api_resource
+        super(self.__class__, self).__init__(api_resource, is_input=is_input, id=id,
+                samples=samples, name=name, well=well, udf_map=udf_map)
 
     @staticmethod
-    def create_from_rest_resource(resource, is_input, udf_map, container_repo):
+    def create_from_rest_resource(resource, is_input, container_repo, process_type):
         """
         Creates a `ResultFile` from the REST resource object.
         The container is fetched from the container_repo.
         """
-
-        result_file_udf_map = udf_map.get('ResultFile', None)
-        kwargs = {key: resource.udf.get(result_file_udf_map[key], None)
-                  for key in result_file_udf_map}
+        if not is_input:
+            # We expect the process_type to define one PerInput ResultFile
+            process_output = utils.single([process_output for process_output in process_type.process_outputs
+                                           if process_output.output_generation_type == "PerInput" and
+                                           process_output.artifact_type == "ResultFile"])
+        udfs = UdfMapping.expand_udfs(resource, process_output)
+        udf_map = UdfMapping(udfs)
 
         well = Aliquot.create_well_from_rest(
             resource=resource, container_repo=container_repo)
@@ -30,22 +42,8 @@ class ResultFile(Aliquot):
         samples = [Sample.create_from_rest_resource(sample) for sample in resource.samples]
         ret = ResultFile(api_resource=resource, is_input=is_input,
                          id=resource.id, samples=samples, name=resource.name, well=well,
-                         artifact_specific_udf_map=result_file_udf_map, **kwargs)
-
+                         udf_map=udf_map)
         return ret
-
-    def updated_rest_resource(self, original_rest_resource, updated_fields):
-        """
-        :param original_rest_resource: The rest resource in the state as in the api cache
-        :return: An updated rest resource according to changes in this instance of Analyte
-        """
-
-        _updated_rest_resource = \
-            super(self.__class__, self).updated_rest_resource(original_rest_resource, updated_fields)
-
-        # Add ResultFile specific fields here ...
-
-        return _updated_rest_resource, self.assigner.consume()
 
     @property
     def sample(self):

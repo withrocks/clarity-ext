@@ -43,8 +43,8 @@ class ArtifactService:
         Returns all aliquots in a step as an artifact pair (input/output)
         """
         pairs = self.step_repository.all_artifacts()
-        aliquots_only = filter(lambda pair: isinstance(pair[0], Aliquot)
-                               and isinstance(pair[1], Aliquot), pairs)
+        aliquots_only = filter(lambda pair: isinstance(pair[0], Aliquot) and
+                               isinstance(pair[1], Aliquot), pairs)
         return [ArtifactPair(i, o) for i, o in aliquots_only]
 
     def all_analyte_pairs(self):
@@ -52,8 +52,8 @@ class ArtifactService:
         Returns all analytes in a step as an artifact pair (input/output)
         """
         pairs = self.all_artifacts()
-        analytes_only = filter(lambda pair: isinstance(pair[0], Analyte)
-                               and isinstance(pair[1], Analyte), pairs)
+        analytes_only = filter(lambda pair: isinstance(pair[0], Analyte) and
+                               isinstance(pair[1], Analyte), pairs)
         return [ArtifactPair(i, o) for i, o in analytes_only]
 
     def all_input_artifacts(self):
@@ -117,15 +117,28 @@ class ArtifactService:
 
     def update_artifacts(self, update_queue, whatif=False):
         """
-        :param update_queue: The items to be updated
-        :param whatif: True if artifacts shouldn't be updated (log only)
+        Updates all the artifacts in the update queue. Ignores objects that have not been changed.
         """
         if whatif:
             self.logger.info("A request for updating artifacts was ignored. "
                              "View log to see which properties have changed.")
             return
-        response = self.step_repository.update_artifacts(update_queue)
-        return response
+
+        # Filter out artifacts that don't have any updated fields:
+        map_artifact_to_resource = {artifact: artifact.get_updated_api_resource()
+                                    for artifact in update_queue}
+        if sum(1 for value in map_artifact_to_resource.values()
+               if value is not None) == 0:
+            return 0
+        ret = self.step_repository.update_artifacts(map_artifact_to_resource.values())
+
+        # Now update all the artifacts so they have the latest version of the api resource.
+        # This is a bit strange, it would be cleaner to create a new API resource from the domain
+        # object, but for simplicity we currently keep the original API resource.
+        for artifact, resource in map_artifact_to_resource.items():
+            if resource:
+                artifact.api_resource = resource
+        return ret
 
     def parent_input_artifacts(self):
         """
@@ -175,4 +188,3 @@ class ArtifactService:
         """
         return [output for _, output in self.all_artifacts()
                 if output.generation_type == output.PER_INPUT]
-
