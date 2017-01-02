@@ -1,84 +1,139 @@
 import unittest
 from clarity_ext.dilution import DILUTION_WASTE_VOLUME
-from mock import MagicMock
 from clarity_ext.dilution import DilutionScheme
 from clarity_ext.dilution import CONCENTRATION_REF_NGUL
 from clarity_ext.dilution import VOLUME_CALC_BY_CONC
-from test.unit.clarity_ext import helpers
-from test.unit.clarity_ext.helpers import fake_analyte
+from test.unit.clarity_ext.helpers import *
 
 
 class UpdateFieldsForDilutionTests(unittest.TestCase):
+    def _init_dilution_scheme(self, concentration_ref, analyte_set=None):
+        def udf_adapted_analyte_set():
+            return analyte_set()
 
-    def setUp(self):
-        self.dilution_scheme = None
-
-    def _init_dilution_scheme(self, concentration_ref):
-        svc = helpers.mock_artifact_service(analyte_set_with_blank)
-        self.dilution_scheme = DilutionScheme.create(
+        repo = mock_step_repository(analyte_set=udf_adapted_analyte_set)
+        svc = ArtifactService(step_repository=repo)
+        context = mock_context(artifact_service=svc, step_repo=repo)
+        dilution_scheme = DilutionScheme.create(
             artifact_service=svc, robot_name="Hamilton",
             concentration_ref=concentration_ref, volume_calc_method=VOLUME_CALC_BY_CONC)
 
-        analyte_pair_by_dilute = self.dilution_scheme.aliquot_pair_by_transfer
-        for dilute in self.dilution_scheme.transfers:
+        return dilution_scheme, context
+
+    @staticmethod
+    def _dilute(dilution_scheme):
+        # TODO: Shouldn't this code be in a service (or is there already?)
+        aliquot_pair_by_transfer = dilution_scheme.aliquot_pair_by_transfer
+        for transfer in dilution_scheme.unsplit_transfers:
             # Make preparation, fetch the analyte to be updated
-            source_analyte = analyte_pair_by_dilute[dilute].input_artifact
-            destination_analyte = analyte_pair_by_dilute[
-                dilute].output_artifact
+            source = aliquot_pair_by_transfer(transfer).input_artifact
+            destination = aliquot_pair_by_transfer(
+                transfer).output_artifact
 
             # Update fields for analytes
-            source_analyte.volume = dilute.source_initial_volume - \
-                dilute.requested_volume - DILUTION_WASTE_VOLUME
+            source.udf_current_sample_volume_ul = max(
+                transfer.source_initial_volume - transfer.sample_volume - DILUTION_WASTE_VOLUME, 0)
 
-            destination_analyte.concentration = dilute.requested_concentration
+            destination.udf_target_conc_ngul = (transfer.sample_volume *
+                                                transfer.source_concentration /
+                                                (transfer.sample_volume + transfer.buffer_volume))
+            destination.udf_target_vol_ul = transfer.sample_volume + transfer.buffer_volume
+            yield source, destination
 
-            destination_analyte.volume = dilute.requested_volume
+    def _update_fields(self, dilution_scheme, context):
+        for source, destination in self._dilute(dilution_scheme):
+            context.update(source)
+            context.update(destination)
+        context.commit()
 
     def test_source_volume_update_1(self):
-        self._init_dilution_scheme(concentration_ref=CONCENTRATION_REF_NGUL)
-        dilute = self.dilution_scheme.transfers[-1]
+        dilution_scheme, context = self._init_dilution_scheme(
+            concentration_ref=CONCENTRATION_REF_NGUL, analyte_set=analyte_set_with_blank)
+        self._update_fields(dilution_scheme, context)
+        dilute = dilution_scheme.unsplit_transfers[-1]
         expected = 29.0
-        outcome = self.dilution_scheme.aliquot_pair_by_transfer[
-            dilute].input_artifact.volume
+        outcome = dilution_scheme.aliquot_pair_by_transfer(
+            dilute).input_artifact.udf_current_sample_volume_ul
         print(dilute.aliquot_name)
         self.assertEqual(expected, outcome)
 
     def test_source_volume_update_all(self):
-        self._init_dilution_scheme(concentration_ref=CONCENTRATION_REF_NGUL)
+        dilution_scheme, context = self._init_dilution_scheme(
+            concentration_ref=CONCENTRATION_REF_NGUL, analyte_set=analyte_set_with_blank)
+        self._update_fields(dilution_scheme, context)
         source_volume_sum = 0
-        for dilute in self.dilution_scheme.transfers:
-            outcome = self.dilution_scheme.aliquot_pair_by_transfer[
-                dilute].input_artifact.volume
+        for dilute in dilution_scheme.unsplit_transfers:
+            outcome = dilution_scheme.aliquot_pair_by_transfer(
+                dilute).input_artifact.udf_current_sample_volume_ul
             source_volume_sum += outcome
         expected_sum = 57.0
         self.assertEqual(expected_sum, source_volume_sum)
 
     def test_dilute_aliqout_matching(self):
-        self._init_dilution_scheme(concentration_ref=CONCENTRATION_REF_NGUL)
-        aliquot_pair_by_transfer = self.dilution_scheme.aliquot_pair_by_transfer
-        for transfer in self.dilution_scheme.transfers:
-            source_aliquot = aliquot_pair_by_transfer[transfer].input_artifact
+        dilution_scheme, context = self._init_dilution_scheme(
+            concentration_ref=CONCENTRATION_REF_NGUL, analyte_set=analyte_set_with_blank)
+        self._update_fields(dilution_scheme, context)
+        aliquot_pair_by_transfer = dilution_scheme.aliquot_pair_by_transfer
+        for transfer in dilution_scheme.unsplit_transfers:
+            source_aliquot = aliquot_pair_by_transfer(transfer).input_artifact
             print("transfer sample name: {}".format(transfer.aliquot_name))
             print("source aliquot sample name: {}".format(source_aliquot.name))
             self.assertEqual(transfer.aliquot_name, source_aliquot.name)
 
+    def test_update_split_rows(self):
+        def analyte_set_split_rows(udfs=None):
+            api_resource = MagicMock()
+            api_resource.udf = {}
+            return [
+                (fake_analyte("cont1", "art7", "sample4", "sample4", "E:2", True, is_control=True,
+                              udfs=udfs, api_resource=api_resource),
+                 fake_analyte("cont2", "art8", "sample4", "sample4", "E:2", False, is_control=True,
+                              udfs=udfs, api_resource=api_resource,
+                              requested_concentration_ngul=100, requested_volume=20)),
+                (fake_analyte("cont1", "art1", "sample1", "sample1", "B:2", True,
+                              udfs=udfs, api_resource=api_resource,
+                              concentration_ngul=100, volume=30),
+                 fake_analyte("cont2", "art2", "sample1", "sample1", "B:2", False,
+                              udfs=udfs, api_resource=api_resource,
+                              requested_concentration_ngul=100, requested_volume=70)),
+            ]
 
-def analyte_set_with_blank():
+        dilution_scheme, context = self._init_dilution_scheme(
+            concentration_ref=CONCENTRATION_REF_NGUL, analyte_set=analyte_set_split_rows)
+        self._update_fields(dilution_scheme, context)
+
+        diluted = list(self._dilute(dilution_scheme))
+        assert len(diluted) == 1
+        source, destination = diluted[0]
+        self.assertEqual(source.udf_current_sample_volume_ul, 0)
+        self.assertEqual(destination.udf_target_vol_ul, 70.0)
+        self.assertEqual(destination.udf_target_conc_ngul, 100.0)
+
+def analyte_set_with_blank(udfs=None):
+    api_resource = MagicMock()
+    api_resource.udf = {}
     return [
-        (fake_analyte("cont1", "art7", "sample4", "sample4", "E:2", True, is_control=True),
+        (fake_analyte("cont1", "art7", "sample4", "sample4", "E:2", True, is_control=True,
+                      udfs=udfs, api_resource=api_resource),
          fake_analyte("cont2", "art8", "sample4", "sample4", "E:2", False, is_control=True,
-                      requested_concentration=100, requested_volume=20)),
+                      udfs=udfs, api_resource=api_resource,
+                      requested_concentration_ngul=100, requested_volume=20)),
         (fake_analyte("cont1", "art1", "sample1", "sample1", "B:2", True,
-                      concentration=100, volume=30),
+                      udfs=udfs, api_resource=api_resource,
+                      concentration_ngul=100, volume=30),
          fake_analyte("cont2", "art2", "sample1", "sample1", "B:2", False,
-                      requested_concentration=100, requested_volume=20)),
+                      udfs=udfs, api_resource=api_resource,
+                      requested_concentration_ngul=100, requested_volume=20)),
         (fake_analyte("cont1", "art3", "sample2", "sample2", "C:2", True,
-                      concentration=100, volume=40),
+                      udfs=udfs, api_resource=api_resource,
+                      concentration_ngul=100, volume=40),
          fake_analyte("cont2", "art4", "sample2", "sample2", "C:2", False,
-                      requested_concentration=100, requested_volume=20)),
+                      udfs=udfs, api_resource=api_resource,
+                      requested_concentration_ngul=100, requested_volume=20)),
         (fake_analyte("cont1", "art5", "sample3", "sample3", "D:2", True,
-                      concentration=100, volume=50),
+                      udfs=udfs, api_resource=api_resource,
+                      concentration_ngul=100, volume=50),
          fake_analyte("cont2", "art6", "sample3", "sample3", "D:2", False,
-                      requested_concentration=100, requested_volume=20)),
+                      udfs=udfs, api_resource=api_resource,
+                      requested_concentration_ngul=100, requested_volume=20)),
     ]
-
