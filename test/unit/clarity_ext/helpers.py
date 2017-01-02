@@ -164,7 +164,6 @@ def mock_step_repository(analyte_set):
     session.api = MagicMock()
     step_repo = StepRepository(session=session)
     step_repo.all_artifacts = analyte_set
-    step_repo._add_to_orig_state_cache(analyte_set())
     return step_repo
 
 

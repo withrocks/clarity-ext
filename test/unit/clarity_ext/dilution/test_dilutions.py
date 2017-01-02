@@ -328,8 +328,8 @@ class TestDilutionScheme(unittest.TestCase):
         repo.all_artifacts = invalid_analyte_set
         svc = ArtifactService(repo)
         dilution_scheme = self._default_dilution_scheme(svc)
-        self.assertEqual(1, len(dilution_scheme.transfers))
-        transfer = utils.single(dilution_scheme.transfers)
+        self.assertEqual(1, len(dilution_scheme._transfers))
+        transfer = utils.single(dilution_scheme._transfers)
         self.assertEqual(transfer.buffer_volume, 0)
         self.assertEqual(transfer.has_to_evaporate, True)
         self.assertTrue(isinstance(transfer.requested_volume, float))

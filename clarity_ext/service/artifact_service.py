@@ -14,9 +14,9 @@ class ArtifactService:
     All objects fetched from the step repository are cached.
     """
 
-    def __init__(self, step_repository):
+    def __init__(self, step_repository, logger=None):
         self.step_repository = step_repository
-        self.logger = logging.getLogger(__name__)
+        self.logger = logger or logging.getLogger(__name__)
         self._artifacts = None
         self._parent_input_artifacts_by_sample_id = None
 
