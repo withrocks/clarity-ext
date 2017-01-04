@@ -13,7 +13,7 @@ class TestContext(unittest.TestCase):
         file_svc = MagicMock()
         current_user = MagicMock()
         step_logger_svc = MagicMock()
-        context = ExtensionContext(session, artifact_svc, file_svc, current_user, step_logger_svc, None)
+        context = ExtensionContext(session, artifact_svc, file_svc, current_user, step_logger_svc, None, )
         self.assertIsNotNone(context)
 
     def test_input_output_container_throws(self):
@@ -22,7 +22,7 @@ class TestContext(unittest.TestCase):
         file_svc = MagicMock()
         current_user = MagicMock()
         step_logger_svc= MagicMock()
-        context = ExtensionContext(session, artifact_svc, file_svc, current_user, step_logger_svc, None)
+        context = ExtensionContext(session, artifact_svc, file_svc, current_user, step_logger_svc, None, )
 
         containers = artifact_svc.all_input_containers()
         self.assertEqual(2, len(containers), "Test data not correctly setup")

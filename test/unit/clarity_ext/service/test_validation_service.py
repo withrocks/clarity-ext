@@ -19,7 +19,7 @@ class TestValidationService(unittest.TestCase):
         file_svc = MagicMock()
         current_user = MagicMock()
         step_logger_svc = MagicMock()
-        return ExtensionContext(session, artifact_svc, file_svc, current_user, step_logger_svc, None)
+        return ExtensionContext(session, artifact_svc, file_svc, current_user, step_logger_svc, None, )
 
     def test_validation_logging(self):
         context = self.instantiate_context()

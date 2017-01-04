@@ -1,13 +1,11 @@
-from clarity_ext.dilution import DilutionScheme
 from clarity_ext import UnitConversion
 from clarity_ext.repository.file_repository import FileRepository
 from clarity_ext.utils import lazyprop
 from clarity_ext import ClaritySession
-from clarity_ext.service import ArtifactService, FileService, StepLoggerService
+from clarity_ext.service import ArtifactService, FileService, StepLoggerService, DilutionService
 from clarity_ext.repository import StepRepository
 from clarity_ext import utils
 from clarity_ext.driverfile import OSService
-from clarity_ext.service.validation_service import ERRORS_AND_WARNING_ENTRY_NAME
 
 
 class ExtensionContext(object):
@@ -22,7 +20,7 @@ class ExtensionContext(object):
     """
 
     def __init__(self, session, artifact_service, file_service, current_user,
-                 step_logger_service, step_repo, test_mode=False):
+                 step_logger_service, step_repo, dilution_service, test_mode=False):
         """
         Initializes the context.
 
@@ -47,6 +45,7 @@ class ExtensionContext(object):
         self.dilution_scheme = None
         self.disable_commits = False
         self.test_mode = test_mode
+        self.dilution_service = dilution_service
 
     @staticmethod
     def create(step_id, test_mode=False):
@@ -62,23 +61,9 @@ class ExtensionContext(object):
         file_repository = FileRepository(session)
         file_service = FileService(artifact_service, file_repository, False, OSService())
         step_logger_service = StepLoggerService("Step log", file_service)
+        dilution_service = DilutionService(artifact_service)
         return ExtensionContext(session, artifact_service, file_service, current_user,
-                                step_logger_service, step_repo, test_mode=test_mode)
-
-    def init_dilution_scheme(self, concentration_ref=None, include_blanks=False,
-                             volume_calc_method=None, make_pools=False):
-        file_list = [file for file in self.shared_files if file.name ==
-                     ERRORS_AND_WARNING_ENTRY_NAME]
-        if not len(file_list) == 1:
-            raise ValueError("This step is not configured with the shared file entry for {}".format(
-                ERRORS_AND_WARNING_ENTRY_NAME))
-        error_log_artifact = file_list[0]
-        # TODO: The caller needs to provide the robot
-        self.dilution_scheme = DilutionScheme.create(
-            artifact_service=self.artifact_service, robot_name="Hamilton",
-            concentration_ref=concentration_ref, include_blanks=include_blanks,
-            error_log_artifact=error_log_artifact,
-            volume_calc_method=volume_calc_method, make_pools=make_pools)
+                                step_logger_service, step_repo, dilution_service, test_mode=test_mode)
 
     @lazyprop
     def shared_files(self):

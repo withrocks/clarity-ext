@@ -51,25 +51,25 @@ class OneToOneConcentrationCalc:
 
     def calculate_transfer_volumes(self, transfers=None, scale_up_low_volumes=None):
         for transfer in transfers:
-            try:
-                transfer.sample_volume = \
-                    transfer.requested_concentration * transfer.requested_volume / \
-                    transfer.source_concentration
-                transfer.buffer_volume = \
-                    max(transfer.requested_volume - transfer.sample_volume, 0)
-                transfer.has_to_evaporate = \
-                    (transfer.requested_volume - transfer.sample_volume) < 0
-                if scale_up_low_volumes and transfer.sample_volume < ROBOT_MIN_VOLUME:
-                    scale_factor = float(
-                        ROBOT_MIN_VOLUME / transfer.sample_volume)
-                    transfer.sample_volume *= scale_factor
-                    transfer.buffer_volume *= scale_factor
-                    transfer.scaled_up = True
-            except (TypeError, ZeroDivisionError) as e:
-                # TODO: Remove catch-all exception handlers
-                transfer.sample_volume = None
-                transfer.buffer_volume = None
-                transfer.has_to_evaporate = None
+            #try:
+            transfer.sample_volume = \
+                transfer.requested_concentration * transfer.requested_volume / \
+                transfer.source_concentration
+            transfer.buffer_volume = \
+                max(transfer.requested_volume - transfer.sample_volume, 0)
+            transfer.has_to_evaporate = \
+                (transfer.requested_volume - transfer.sample_volume) < 0
+            if scale_up_low_volumes and transfer.sample_volume < ROBOT_MIN_VOLUME:
+                scale_factor = float(
+                    ROBOT_MIN_VOLUME / transfer.sample_volume)
+                transfer.sample_volume *= scale_factor
+                transfer.buffer_volume *= scale_factor
+                transfer.scaled_up = True
+            #except (TypeError, ZeroDivisionError) as e:
+            #    # TODO: Remove catch-all exception handlers
+            #    transfer.sample_volume = None
+            #    transfer.buffer_volume = None
+            #    transfer.has_to_evaporate = None
 
 
 class PoolConcentrationCalc:

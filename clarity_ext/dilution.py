@@ -12,8 +12,9 @@ VOLUME_CALC_BY_CONC = 2
 
 class TransferEndpoint(object):
     """
-    TransferEndpoint wraps an source or destination analyte involved in a dilution
+    TransferEndpoint wraps a source or destination analyte involved in a dilution
     """
+
     # TODO: Handle tube racks
 
     def __init__(self, aliquot, concentration_ref=None):
@@ -94,16 +95,12 @@ class SingleTransfer(object):
         self.source_container = source_endpoint.container
         self.source_concentration = source_endpoint.concentration
         self.source_initial_volume = source_endpoint.volume
-        self.source_well_index = None
-        self.source_plate_pos = None
 
         self.target_aliquot_name = None
         self.target_well = None
         self.target_container = None
         self.requested_concentration = None
         self.requested_volume = None
-        self.target_well_index = None
-        self.target_plate_pos = None
 
         if destination_endpoint:
             self.set_destination_endpoint(destination_endpoint)
@@ -177,22 +174,37 @@ class EndpointPositioner(object):
         plate_position_numbers = dict(zip(unique_containers, positions))
         return plate_position_numbers
 
-    def find_sort_number(self, transfer):
+    def find_sort_number(self, positioned_transfer):
         """Sort dilutes according to plate and well positions
         """
         plate_base_number = self._plate_size.width * self._plate_size.height + 1
         plate_sorting = self.plate_sorting_map[
-            transfer.source_container.id
+            positioned_transfer.transfer.source_container.id
         ]
         # Sort order for wells are always based on down first indexing
         # regardless the robot type
-        return plate_sorting * plate_base_number + transfer.source_well.index_down_first
+        return plate_sorting * plate_base_number + positioned_transfer.transfer.source_well.index_down_first
 
     def __str__(self):
         return "<{type} {robot} {height}x{width}>".format(type=self.__class__.__name__,
                                                           robot=self.robot_name,
                                                           height=self._plate_size.size.height,
                                                           width=self._plate_size.size.width)
+
+
+class PositionedTransfer(object):
+    """
+    Represents a Transfer that has been positioned on a robot, with metadata the robot
+    can use. Probably not necessary! (but simplifies sorting to begin with)
+
+    TODO: Might need to be robot specific
+    """
+    def __init__(self, transfer):
+        self.transfer = transfer
+        self.source_well_index = None
+        self.source_plate_pos = None
+        self.target_well_index = None
+        self.target_plate_pos = None
 
 
 class RobotDeckPositioner(object):
@@ -202,15 +214,12 @@ class RobotDeckPositioner(object):
     """
 
     def __init__(self, robot_name, dilutes, plate_size):
-
         source_endpoints = [dilute.source_endpoint for dilute in dilutes]
         source_positioner = EndpointPositioner(robot_name, source_endpoints,
                                                plate_size, "DNA")
-        destination_endpoints = [
-            dilute.destination_endpoint for dilute in dilutes]
+        destination_endpoints = [dilute.destination_endpoint for dilute in dilutes]
         destination_positioner = EndpointPositioner(
             robot_name, destination_endpoints, plate_size, "END")
-
         self._robot_name = robot_name
         self._plate_size = plate_size
         self._source_positioner = source_positioner
@@ -229,39 +238,137 @@ class RobotDeckPositioner(object):
                                                           height=self._plate_size.height,
                                                           width=self._plate_size.width)
 
+    def enumerate_split_row_transfers(self, dilution_scheme):
+        """Enumerates the transfers"""
+        positioned_transfers = self.enumerate_positioned_transfers(dilution_scheme.transfers)
+        sorted_transfers = self.sorted_transfers(positioned_transfers)
+        for transfer in self.split_up_high_volume_rows(sorted_transfers):
+            yield transfer
+
+    def enumerate_unsplit_tranfers(self, dilution_scheme):
+        positioned_transfers = self.enumerate_positioned_transfers(dilution_scheme.transfers)
+        sorted_transfers = self.sorted_transfers(positioned_transfers)
+        for transfer in sorted_transfers:
+            yield transfer
+
+    def enumerate_positioned_transfers(self, transfers):
+        # TODO: Has unnecessary side effects in that the positions are set on the transfer, but
+        # these will be set again by a different robot
+        for transfer in transfers:
+            positioned_transfer = PositionedTransfer(transfer)
+            positioned_transfer.source_well_index = self.indexer(transfer.source_well)
+            positioned_transfer.source_plate_pos = self.source_plate_position_map[transfer.source_container.id]
+            positioned_transfer.target_well_index = self.indexer(transfer.target_well)
+            positioned_transfer.target_plate_pos = self.target_plate_position_map[transfer.target_container.id]
+            yield positioned_transfer
+
+    def split_up_high_volume_rows(self, transfers):
+        """
+        Split up a transfer between source well x and target well y into
+        several rows, if sample volume or buffer volume exceeds 50 ul
+        """
+        split_row_transfers = []
+        for transfer in transfers:
+            calculation_volume = max(
+                (transfer.sample_volume or 0), (transfer.buffer_volume or 0))
+            (n, residual) = divmod(calculation_volume, PIPETTING_MAX_VOLUME)
+            if residual > 0:
+                total_rows = int(n + 1)
+            else:
+                total_rows = int(n)
+
+            copies = self._create_copies(transfer, total_rows)
+            split_row_transfers += copies
+            self._split_up_volumes(
+                copies, transfer.sample_volume, transfer.buffer_volume)
+
+        return split_row_transfers
+
+    def sorted_transfers(self, positioned_transfers):
+        def pipetting_volume(transfer):
+            # TODO: Why would these ever not be set? Seems to indicate an error somewhere else...
+            return (transfer.buffer_volume or 0) + (transfer.sample_volume or 0)
+
+        def max_added_pip_volume():
+            return max(map(lambda t: (t.transfer.buffer_volume or 0) + (t.transfer.sample_volume or 0),
+                           positioned_transfers))
+
+        # Sort on source position, and in case of split rows, pipetting
+        # volumes. Let max pipetting volumes be shown first
+        max_vol = max_added_pip_volume()
+        return sorted(positioned_transfers, key=lambda t: self.find_sort_number(t) +
+                                     (max_vol - pipetting_volume(t.transfer)) / (max_vol + 1.0))
+
+    @staticmethod
+    def _split_up_volumes(transfers, original_sample_volume, original_buffer_volume):
+        """
+        Split up any transferring volume exceeding 50 ul to multiple rows represented by the
+         list 'transfers'
+        :param transfers: Represents rows in driver file,
+        needed for a transfer between source well x and target well y
+        :param original_sample_volume: Sample volume first calculated for a single row transfer,
+        that might exceed 50 ul
+        :param original_buffer_volume: Buffer volume first calculated for a single row transfer,
+        that might exceed 50 ul
+        :return:
+        """
+        number_rows = len(transfers)
+        for t in transfers:
+            # Only split up pipetting volume if the actual volume exceeds
+            # max of 50 ul. Otherwise, the min volume of 2 ul might be
+            # violated.
+            if original_buffer_volume > PIPETTING_MAX_VOLUME:
+                t.buffer_volume = float(
+                    original_buffer_volume / number_rows)
+
+            if original_sample_volume > PIPETTING_MAX_VOLUME:
+                t.sample_volume = float(
+                    original_sample_volume / number_rows)
+
+    @staticmethod
+    def _create_copies(transfer, total_rows):
+        """
+        Create copies of transfer that will cause extra rows in the driver file if
+        pipetting volume exceeds 50 ul. Initiate both buffer volume and sample volume to zero
+        :param transfer: The transfer to be copied
+        :param total_rows: The total number of rows needed for a
+        transfer between source well x and target well y
+        :return:
+        """
+        copies = [copy.copy(transfer)]
+        for i in xrange(0, total_rows - 1):
+            t = copy.copy(transfer)
+            t.buffer_volume = 0
+            t.sample_volume = 0
+            copies.append(t)
+        return copies
+
 
 class DilutionScheme(object):
-    """Creates a dilution scheme, given input and output analytes."""
+    """
+    Contains information on how, given different strategies, samples should be diluted.
 
-    def __init__(self, artifact_service, robot_name, scale_up_low_volumes=True,
-                 concentration_ref=None, include_blanks=False, error_log_artifact=None,
+    Does not do the actual dilution or generate driver files etc. but the DilutionService
+    needs a DilutionScheme to do that (TODO: Fix comment, written while refactoring)
+    """
+
+    def __init__(self, pairs, scale_up_low_volumes=True,
+                 concentration_ref=None, include_blanks=False,
                  volume_calc_strategy=None):
         """
         Calculates all derived values needed in dilute driver file.
         """
         self.scale_up_low_volumes = scale_up_low_volumes
-        self.error_log_artifact = error_log_artifact
         self.volume_calc_strategy = volume_calc_strategy
-        pairs = artifact_service.all_aliquot_pairs()
 
         # TODO: Is it safe to just check for the container for the first output
         # analyte?
-        container = pairs[0].output_artifact.container
         all_transfers = self._create_transfers(
             pairs, concentration_ref=concentration_ref)
-        self._transfers = self._filtered_transfers(
+        self.transfers = self._filtered_transfers(
             all_transfers=all_transfers, include_blanks=include_blanks)
-
-        self.aliquot_pair_by_transfer = self._map_pair_and_transfers(
-            pairs=pairs)
-        self.robot_deck_positioner = RobotDeckPositioner(
-            robot_name, self._transfers, container.size)
-
+        self.aliquot_pair_by_transfer = self._map_pair_and_transfers(pairs=pairs)
         self.calculate_transfer_volumes()
-        self.do_positioning()
-        self.split_row_transfers = self.split_up_high_volume_rows(
-            self.sort_transfers(self._transfers))
-        self.unsplit_transfers = self.sort_transfers(self._transfers)
 
     def _filtered_transfers(self, all_transfers, include_blanks):
         if include_blanks:
@@ -290,132 +397,25 @@ class DilutionScheme(object):
 
         def pair_by_transfer(transfer):
             by_transfer_dict = {transfer.identifier: pair_dict[
-                transfer.pair_id] for transfer in self._transfers}
+                transfer.pair_id] for transfer in self.transfers}
             return by_transfer_dict[transfer.identifier]
+
         return pair_by_transfer
 
     def calculate_transfer_volumes(self):
-        # Handle volumes etc.
+        """
+        Updates the transfers with correct volumes etc, based on the selected volume_calc_strategy.
+        """
         self.volume_calc_strategy.calculate_transfer_volumes(
-            transfers=self._transfers, scale_up_low_volumes=self.scale_up_low_volumes)
-
-    def split_up_high_volume_rows(self, transfers):
-        """
-        Split up a transfer between source well x and target well y into
-        several rows, if sample volume or buffer volume exceeds 50 ul
-        :return:
-        """
-        split_row_transfers = []
-        for transfer in transfers:
-            calculation_volume = max(
-                self._get_volume(transfer.sample_volume), self._get_volume(transfer.buffer_volume))
-            (n, residual) = divmod(calculation_volume, PIPETTING_MAX_VOLUME)
-            if residual > 0:
-                total_rows = int(n + 1)
-            else:
-                total_rows = int(n)
-
-            copies = self._create_copies(transfer, total_rows)
-            split_row_transfers += copies
-            self._split_up_volumes(
-                copies, transfer.sample_volume, transfer.buffer_volume)
-
-        return split_row_transfers
-
-    @staticmethod
-    def _create_copies(transfer, total_rows):
-        """
-        Create copies of transfer
-        that will cause extra rows in the driver file if
-        pipetting volume exceeds 50 ul.
-        Initiate both buffer volume and sample volume to zero
-        :param transfer: The transfer to be copied
-        :param total_rows: The total number of rows needed for a
-        transfer between source well x and target well y
-        :return:
-        """
-        copies = [copy.copy(transfer)]
-        for i in xrange(0, total_rows - 1):
-            t = copy.copy(transfer)
-            t.buffer_volume = 0
-            t.sample_volume = 0
-            copies.append(t)
-
-        return copies
-
-    @staticmethod
-    def _split_up_volumes(transfers, original_sample_volume, original_buffer_volume):
-        """
-        Split up any transferring volume exceeding 50 ul to multiple rows represented by the
-         list 'transfers'
-        :param transfers: Represents rows in driver file,
-        needed for a transfer between source well x and target well y
-        :param original_sample_volume: Sample volume first calculated for a single row transfer,
-        that might exceed 50 ul
-        :param original_buffer_volume: Buffer volume first calculated for a single row transfer,
-        that might exceed 50 ul
-        :return:
-        """
-        number_rows = len(transfers)
-        for t in transfers:
-            # Only split up pipetting volume if the actual volume exceeds
-            # max of 50 ul. Otherwise, the min volume of 2 ul might be
-            # violated.
-            if original_buffer_volume > PIPETTING_MAX_VOLUME:
-                t.buffer_volume = float(
-                    original_buffer_volume / number_rows)
-
-            if original_sample_volume > PIPETTING_MAX_VOLUME:
-                t.sample_volume = float(
-                    original_sample_volume / number_rows)
-
-    def sort_transfers(self, transfers):
-        def pipetting_volume(transfer):
-            return self._get_volume(transfer.buffer_volume) + self._get_volume(transfer.sample_volume)
-
-        def max_added_pip_volume():
-            volumes = map(lambda t: (self._get_volume(t.buffer_volume),
-                                     self._get_volume(t.sample_volume)), self._transfers)
-            return max(map(lambda (buffer_vol, sample_vol): buffer_vol + sample_vol, volumes))
-
-        # Sort on source position, and in case of splitted rows, pipetting
-        # volumes. Let max pipetting volumes be shown first
-        max_vol = max_added_pip_volume()
-        return sorted(
-            transfers, key=lambda t: self.robot_deck_positioner.find_sort_number(t) +
-            (max_vol - pipetting_volume(t)) / (max_vol + 1.0))
-
-    @staticmethod
-    def _get_volume(volume):
-        # In cases when some parameter is not set (Source conc, Target concentration
-        # or volume), let the error and warnings check in script
-        # catch these exceptions
-        if not volume:
-            return 0
-        else:
-            return volume
-
-    def do_positioning(self):
-        # Handle positioning
-        for transfer in self._transfers:
-            transfer.source_well_index = self.robot_deck_positioner.indexer(
-                transfer.source_well)
-            transfer.source_plate_pos = self.robot_deck_positioner. \
-                source_plate_position_map[transfer.source_container.id]
-            transfer.target_well_index = self.robot_deck_positioner.indexer(
-                transfer.target_well)
-            transfer.target_plate_pos = self.robot_deck_positioner \
-                .target_plate_position_map[transfer.target_container.id]
+            transfers=self.transfers, scale_up_low_volumes=self.scale_up_low_volumes)
 
     def __str__(self):
-        return "<DilutionScheme positioner={}>".format(self.robot_deck_positioner)
+        return "<DilutionScheme>".format()
 
     @staticmethod
-    def create(artifact_service, robot_name, scale_up_low_volumes=True,
-               concentration_ref=None, include_blanks=False, error_log_artifact=None,
+    def create(analyte_pairs, scale_up_low_volumes=True,
+               concentration_ref=None, include_blanks=False,
                volume_calc_method=None, make_pools=False):
-        volume_calc_strategy = None
-
         if volume_calc_method == VOLUME_CALC_FIXED:
             volume_calc_strategy = FixedVolumeCalc()
         elif volume_calc_method == VOLUME_CALC_BY_CONC and make_pools is False:
@@ -429,7 +429,7 @@ class DilutionScheme(object):
                 "make pools: {}".format(volume_calc_method, make_pools))
 
         return DilutionScheme(
-            artifact_service=artifact_service, robot_name=robot_name,
+            analyte_pairs,
             scale_up_low_volumes=scale_up_low_volumes,
             concentration_ref=concentration_ref, include_blanks=include_blanks,
-            error_log_artifact=error_log_artifact, volume_calc_strategy=volume_calc_strategy)
+            volume_calc_strategy=volume_calc_strategy)
