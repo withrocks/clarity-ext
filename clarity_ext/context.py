@@ -1,13 +1,14 @@
 from clarity_ext.dilution import DilutionScheme
 from clarity_ext import UnitConversion
-from clarity_ext.repository.file_repository import FileRepository
+from clarity_ext.repository import ClarityRepository, FileRepository
 from clarity_ext.utils import lazyprop
 from clarity_ext import ClaritySession
-from clarity_ext.service import ArtifactService, FileService, StepLoggerService
+from clarity_ext.service import ArtifactService, FileService, StepLoggerService, ClarityService
 from clarity_ext.repository import StepRepository
 from clarity_ext import utils
 from clarity_ext.driverfile import OSService
 from clarity_ext.service.validation_service import ERRORS_AND_WARNING_ENTRY_NAME
+from clarity_ext.domain import Artifact, DomainObjectMixin
 
 
 class ExtensionContext(object):
@@ -22,7 +23,7 @@ class ExtensionContext(object):
     """
 
     def __init__(self, session, artifact_service, file_service, current_user,
-                 step_logger_service, step_repo, test_mode=False):
+                 step_logger_service, step_repo, clarity_service, test_mode=False):
         """
         Initializes the context.
 
@@ -32,6 +33,7 @@ class ExtensionContext(object):
         :param step_logger_service: Provides access to logging via the context.
         :param step_repo: The repository for the current step
         :param cache: Set to True to use the cache folder (.cache) for downloaded files
+        :param clarity_service: General service for working with domain objects
         :param test_mode: If set to True, extensions may behave slightly differently when testing, in particular
                           returning a constant time.
         """
@@ -47,6 +49,7 @@ class ExtensionContext(object):
         self.dilution_scheme = None
         self.disable_commits = False
         self.test_mode = test_mode
+        self.clarity_service = clarity_service
 
     @staticmethod
     def create(step_id, test_mode=False):
@@ -62,8 +65,10 @@ class ExtensionContext(object):
         file_repository = FileRepository(session)
         file_service = FileService(artifact_service, file_repository, False, OSService())
         step_logger_service = StepLoggerService("Step log", file_service)
+        clarity_service = ClarityService(ClarityRepository(), step_repo)
+
         return ExtensionContext(session, artifact_service, file_service, current_user,
-                                step_logger_service, step_repo, test_mode=test_mode)
+                                step_logger_service, step_repo, clarity_service, test_mode=test_mode)
 
     def init_dilution_scheme(self, concentration_ref=None, include_blanks=False,
                              volume_calc_method=None, make_pools=False):
@@ -166,4 +171,5 @@ class ExtensionContext(object):
 
     def commit(self):
         """Commits all objects that have been added via the update method, using batch processing if possible"""
-        self.artifact_service.update_artifacts(self._update_queue, self.disable_commits)
+        self.clarity_service.update(self._update_queue, self.disable_commits)
+

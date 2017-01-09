@@ -1,5 +1,7 @@
 import unittest
+from mock import MagicMock
 from test.unit.clarity_ext import helpers
+from clarity_ext.service import ClarityService, ArtifactService
 
 
 class TestArtifactService(unittest.TestCase):
@@ -37,20 +39,29 @@ class TestArtifactService(unittest.TestCase):
         If there have been no updates to UDFs, the artifact service should do nothing on commit
         """
         # Fetch some artifacts through the artifact service:
-        svc = helpers.mock_two_containers_artifact_service()
-        _, outp = svc.all_artifacts()[0]
+        repo = MagicMock()
+        repo.all_artifacts = helpers.two_containers_artifact_set
+        artifact_svc = ArtifactService(repo)
+        _, outp = artifact_svc.all_artifacts()[0]
         self.assertIsNotNone(outp.udf_target_conc_ngul, "Unexpected test setup")
-        svc.update_artifacts([outp])
-        svc.step_repository.update_artifacts.assert_not_called()
+
+        clarity_svc = ClarityService(MagicMock(), MagicMock())
+        clarity_svc.update([outp])
+        clarity_svc.step_repository.update_artifacts.assert_not_called()
 
     def test_commit_touched_artifacts_has_effect(self):
         """
         If we update UDFs of an artifact and then commit in the artifact service,
         the repo update method should be called
         """
-        svc = helpers.mock_two_containers_artifact_service()
-        _, outp = svc.all_artifacts()[0]
-        self.assertIsNotNone(outp.udf_target_conc_ngul, "Unexpected test setup")
+        repo = MagicMock()
+        repo.all_artifacts = helpers.two_containers_artifact_set
+        artifact_svc = ArtifactService(repo)
+        _, outp = artifact_svc.all_artifacts()[0]
+
+        # Update through the ClarityService, since all objects uses the same update method:
         outp.udf_target_conc_ngul += 1
-        svc.update_artifacts([outp])
-        svc.step_repository.update_artifacts.assert_called_once()
+
+        clarity_svc = ClarityService(MagicMock(), MagicMock())
+        clarity_svc.update([outp])
+        clarity_svc.step_repository.update_artifacts.assert_called_once()

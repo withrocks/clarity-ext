@@ -115,31 +115,6 @@ class ArtifactService:
         assert len(ret) == 0 or isinstance(ret[0], ResultFile)
         return ret
 
-    def update_artifacts(self, update_queue, whatif=False):
-        """
-        Updates all the artifacts in the update queue. Ignores objects that have not been changed.
-        """
-        if whatif:
-            self.logger.info("A request for updating artifacts was ignored. "
-                             "View log to see which properties have changed.")
-            return
-
-        # Filter out artifacts that don't have any updated fields:
-        map_artifact_to_resource = {artifact: artifact.get_updated_api_resource()
-                                    for artifact in update_queue}
-        if sum(1 for value in map_artifact_to_resource.values()
-               if value is not None) == 0:
-            return 0
-        ret = self.step_repository.update_artifacts(map_artifact_to_resource.values())
-
-        # Now update all the artifacts so they have the latest version of the api resource.
-        # This is a bit strange, it would be cleaner to create a new API resource from the domain
-        # object, but for simplicity we currently keep the original API resource.
-        for artifact, resource in map_artifact_to_resource.items():
-            if resource:
-                artifact.api_resource = resource
-        return ret
-
     def parent_input_artifacts(self):
         """
         Returns a dictionary of all parent input artifacts, indexed by process ID.
