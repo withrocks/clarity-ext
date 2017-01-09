@@ -436,7 +436,10 @@ class SampleSheetExtension(DriverFileExtension):
 
     def udf(self, name):
         """Returns the UDF if available, otherwise self.NONE. Provided for readability"""
-        return self.context.udfs.get(name, self.NONE)
+        try:
+            return self.context.current_step.udf_map[name].value
+        except KeyError:
+            return self.NONE
 
     def line(self, *args):
         """
