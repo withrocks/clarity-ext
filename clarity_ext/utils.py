@@ -75,6 +75,18 @@ def single(seq):
     return seq[0]
 
 
+def single_or_default(seq):
+    """Returns the first element in a list or None if the list is empty, raising an exception if
+    there are more than one elements in the list"""
+    if len(seq) > 1:
+        raise ValueError(
+            "Expecting at most one item in the list. Got ({}).".format(len(seq)))
+    elif len(seq) == 0:
+        return None
+    else:
+        return seq[0]
+
+
 def get_and_apply(dictionary, key, default, fn):
     """
     Fetches the value from the dictionary if it exists, applying the map function

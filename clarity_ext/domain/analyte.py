@@ -39,12 +39,17 @@ class Analyte(Aliquot):
         # Map UDFs (which may be using different names in different Clarity setups)
         # to a key-value list with well-defined key names:
 
+        udfs = None
         if not is_input:
-            process_output = utils.single([process_output for process_output in process_type.process_outputs
-                                           if process_output.output_generation_type == "PerInput" and
-                                           process_output.artifact_type == "Analyte"])
-            udfs = UdfMapping.expand_udfs(resource, process_output)
-        else:
+            per_input_analytes = [process_output for process_output
+                                  in process_type.process_outputs
+                                  if process_output.output_generation_type == "PerInput" and
+                                  process_output.artifact_type == "Analyte"]
+            process_output = utils.single_or_default(per_input_analytes)
+            if process_output:
+                udfs = UdfMapping.expand_udfs(resource, process_output)
+
+        if udfs is None:
             udfs = resource.udf
 
         udf_map = UdfMapping(udfs)
