@@ -31,7 +31,7 @@ class TestContext(unittest.TestCase):
         artifact_svc = helpers.mock_two_containers_artifact_service()
         file_svc = MagicMock()
         current_user = MagicMock()
-        step_logger_svc= MagicMock()
+        step_logger_svc = MagicMock()
         clarity_svc = MagicMock()
         return ExtensionContext(session, artifact_svc, file_svc, current_user, step_logger_svc, None,
-                                clarity_svc)
+                                clarity_svc, dilution_service=MagicMock())

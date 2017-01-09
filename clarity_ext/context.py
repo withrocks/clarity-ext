@@ -1,4 +1,4 @@
-from clarity_ext.dilution import DilutionScheme
+from clarity_ext.service.dilution_service import DilutionService
 from clarity_ext import UnitConversion
 from clarity_ext.repository import ClarityRepository, FileRepository
 from clarity_ext.utils import lazyprop
@@ -8,7 +8,6 @@ from clarity_ext.repository import StepRepository
 from clarity_ext import utils
 from clarity_ext.driverfile import OSService
 from clarity_ext.service.validation_service import ERRORS_AND_WARNING_ENTRY_NAME
-from clarity_ext.domain import Artifact, DomainObjectMixin
 
 
 class ExtensionContext(object):
@@ -23,7 +22,7 @@ class ExtensionContext(object):
     """
 
     def __init__(self, session, artifact_service, file_service, current_user,
-                 step_logger_service, step_repo, clarity_service, test_mode=False):
+                 step_logger_service, step_repo, clarity_service, dilution_service, test_mode=False):
         """
         Initializes the context.
 
@@ -31,9 +30,10 @@ class ExtensionContext(object):
         :param artifact_service: Provides access to artifacts in the current step
         :param file_service: Provides access to result files locally on the machine.
         :param step_logger_service: Provides access to logging via the context.
+        :param current_user: The user executing the step
         :param step_repo: The repository for the current step
-        :param cache: Set to True to use the cache folder (.cache) for downloaded files
         :param clarity_service: General service for working with domain objects
+        :param dilution_service: A service for handling dilutions
         :param test_mode: If set to True, extensions may behave slightly differently when testing, in particular
                           returning a constant time.
         """
@@ -48,6 +48,7 @@ class ExtensionContext(object):
         self.step_repo = step_repo
         self.dilution_scheme = None
         self.disable_commits = False
+        self.dilution_service = dilution_service
         self.test_mode = test_mode
         self.clarity_service = clarity_service
 
@@ -66,24 +67,23 @@ class ExtensionContext(object):
         file_service = FileService(artifact_service, file_repository, False, OSService())
         step_logger_service = StepLoggerService("Step log", file_service)
         clarity_service = ClarityService(ClarityRepository(), step_repo)
-
+        dilution_service = DilutionService(artifact_service)
         return ExtensionContext(session, artifact_service, file_service, current_user,
-                                step_logger_service, step_repo, clarity_service, test_mode=test_mode)
+                                step_logger_service, step_repo, clarity_service,
+                                dilution_service, test_mode=test_mode)
 
-    def init_dilution_scheme(self, concentration_ref=None, include_blanks=False,
-                             volume_calc_method=None, make_pools=False):
+    @lazyprop
+    def error_log_artifact(self):
+        """
+        Returns a file on the current step that can be used for marking the step as having an error
+        without having a visible UDF on the step.
+        """
         file_list = [file for file in self.shared_files if file.name ==
                      ERRORS_AND_WARNING_ENTRY_NAME]
         if not len(file_list) == 1:
             raise ValueError("This step is not configured with the shared file entry for {}".format(
                 ERRORS_AND_WARNING_ENTRY_NAME))
-        error_log_artifact = file_list[0]
-        # TODO: The caller needs to provide the robot
-        self.dilution_scheme = DilutionScheme.create(
-            artifact_service=self.artifact_service, robot_name="Hamilton",
-            concentration_ref=concentration_ref, include_blanks=include_blanks,
-            error_log_artifact=error_log_artifact,
-            volume_calc_method=volume_calc_method, make_pools=make_pools)
+        return file_list[0]
 
     @lazyprop
     def shared_files(self):

@@ -172,10 +172,13 @@ def mock_context(artifact_service=None, step_repo=None):
     file_service = MagicMock()
     current_user = MagicMock()
     step_logger_service = MagicMock()
-    return ExtensionContext(session=session, artifact_service=artifact_service,
+    return ExtensionContext(session=session,
+                            artifact_service=artifact_service,
                             file_service=file_service,
-                            current_user=current_user, step_logger_service=step_logger_service,
+                            current_user=current_user,
+                            step_logger_service=step_logger_service,
                             clarity_service=MagicMock(),
+                            dilution_service=MagicMock(),
                             step_repo=step_repo)
 
 

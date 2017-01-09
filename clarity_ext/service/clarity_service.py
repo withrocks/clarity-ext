@@ -26,15 +26,16 @@ class ClarityService(object):
             else:
                 raise NotImplementedError("No update method available for {}".format(type(item)))
 
-        if len(artifacts) > 0:
-            self._update_artifacts(artifacts)
-
         for domain_object in other_domain_objects:
             self.update_single(domain_object, ignore_commit)
 
         if ignore_commit:
             self.logger.info("A request for updating artifacts was ignored. "
                              "View log to see which properties have changed.")
+            return
+
+        if len(artifacts) > 0:
+            self._update_artifacts(artifacts)
 
     def _update_artifacts(self, artifacts):
         # Filter out artifacts that don't have any updated fields:

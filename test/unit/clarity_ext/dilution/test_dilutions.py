@@ -1,10 +1,6 @@
 import unittest
 from mock import MagicMock
-from clarity_ext.dilution import DilutionScheme
-from clarity_ext.dilution import CONCENTRATION_REF_NGUL
-from clarity_ext.dilution import CONCENTRATION_REF_NM
-from clarity_ext.dilution import VOLUME_CALC_BY_CONC
-from clarity_ext.dilution import VOLUME_CALC_FIXED
+from clarity_ext.service.dilution_service import *
 from test.unit.clarity_ext.helpers import fake_analyte, fake_result_file
 from test.unit.clarity_ext import helpers
 from clarity_ext.service import ArtifactService
@@ -22,10 +18,12 @@ class TestDilutionScheme(unittest.TestCase):
     def _default_dilution_scheme(self, artifact_service, concentration_ref=CONCENTRATION_REF_NGUL,
                                  include_blanks=False, volume_calc_method=VOLUME_CALC_BY_CONC,
                                  scale_up_low_volumes=True):
-        return DilutionScheme.create(artifact_service=artifact_service, robot_name="Hamilton",
+        service = DilutionService(artifact_service)
+        return service.create_scheme(robot_name="Hamilton",
                                      scale_up_low_volumes=scale_up_low_volumes,
                                      concentration_ref=concentration_ref,
-                                     include_blanks=include_blanks, volume_calc_method=volume_calc_method)
+                                     include_blanks=include_blanks,
+                                     volume_calc_method=volume_calc_method)
 
     def test_dilution_scheme_hamilton_base(self):
         """Dilution scheme created by mocked analytes is correctly generated for Hamilton"""
