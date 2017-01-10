@@ -440,6 +440,7 @@ class DilutionScheme(object):
         """Creates a robot driver file for the robot provided during initialization"""
 
         # TODO: The user should be able to specify the robot here, not in the DilutionScheme
+        # NOTE: The container IDs will not be needed for BioMek
         lines = list()
         for transfer in self.split_row_transfers:
             row = [transfer.aliquot_name,
@@ -448,7 +449,9 @@ class DilutionScheme(object):
                    "{:.1f}".format(transfer.sample_volume),
                    "{:.1f}".format(transfer.buffer_volume),
                    "{}".format(transfer.target_well_index),
-                   transfer.target_plate_pos]
+                   transfer.target_plate_pos,
+                   transfer.source.container.id,
+                   transfer.destination.container.id]
             lines.append("\t".join(row))
         return new_line.join(lines)
 
