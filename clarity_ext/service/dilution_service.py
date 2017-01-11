@@ -1,6 +1,5 @@
 import copy
-from clarity_ext.utils import get_and_apply
-from clarity_ext.dilution_strategies import *
+from clarity_ext.service.dilution_strategies import *
 
 DILUTION_WASTE_VOLUME = 1
 PIPETTING_MAX_VOLUME = 50
@@ -8,6 +7,36 @@ CONCENTRATION_REF_NGUL = 1
 CONCENTRATION_REF_NM = 2
 VOLUME_CALC_FIXED = 1
 VOLUME_CALC_BY_CONC = 2
+ROBOT_HAMILTON = "Hamilton"
+
+
+class DilutionService(object):
+
+    def __init__(self, artifact_service):
+        self.artifact_service = artifact_service
+
+    def create_scheme(self, robot_name, scale_up_low_volumes=True, concentration_ref=None,
+                      include_blanks=False, volume_calc_method=None, make_pools=False):
+        # TODO: It's currently necessary to create one dilution scheme per robot type,
+        # but it would be preferable that there would be only one
+
+        if volume_calc_method == VOLUME_CALC_FIXED:
+            volume_calc_strategy = FixedVolumeCalc()
+        elif volume_calc_method == VOLUME_CALC_BY_CONC and make_pools is False:
+            volume_calc_strategy = OneToOneConcentrationCalc()
+        elif volume_calc_method == VOLUME_CALC_BY_CONC and make_pools is True:
+            volume_calc_strategy = PoolConcentrationCalc()
+        else:
+            raise ValueError(
+                "Choice for volume calculation method is not implemented. \n"
+                "volume calc method:  {}\n"
+                "make pools: {}".format(volume_calc_method, make_pools))
+
+        return DilutionScheme(
+            artifact_service=self.artifact_service, robot_name=robot_name,
+            scale_up_low_volumes=scale_up_low_volumes,
+            concentration_ref=concentration_ref, include_blanks=include_blanks,
+            volume_calc_strategy=volume_calc_strategy)
 
 
 class TransferEndpoint(object):
@@ -87,8 +116,8 @@ class SingleTransfer(object):
         self.is_control = source_endpoint.is_control
         self.is_source_from_original = source_endpoint.is_from_original
 
-        self.source_endpoint = source_endpoint
-        self.destination_endpoint = destination_endpoint
+        self.source = source_endpoint
+        self.destination = destination_endpoint
 
         self.source_well = source_endpoint.well
         self.source_container = source_endpoint.container
@@ -203,11 +232,11 @@ class RobotDeckPositioner(object):
 
     def __init__(self, robot_name, dilutes, plate_size):
 
-        source_endpoints = [dilute.source_endpoint for dilute in dilutes]
+        source_endpoints = [dilute.source for dilute in dilutes]
         source_positioner = EndpointPositioner(robot_name, source_endpoints,
                                                plate_size, "DNA")
         destination_endpoints = [
-            dilute.destination_endpoint for dilute in dilutes]
+            dilute.destination for dilute in dilutes]
         destination_positioner = EndpointPositioner(
             robot_name, destination_endpoints, plate_size, "END")
 
@@ -234,13 +263,12 @@ class DilutionScheme(object):
     """Creates a dilution scheme, given input and output analytes."""
 
     def __init__(self, artifact_service, robot_name, scale_up_low_volumes=True,
-                 concentration_ref=None, include_blanks=False, error_log_artifact=None,
+                 concentration_ref=None, include_blanks=False,
                  volume_calc_strategy=None):
         """
         Calculates all derived values needed in dilute driver file.
         """
         self.scale_up_low_volumes = scale_up_low_volumes
-        self.error_log_artifact = error_log_artifact
         self.volume_calc_strategy = volume_calc_strategy
         pairs = artifact_service.all_aliquot_pairs()
 
@@ -259,6 +287,7 @@ class DilutionScheme(object):
 
         self.calculate_transfer_volumes()
         self.do_positioning()
+        # TODO: These two should be methods, used only when needed
         self.split_row_transfers = self.split_up_high_volume_rows(
             self.sort_transfers(self._transfers))
         self.unsplit_transfers = self.sort_transfers(self._transfers)
@@ -407,29 +436,25 @@ class DilutionScheme(object):
             transfer.target_plate_pos = self.robot_deck_positioner \
                 .target_plate_position_map[transfer.target_container.id]
 
+    def create_robot_driver_file(self, new_line="\r\n"):
+        """Creates a robot driver file for the robot provided during initialization"""
+
+        # TODO: The user should be able to specify the robot here, not in the DilutionScheme
+        # NOTE: The container IDs will not be needed for BioMek
+        lines = list()
+        for transfer in self.split_row_transfers:
+            row = [transfer.aliquot_name,
+                   "{}".format(transfer.source_well_index),
+                   transfer.source_plate_pos,
+                   "{:.1f}".format(transfer.sample_volume),
+                   "{:.1f}".format(transfer.buffer_volume),
+                   "{}".format(transfer.target_well_index),
+                   transfer.target_plate_pos,
+                   transfer.source.container.id,
+                   transfer.destination.container.id]
+            lines.append("\t".join(row))
+        return new_line.join(lines)
+
     def __str__(self):
         return "<DilutionScheme positioner={}>".format(self.robot_deck_positioner)
 
-    @staticmethod
-    def create(artifact_service, robot_name, scale_up_low_volumes=True,
-               concentration_ref=None, include_blanks=False, error_log_artifact=None,
-               volume_calc_method=None, make_pools=False):
-        volume_calc_strategy = None
-
-        if volume_calc_method == VOLUME_CALC_FIXED:
-            volume_calc_strategy = FixedVolumeCalc()
-        elif volume_calc_method == VOLUME_CALC_BY_CONC and make_pools is False:
-            volume_calc_strategy = OneToOneConcentrationCalc()
-        elif volume_calc_method == VOLUME_CALC_BY_CONC and make_pools is True:
-            volume_calc_strategy = PoolConcentrationCalc()
-        else:
-            raise ValueError(
-                "Choice for volume calculation method is not implemented. \n"
-                "volume calc method:  {}\n"
-                "make pools: {}".format(volume_calc_method, make_pools))
-
-        return DilutionScheme(
-            artifact_service=artifact_service, robot_name=robot_name,
-            scale_up_low_volumes=scale_up_low_volumes,
-            concentration_ref=concentration_ref, include_blanks=include_blanks,
-            error_log_artifact=error_log_artifact, volume_calc_strategy=volume_calc_strategy)

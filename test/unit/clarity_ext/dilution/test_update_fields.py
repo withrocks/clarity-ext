@@ -1,8 +1,5 @@
 import unittest
-from clarity_ext.dilution import DILUTION_WASTE_VOLUME
-from clarity_ext.dilution import DilutionScheme
-from clarity_ext.dilution import CONCENTRATION_REF_NGUL
-from clarity_ext.dilution import VOLUME_CALC_BY_CONC
+from clarity_ext.service.dilution_service import *
 from test.unit.clarity_ext.helpers import *
 
 
@@ -12,12 +9,12 @@ class UpdateFieldsForDilutionTests(unittest.TestCase):
             return analyte_set()
 
         repo = mock_step_repository(analyte_set=udf_adapted_analyte_set)
-        svc = ArtifactService(step_repository=repo)
-        context = mock_context(artifact_service=svc, step_repo=repo)
-        dilution_scheme = DilutionScheme.create(
-            artifact_service=svc, robot_name="Hamilton",
-            concentration_ref=concentration_ref, volume_calc_method=VOLUME_CALC_BY_CONC)
-
+        artifact_svc = ArtifactService(step_repository=repo)
+        context = mock_context(artifact_service=artifact_svc, step_repo=repo)
+        service = DilutionService(artifact_svc)
+        dilution_scheme = service.create_scheme(robot_name="Hamilton",
+                                                concentration_ref=concentration_ref,
+                                                volume_calc_method=VOLUME_CALC_BY_CONC)
         return dilution_scheme, context
 
     @staticmethod

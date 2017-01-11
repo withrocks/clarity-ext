@@ -1,7 +1,5 @@
 import unittest
-from clarity_ext.dilution import DilutionScheme
-from clarity_ext.dilution import CONCENTRATION_REF_NM
-from clarity_ext.dilution import VOLUME_CALC_BY_CONC
+from clarity_ext.service.dilution_service import *
 from clarity_ext.domain.validation import ValidationException
 from clarity_ext.domain.validation import ValidationType
 from test.unit.clarity_ext.helpers import fake_analyte
@@ -12,9 +10,9 @@ from itertools import groupby
 
 class TestLibraryPooling(unittest.TestCase):
     def _default_dilution_scheme(self, artifact_service, scale_up_low_volumes=True):
-        return DilutionScheme.create(artifact_service=artifact_service, robot_name="Hamilton",
-                                     scale_up_low_volumes=scale_up_low_volumes,
-                                     concentration_ref=CONCENTRATION_REF_NM, include_blanks=False,
+        service = DilutionService(artifact_service)
+        return service.create_scheme(robot_name="Hamilton", scale_up_low_volumes=scale_up_low_volumes,
+                                     concentration_ref=CONCENTRATION_REF_NM,include_blanks=False,
                                      volume_calc_method=VOLUME_CALC_BY_CONC, make_pools=True)
 
     def test_single_pool_creation(self):
