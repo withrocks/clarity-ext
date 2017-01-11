@@ -3,7 +3,7 @@ from clarity_ext import UnitConversion
 from clarity_ext.repository import ClarityRepository, FileRepository
 from clarity_ext.utils import lazyprop
 from clarity_ext import ClaritySession
-from clarity_ext.service import ArtifactService, FileService, StepLoggerService, ClarityService
+from clarity_ext.service import ArtifactService, FileService, StepLoggerService, ClarityService, ProcessService
 from clarity_ext.repository import StepRepository
 from clarity_ext import utils
 from clarity_ext.driverfile import OSService
@@ -22,7 +22,8 @@ class ExtensionContext(object):
     """
 
     def __init__(self, session, artifact_service, file_service, current_user,
-                 step_logger_service, step_repo, clarity_service, dilution_service, test_mode=False):
+                 step_logger_service, step_repo, clarity_service, dilution_service, process_service,
+                 test_mode=False):
         """
         Initializes the context.
 
@@ -51,6 +52,11 @@ class ExtensionContext(object):
         self.dilution_service = dilution_service
         self.test_mode = test_mode
         self.clarity_service = clarity_service
+        self.process_service = process_service
+
+        # Add the URL to the current_step
+        # TODO: Quick-fix. Turn this around and fetch the process from the process service
+        self.current_step.ui_link = self.process_service.ui_link_process(self.current_step.api_resource)
 
     @staticmethod
     def create(step_id, test_mode=False):
@@ -68,9 +74,10 @@ class ExtensionContext(object):
         step_logger_service = StepLoggerService("Step log", file_service)
         clarity_service = ClarityService(ClarityRepository(), step_repo)
         dilution_service = DilutionService(artifact_service)
+        process_service = ProcessService()
         return ExtensionContext(session, artifact_service, file_service, current_user,
                                 step_logger_service, step_repo, clarity_service,
-                                dilution_service, test_mode=test_mode)
+                                dilution_service, process_service, test_mode=test_mode)
 
     @lazyprop
     def error_log_artifact(self):
@@ -173,3 +180,7 @@ class ExtensionContext(object):
         """Commits all objects that have been added via the update method, using batch processing if possible"""
         self.clarity_service.update(self._update_queue, self.disable_commits)
 
+    @lazyprop
+    def current_process_type(self):
+        # TODO: Hang this on the process object
+        return self.step_repo.get_process_type()

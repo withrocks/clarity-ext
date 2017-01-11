@@ -36,6 +36,11 @@ class Well(DomainObjectMixin):
         # The position is 1-indexed
         return (self.position.col - 1) * self.container.size.height + self.position.row
 
+    @property
+    def index_right_first(self):
+        # TODO: fix this!
+        return (self.position.col - 1) * self.container.size.height + self.position.row
+
 
 class ContainerPosition(namedtuple("ContainerPosition", ["row", "col"])):
     """
@@ -52,7 +57,8 @@ class ContainerPosition(namedtuple("ContainerPosition", ["row", "col"])):
         Creates a ContainerPosition from different representations. Supported formats:
             "<row as A-Z>:<col as int>"
             "<row as int>:<col as int>"
-            (<row>, <col>)
+            (<row>, <col>) where both are integers
+            (<row>, <col>) where column is a string (e.g. A)
         """
         if isinstance(repr, basestring):
             row, col = repr.split(":")
@@ -63,12 +69,22 @@ class ContainerPosition(namedtuple("ContainerPosition", ["row", "col"])):
             col = int(col)
         else:
             row, col = repr
+            if isinstance(row, basestring):
+                row = ContainerPosition.letter_to_index(row)
         return ContainerPosition(row=row, col=col)
 
     @property
     def row_letter(self):
         """Returns the letter representation for the row index, e.g. 3 => C"""
-        return chr(65 + self.row - 1)
+        return self.index_to_letter(self.row)
+
+    @staticmethod
+    def index_to_letter(index):
+        return chr(65 + index - 1)
+
+    @staticmethod
+    def letter_to_index(letter):
+        return ord(letter.upper()) - 64
 
 
 class PlateSize(namedtuple("PlateSize", ["height", "width"])):
@@ -87,7 +103,7 @@ class Container(DomainObjectMixin):
     CONTAINER_TYPE_TUBE = 300
     CONTAINER_TYPE_PATTERNED_FLOW_CELL = 400
 
-    def __init__(self, mapping=None, container_type=None, size=None):
+    def __init__(self, mapping=None, container_type=None, size=None, container_type_name=None):
         """
         :param mapping: A dictionary-like object containing mapping from well
         position to content. It can be non-complete.
@@ -96,7 +112,9 @@ class Container(DomainObjectMixin):
         :return:
         """
         self.mapping = mapping
+        # TODO: using both container_type and container_type_name is temporary
         self.container_type = container_type
+        self.container_type_name = container_type_name
         self.id = None
         self.name = None
 
@@ -113,8 +131,17 @@ class Container(DomainObjectMixin):
             else:
                 raise ValueError("Unknown plate type '{}'".format(self.container_type))
 
-    def __repr__(self):
-        return "<Container id={}>".format(self.id)
+    @property
+    def rows(self):
+        # Enumerates the row indexes, returning e.g. (A,B,...,H) for a 96 well plate
+        for index in xrange(1, self.size.height + 1):
+            yield ContainerPosition.index_to_letter(index)
+
+    @property
+    def columns(self):
+        # Enumerates the column indexes, returning e.g. (1,2,...12) for a 96 well plate
+        for index in xrange(1, self.size.width + 1):
+            yield index
 
     @classmethod
     def create_from_rest_resource(cls, resource, api_artifacts=[]):
@@ -135,7 +162,7 @@ class Container(DomainObjectMixin):
         else:
             raise NotImplementedError(
                 "Resource type '{}' is not supported".format(resource.type.name))
-        ret = Container(container_type=container_type, size=size)
+        ret = Container(container_type=container_type, size=size, container_type_name=resource.type.name)
         ret.id = resource.id
         ret.name = resource.name
         ret.size = size

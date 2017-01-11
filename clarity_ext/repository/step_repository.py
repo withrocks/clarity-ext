@@ -56,6 +56,7 @@ class StepRepository(object):
 
         # Artifacts do not contain UDFs that have not been given a value. Since the domain objects returned
         # must know all UDFs available, we fetch them here:
+        # TODO: Move this to the service
         process_type = self.get_process_type()
 
         ret = []

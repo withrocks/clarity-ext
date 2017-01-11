@@ -115,7 +115,8 @@ def extension(module, mode, args, cache):
               "Refer to the file 'Step log' if available."
         if extension_svc.rotating_file_path:
             msg += " The application log is available in {}.".format(extension_svc.rotating_file_path)
-        raise Exception(msg)
+        #raise Exception(msg)
+        raise
 
 
 @main.command()
