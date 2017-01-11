@@ -8,6 +8,7 @@ CONCENTRATION_REF_NM = 2
 VOLUME_CALC_FIXED = 1
 VOLUME_CALC_BY_CONC = 2
 ROBOT_HAMILTON = "Hamilton"
+ROBOT_BIOMEK = "Biomek"
 
 
 class DilutionService(object):
@@ -15,28 +16,29 @@ class DilutionService(object):
     def __init__(self, artifact_service):
         self.artifact_service = artifact_service
 
-    def create_scheme(self, robot_name, scale_up_low_volumes=True, concentration_ref=None,
-                      include_blanks=False, volume_calc_method=None, make_pools=False):
+    def create_scheme(self, robot_name, dilution_settings):
         # TODO: It's currently necessary to create one dilution scheme per robot type,
         # but it would be preferable that there would be only one
 
-        if volume_calc_method == VOLUME_CALC_FIXED:
-            volume_calc_strategy = FixedVolumeCalc()
-        elif volume_calc_method == VOLUME_CALC_BY_CONC and make_pools is False:
-            volume_calc_strategy = OneToOneConcentrationCalc()
-        elif volume_calc_method == VOLUME_CALC_BY_CONC and make_pools is True:
-            volume_calc_strategy = PoolConcentrationCalc()
-        else:
-            raise ValueError(
-                "Choice for volume calculation method is not implemented. \n"
-                "volume calc method:  {}\n"
-                "make pools: {}".format(volume_calc_method, make_pools))
+        volume_calc_strategy = self.create_strategy(dilution_settings)
+        return DilutionScheme(artifact_service=self.artifact_service, robot_name=robot_name,
+                              dilution_settings=dilution_settings, volume_calc_strategy=volume_calc_strategy)
 
-        return DilutionScheme(
-            artifact_service=self.artifact_service, robot_name=robot_name,
-            scale_up_low_volumes=scale_up_low_volumes,
-            concentration_ref=concentration_ref, include_blanks=include_blanks,
-            volume_calc_strategy=volume_calc_strategy)
+    @staticmethod
+    def create_strategy(settings):
+        if settings.volume_calc_method == VOLUME_CALC_FIXED:
+            return FixedVolumeCalc()
+        elif settings.volume_calc_method == VOLUME_CALC_BY_CONC and settings.make_pools is False:
+            return OneToOneConcentrationCalc()
+        elif settings.volume_calc_method == VOLUME_CALC_BY_CONC and settings.make_pools is True:
+            return PoolConcentrationCalc()
+        else:
+            raise ValueError("Volume calculation method is not implemented for these settings: '{}'".
+                             format(settings))
+
+    def create_session(self, robots, dilution_settings):
+        volume_calc_strategy = self.create_strategy(dilution_settings)
+        return DilutionSession(robots, dilution_settings, volume_calc_strategy, self.artifact_service)
 
 
 class TransferEndpoint(object):
@@ -176,7 +178,9 @@ class EndpointPositioner(object):
     def __init__(self, robot_name, transfer_endpoints, plate_size, plate_pos_prefix):
         self.robot_name = robot_name
         self._plate_size = plate_size
-        index_method_map = {"Hamilton": lambda well: well.index_down_first}
+        # TODO: Remove robot specific settings, should be provided in the robot_settings
+        index_method_map = {"hamilton": lambda well: well.index_down_first,
+                            "biomek": lambda well: well.index_right_first}
         self.indexer = index_method_map[robot_name]
         self.plate_sorting_map = self._build_plate_sorting_map(
             [transfer_endpoint.container for transfer_endpoint in transfer_endpoints])
@@ -259,16 +263,82 @@ class RobotDeckPositioner(object):
                                                           width=self._plate_size.width)
 
 
+class DilutionSettings:
+    """Defines the rules for how a dilution should be performed"""
+    def __init__(self, scale_up_low_volumes=True, concentration_ref=None, include_blanks=False,
+                 volume_calc_method=None, make_pools=False):
+        self.scale_up_low_volumes = scale_up_low_volumes
+        self.concentration_ref = concentration_ref
+        # TODO: include_blanks, has that to do with output only? If so, it should perhaps be in RobotSettings
+        self.include_blanks = include_blanks
+        self.volume_calc_method = volume_calc_method
+        self.make_pools = make_pools
+
+
+class DilutionSession(object):
+    """
+    Encapsulates an entire dilution session, including validation of the dilution, generation of robot driver files
+    and updating values.
+    """
+    pass
+
+    def __init__(self, robots, dilution_settings, volume_calc_strategy, artifact_service):
+        """
+        Creates a DilutionSession object for the robots. Use the DilutionSession object to create
+        robot driver files and update values.
+
+        :param robots: A list of RobotSettings objects
+        :param dilution_settings: The list of settings to apply for the dilution
+        """
+        # TODO: Consider sending in the analytes instead of the artifact_service
+        # For now, we're creating one DilutionScheme per robot. It might not be required later, i.e. if
+        # the validation etc. doesn't differ between them
+        dilution_schemes = dict()
+        for robot in robots:
+            dilution_schemes[robot.name] = DilutionScheme(artifact_service, robot.name,
+                                                          dilution_settings, volume_calc_strategy)
+
+        print dilution_schemes
+
+    def robot_driver_file(self, robot):
+        pass
+
+
+class RobotSettings(object):
+    def __init__(self, name, template):
+        self.name = name
+        self.template = template
+
+    @staticmethod
+    def create_from_templates(templates_module):
+        """
+        Creates a list of RobotSettings based on the templates found in the templates_module
+
+        :param templates_module: The Python module containing the jinja templates. The templates
+        should have the extension .j2
+        """
+        import os
+        templates_dir = os.path.dirname(templates_module.__file__)
+        ret = dict()
+        for candidate_file in os.listdir(templates_dir):
+            name, ext = os.path.splitext(candidate_file)
+            if ext == ".j2":
+                ret[name] = RobotSettings(name, os.path.join(templates_dir, candidate_file))
+        return ret
+
+    def __repr__(self):
+        return "<RobotSettings {}>".format(self.name)
+
+
 class DilutionScheme(object):
     """Creates a dilution scheme, given input and output analytes."""
 
-    def __init__(self, artifact_service, robot_name, scale_up_low_volumes=True,
-                 concentration_ref=None, include_blanks=False,
-                 volume_calc_strategy=None):
+    def __init__(self, artifact_service, robot_name, dilution_settings, volume_calc_strategy):
         """
         Calculates all derived values needed in dilute driver file.
         """
-        self.scale_up_low_volumes = scale_up_low_volumes
+        # TODO: Use settings object without mapping over
+        self.scale_up_low_volumes = dilution_settings.scale_up_low_volumes
         self.volume_calc_strategy = volume_calc_strategy
         pairs = artifact_service.all_aliquot_pairs()
 
@@ -276,9 +346,9 @@ class DilutionScheme(object):
         # analyte?
         container = pairs[0].output_artifact.container
         all_transfers = self._create_transfers(
-            pairs, concentration_ref=concentration_ref)
+            pairs, concentration_ref=dilution_settings.concentration_ref)
         self._transfers = self._filtered_transfers(
-            all_transfers=all_transfers, include_blanks=include_blanks)
+            all_transfers=all_transfers, include_blanks=dilution_settings.include_blanks)
 
         self.aliquot_pair_by_transfer = self._map_pair_and_transfers(
             pairs=pairs)
