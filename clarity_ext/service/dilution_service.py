@@ -1,5 +1,6 @@
 import copy
 import codecs
+from clarity_ext.utils import lazyprop
 from clarity_ext.service.dilution_strategies import *
 from jinja2 import Template
 
@@ -12,7 +13,6 @@ class DilutionService(object):
     def create_scheme(self, robot_name, dilution_settings):
         # TODO: It's currently necessary to create one dilution scheme per robot type,
         # but it would be preferable that there would be only one
-
         volume_calc_strategy = self.create_strategy(dilution_settings)
         return DilutionScheme(artifact_service=self.artifact_service, robot_name=robot_name,
                               dilution_settings=dilution_settings, volume_calc_strategy=volume_calc_strategy)
@@ -31,41 +31,76 @@ class DilutionService(object):
 
     def create_session(self, robots, dilution_settings):
         volume_calc_strategy = self.create_strategy(dilution_settings)
-        return DilutionSession(robots, dilution_settings, volume_calc_strategy, self.artifact_service)
+        pairs = self.artifact_service.all_aliquot_pairs()
+        return DilutionSession(robots, dilution_settings, volume_calc_strategy, pairs)
 
 
 class DilutionSession(object):
     """
     Encapsulates an entire dilution session, including validation of the dilution, generation of robot driver files
     and updating values.
+
+    NOTE: This class might be merged with DilutionScheme later on.
     """
-    def __init__(self, robots, dilution_settings, volume_calc_strategy, artifact_service):
+    def __init__(self, robots, dilution_settings, volume_calc_strategy, pairs):
         """
         Creates a DilutionSession object for the robots. Use the DilutionSession object to create
         robot driver files and update values.
 
         :param robots: A list of RobotSettings objects
         :param dilution_settings: The list of settings to apply for the dilution
+        :param pairs: A list of ArtifactPair items. Can be retrieved through ArtifactService.all_aliquot_pairs()
         """
         # TODO: Consider sending in the analytes instead of the artifact_service
         # For now, we're creating one DilutionScheme per robot. It might not be required later, i.e. if
         # the validation etc. doesn't differ between them
+        self.pairs = pairs
 
-        # TODO: Creating all dilution_schemes right away in init temporarily
         self.dilution_schemes = dict()
         self.robots = {robot.name: robot for robot in robots}
+        self.dilution_settings = dilution_settings
         for robot in robots:
-            self.dilution_schemes[robot.name] = DilutionScheme(artifact_service, robot.name,
+            self.dilution_schemes[robot.name] = DilutionScheme(self.pairs, robot.name,
                                                                dilution_settings, volume_calc_strategy)
 
-    def create_driver_file(self, robot):
-        template_path = self.robots[robot].template
-        dilution_scheme = self.dilution_schemes[robot]
+    def validate(self):
+        # Current limitation: Each analyte should have the same target volume and concentration
+        for dilution_scheme in self.dilution_schemes.values():
+            dilution_scheme.validate()
+
+    @lazyprop
+    def container_mappings(self):
+        # Returns a mapping of all containers we're diluting to/from
+        container_pairs = set()
+        for pair in self.pairs:
+            container_pair = (pair.input_artifact.container, pair.output_artifact.container)
+            container_pairs.add(container_pair)
+        return list(container_pairs)
+
+    @lazyprop
+    def output_containers(self):
+        """Returns a unique list of output containers involved in the dilution"""
+        ret = set()
+        for inp, outp in self.container_mappings:
+            ret.add(outp)
+        return list(ret)
+
+    def create_robot_driver_file(self, robot_name):
+        """
+        """
+        template_path = self.robots[robot_name].template
+        dilution_scheme = self.dilution_schemes[robot_name]
+        return self.create_general_driver_file(template_path, scheme=dilution_scheme)
+
+    def create_general_driver_file(self, template_path, **kwargs):
+        """
+        Creates a driver file that has access to the DilutionSession object throught the name `session`.
+        """
         with open(template_path, 'r') as fs:
             text = fs.read()
             text = codecs.decode(text, "utf-8")
             template = Template(text)
-            rendered = template.render(session=self, scheme=dilution_scheme)
+            rendered = template.render(session=self, **kwargs)
             return rendered
 
 
@@ -306,6 +341,9 @@ class DilutionSettings:
         to account for waste during dilution
         """
         self.scale_up_low_volumes = scale_up_low_volumes
+        # TODO: Use py3 enums instead
+        if concentration_ref not in [self.CONCENTRATION_REF_NM, self.CONCENTRATION_REF_NGUL]:
+            raise ValueError("Unsupported concentration_ref '{}'".format(concentration_ref))
         self.concentration_ref = concentration_ref
         # TODO: include_blanks, has that to do with output only? If so, it should perhaps be in RobotSettings
         self.include_blanks = include_blanks
@@ -314,14 +352,22 @@ class DilutionSettings:
         self.pipette_max_volume = pipette_max_volume
         self.dilution_waste_volume = dilution_waste_volume
 
+    @property
+    def concentration_ref_string(self):
+        if self.concentration_ref == self.CONCENTRATION_REF_NGUL:
+            return "ng/ul"
+        else:
+            return "nM"
+
 
 class RobotSettings(object):
-    def __init__(self, name, template):
+    def __init__(self, name, template, file_name):
         self.name = name
         self.template = template
+        self.file_name = file_name
 
     @staticmethod
-    def create_from_template(name, templates_module):
+    def create_from_template(name, templates_module, file_name):
         """
         Creates a list of RobotSettings based on the templates found in the templates_module
 
@@ -335,7 +381,7 @@ class RobotSettings(object):
             if split[-1] == "j2":
                 _name = split[0]
                 if name == _name:
-                    return RobotSettings(_name, os.path.join(templates_dir, candidate_file))
+                    return RobotSettings(_name, os.path.join(templates_dir, candidate_file), file_name)
         raise Exception("Template not found for {}".format(name))
 
     def __repr__(self):
@@ -345,15 +391,16 @@ class RobotSettings(object):
 class DilutionScheme(object):
     """Creates a dilution scheme, given input and output analytes."""
 
-    def __init__(self, artifact_service, robot_name, dilution_settings, volume_calc_strategy):
+    def __init__(self, pairs, robot_name, dilution_settings, volume_calc_strategy):
         """
         Calculates all derived values needed in dilute driver file.
+
+        :param pairs: A list of input/output analytes, wrapped in an ArtifactPair
         """
         # TODO: Use settings object without mapping over
         self.dilution_settings = dilution_settings
         self.scale_up_low_volumes = dilution_settings.scale_up_low_volumes
         self.volume_calc_strategy = volume_calc_strategy
-        pairs = artifact_service.all_aliquot_pairs()
 
         # TODO: Is it safe to just check for the container for the first output
         # analyte?
@@ -370,10 +417,13 @@ class DilutionScheme(object):
 
         self.calculate_transfer_volumes()
         self.do_positioning()
-        # TODO: These two should be methods, used only when needed
-        self.split_row_transfers = self.split_up_high_volume_rows(
-            self.sort_transfers(self._transfers))
-        self.unsplit_transfers = self.sort_transfers(self._transfers)
+
+    def enumerate_split_row_transfers(self):
+        return self.split_up_high_volume_rows(self.sorted_transfers(self._transfers))
+
+    def enumerate_transfers(self):
+        # NOTE: This is what was called "unsplit_transfers"
+        return self.sorted_transfers(self._transfers)
 
     def _filtered_transfers(self, all_transfers, include_blanks):
         if include_blanks:
@@ -382,7 +432,6 @@ class DilutionScheme(object):
             return list(t for t in all_transfers if t.is_control is False)
 
     def _create_transfers(self, aliquot_pairs, concentration_ref=None):
-        # TODO: handle tube racks
         transfers = []
         for pair in aliquot_pairs:
             source_endpoint = TransferEndpoint(
@@ -480,7 +529,7 @@ class DilutionScheme(object):
                 t.sample_volume = float(
                     original_sample_volume / number_rows)
 
-    def sort_transfers(self, transfers):
+    def sorted_transfers(self, transfers):
         def pipetting_volume(transfer):
             return self._get_volume(transfer.buffer_volume) + self._get_volume(transfer.sample_volume)
 
