@@ -129,12 +129,17 @@ class SharedFileNotFound(Exception):
 
 class Csv:
     """A simple wrapper for csv files"""
-    def __init__(self, file_stream, delim=","):
-        if isinstance(file_stream, basestring):
-            with open(file_stream, "r") as fs:
-                self._init_from_file_stream(fs, delim)
+    def __init__(self, file_stream=None, delim=",", file_name=None):
+        if file_stream:
+            if isinstance(file_stream, basestring):
+                with open(file_stream, "r") as fs:
+                    self._init_from_file_stream(fs, delim)
+            else:
+                self._init_from_file_stream(file_stream, delim)
         else:
-            self._init_from_file_stream(file_stream, delim)
+            self.header = list()
+            self.data = list()
+        self.file_name = file_name
 
     def _init_from_file_stream(self, file_stream, delim):
         lines = list()
@@ -142,10 +147,17 @@ class Csv:
             values = line.strip().split(delim)
             csv_line = CsvLine(values, self)
             lines.append(csv_line)
+            self.append(values)
             if len(lines) == 1:
                 self.key_to_index = {key: ix for ix, key in enumerate(values)}
         self.header = lines[0]
         self.data = lines[1:]
+
+    def append(self, values, tag=None):
+        """Appends a data line to the CSV, values is a list"""
+        # TODO: key_to_index not supported, and _init_from_files_stream is not using this
+        csv_line = CsvLine(values, self, tag)
+        self.data.append(csv_line)
 
     def __iter__(self):
         return iter(self.data)
@@ -153,9 +165,10 @@ class Csv:
 
 class CsvLine:
     """Represents one line in a CSV file, items can be added or removed like this were a dictionary"""
-    def __init__(self, line, csv):
+    def __init__(self, line, csv, tag=None):
         self.line = line
         self.csv = csv
+        self.tag = tag
 
     def __getitem__(self, key):
         index = self.csv.key_to_index[key]
@@ -164,6 +177,9 @@ class CsvLine:
     def __setitem__(self, key, value):
         index = self.csv.key_to_index[key]
         self.line[index] = value
+
+    def __iter__(self):
+        return iter(self.values)
 
     @property
     def values(self):

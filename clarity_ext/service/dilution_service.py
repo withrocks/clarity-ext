@@ -3,6 +3,7 @@ import codecs
 from clarity_ext.utils import lazyprop
 from clarity_ext.service.dilution_strategies import *
 from jinja2 import Template
+from clarity_ext.service.file_service import Csv
 
 
 class DilutionService(object):
@@ -59,6 +60,7 @@ class DilutionSession(object):
         self.dilution_schemes = dict()
         self.robots = {robot.name: robot for robot in robots}
         self.dilution_settings = dilution_settings
+        self._driver_files = dict()  # A dictionary of generated driver files
         for robot in robots:
             self.dilution_schemes[robot.name] = DilutionScheme(self.pairs, robot.name,
                                                                dilution_settings, volume_calc_strategy)
@@ -85,12 +87,47 @@ class DilutionSession(object):
             ret.add(outp)
         return list(ret)
 
+    def driver_file(self, robot_name):
+        """Returns the driver file for the robot. Might be cached"""
+        if robot_name not in self._driver_files:
+            self._driver_files[robot_name] = self.create_robot_driver_file(robot_name)
+        return self._driver_files[robot_name]
+
+    def all_driver_files(self):
+        """Returns all robot driver files in tuples (robot, robot_file)"""
+        for robot_name in self.robots:
+            yield robot_name, self.driver_file(robot_name)
+
+    def _dilution_scheme_to_csv(self, dilution_scheme, transform_transfer, headers):
+        csv = Csv()
+        csv.header.extend(headers)
+        for transfer in dilution_scheme.enumerate_transfers():
+            csv.append(transform_transfer(transfer), transfer)
+
+        return csv
+
     def create_robot_driver_file(self, robot_name):
         """
+        Creates a csv for the robot
         """
-        template_path = self.robots[robot_name].template
-        dilution_scheme = self.dilution_schemes[robot_name]
-        return self.create_general_driver_file(template_path, scheme=dilution_scheme)
+        # TODO: Get this from the robot settings class, which is provided when setting up the DilutionSession
+        def _temp_move(transfer):
+            return [transfer.aliquot_name,
+                    transfer.source_well_index,
+                    transfer.source_plate_pos,
+                    "{:.1f}".format(transfer.sample_volume),
+                    "{:.1f}".format(transfer.buffer_volume),
+                    transfer.target_well_index,
+                    transfer.target_plate_pos,
+                    transfer.source.container.id,
+                    transfer.destination.container.id]
+
+        headers = ["name", "source_well", "source_plate", "sample_volume", "buffer_volume",
+                   "target_well", "target_plate", "source_plate_id", "target_plate_id"]
+
+        # Robotsettings should have a method that returns a csv row based on a SingleTransfer object
+        csv = self._dilution_scheme_to_csv(self.dilution_schemes[robot_name], _temp_move, headers)
+        return csv
 
     def create_general_driver_file(self, template_path, **kwargs):
         """
