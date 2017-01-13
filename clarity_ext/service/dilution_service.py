@@ -255,12 +255,15 @@ class EndpointPositioner(object):
         # Fetch an unique list of container names from input
         # Make a dictionary with container names and plate positions
         # eg. END1, DNA2
+        print "HERE", plate_sorting_map, plate_pos_prefix
+        print plate_sorting_map
         plate_positions = []
         for key, value in plate_sorting_map.iteritems():
             plate_position = "{}{}".format(plate_pos_prefix, value)
             plate_positions.append((key, plate_position))
 
         plate_positions = dict(plate_positions)
+        print plate_positions
         return plate_positions
 
     @staticmethod
@@ -298,7 +301,6 @@ class RobotDeckPositioner(object):
     """
 
     def __init__(self, robot_name, dilutes, plate_size):
-
         source_endpoints = [dilute.source for dilute in dilutes]
         source_positioner = EndpointPositioner(robot_name, source_endpoints,
                                                plate_size, "DNA")
@@ -402,8 +404,7 @@ class DilutionScheme(object):
         self.scale_up_low_volumes = dilution_settings.scale_up_low_volumes
         self.volume_calc_strategy = volume_calc_strategy
 
-        # TODO: Is it safe to just check for the container for the first output
-        # analyte?
+        # TODO: Support many-to-many containers
         container = pairs[0].output_artifact.container
         all_transfers = self._create_transfers(
             pairs, concentration_ref=dilution_settings.concentration_ref)
@@ -422,7 +423,6 @@ class DilutionScheme(object):
         return self.split_up_high_volume_rows(self.sorted_transfers(self._transfers))
 
     def enumerate_transfers(self):
-        # NOTE: This is what was called "unsplit_transfers"
         return self.sorted_transfers(self._transfers)
 
     def _filtered_transfers(self, all_transfers, include_blanks):
@@ -566,7 +566,6 @@ class DilutionScheme(object):
                 transfer.target_well)
             transfer.target_plate_pos = self.robot_deck_positioner \
                 .target_plate_position_map[transfer.target_container.id]
-
 
     def __str__(self):
         return "<DilutionScheme positioner={}>".format(self.robot_deck_positioner)

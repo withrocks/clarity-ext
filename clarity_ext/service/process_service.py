@@ -33,9 +33,5 @@ class ProcessService(object):
         Returns the UI link to the process rather than the API uri. The link will only be available if the
         process step is active
         """
-        if not process.date_run:
-            return "{}/clarity/work-details/{}".format(process.uri.split("/api")[0], process.id.split("-")[1])
-        else:
-            return None
-
+        return "{}/clarity/work-details/{}".format(process.uri.split("/api")[0], process.id.split("-")[1])
 
