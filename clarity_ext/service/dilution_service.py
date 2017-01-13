@@ -98,35 +98,17 @@ class DilutionSession(object):
         for robot_name in self.robots:
             yield robot_name, self.driver_file(robot_name)
 
-    def _dilution_scheme_to_csv(self, dilution_scheme, transform_transfer, headers):
-        csv = Csv()
-        csv.header.extend(headers)
-        for transfer in dilution_scheme.enumerate_transfers():
-            csv.append(transform_transfer(transfer), transfer)
-
-        return csv
-
     def create_robot_driver_file(self, robot_name):
         """
         Creates a csv for the robot
         """
         # TODO: Get this from the robot settings class, which is provided when setting up the DilutionSession
-        def _temp_move(transfer):
-            return [transfer.aliquot_name,
-                    transfer.source_well_index,
-                    transfer.source_plate_pos,
-                    "{:.1f}".format(transfer.sample_volume),
-                    "{:.1f}".format(transfer.buffer_volume),
-                    transfer.target_well_index,
-                    transfer.target_plate_pos,
-                    transfer.source.container.id,
-                    transfer.destination.container.id]
+        robot_settings = self.robots[robot_name]
+        csv = Csv()
+        csv.header.extend(robot_settings.header)
+        for transfer in self.dilution_schemes["hamilton"].enumerate_transfers():
+            csv.append(robot_settings.map_transfer_to_row(transfer), transfer)
 
-        headers = ["name", "source_well", "source_plate", "sample_volume", "buffer_volume",
-                   "target_well", "target_plate", "source_plate_id", "target_plate_id"]
-
-        # Robotsettings should have a method that returns a csv row based on a SingleTransfer object
-        csv = self._dilution_scheme_to_csv(self.dilution_schemes[robot_name], _temp_move, headers)
         return csv
 
     def create_general_driver_file(self, template_path, **kwargs):
@@ -292,15 +274,12 @@ class EndpointPositioner(object):
         # Fetch an unique list of container names from input
         # Make a dictionary with container names and plate positions
         # eg. END1, DNA2
-        print "HERE", plate_sorting_map, plate_pos_prefix
-        print plate_sorting_map
         plate_positions = []
         for key, value in plate_sorting_map.iteritems():
             plate_position = "{}{}".format(plate_pos_prefix, value)
             plate_positions.append((key, plate_position))
 
         plate_positions = dict(plate_positions)
-        print plate_positions
         return plate_positions
 
     @staticmethod
@@ -398,33 +377,47 @@ class DilutionSettings:
         else:
             return "nM"
 
+import abc
+
 
 class RobotSettings(object):
-    def __init__(self, name, template, file_name):
+    __metaclass__ = abc.ABCMeta
+
+    def __init__(self, name):
+        """
+        Inherit from this file to supply new settings for a robot
+        """
         self.name = name
-        self.template = template
-        self.file_name = file_name
 
-    @staticmethod
-    def create_from_template(name, templates_module, file_name):
+    @abc.abstractmethod
+    def map_transfer_to_row(self, transfer):
         """
-        Creates a list of RobotSettings based on the templates found in the templates_module
+        Describes how to transform a SingleTransfer object to a csv row
+        :return:
+        """
+        pass
 
-        :param templates_module: The Python module containing the jinja templates. The templates
-        should have the extension .j2
+    @property
+    def delimiter(self):
         """
-        import os
-        templates_dir = os.path.dirname(templates_module.__file__)
-        for candidate_file in os.listdir(templates_dir):
-            split = candidate_file.split(".")
-            if split[-1] == "j2":
-                _name = split[0]
-                if name == _name:
-                    return RobotSettings(_name, os.path.join(templates_dir, candidate_file), file_name)
-        raise Exception("Template not found for {}".format(name))
+        :return: The delimiter used in the generated CSV file.
+        """
+        return "\t"
 
     def __repr__(self):
         return "<RobotSettings {}>".format(self.name)
+
+
+# TODO: Move
+class TemplateHelper:
+    @staticmethod
+    def get_from_package(package, name):
+        """Loads a Jinja template from the package"""
+        import os
+        templates_dir = os.path.dirname(package.__file__)
+        for candidate_file in os.listdir(templates_dir):
+            if candidate_file == name:
+                return os.path.join(templates_dir, candidate_file)
 
 
 class DilutionScheme(object):
