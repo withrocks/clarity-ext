@@ -4,8 +4,6 @@ import difflib
 from genologics.epp import attach_file
 from genologics.entities import *
 from clarity_ext.utils import lazyprop
-import re
-import codecs
 
 
 class OSService(object):
@@ -143,36 +141,6 @@ class DriverFileService:
     def create_file_service(instance, shared_file_name, logger, os_service):
         driver_file_service = DriverFileService(instance, shared_file_name, os_service, logger)
         return GeneralFileService(driver_file_service, ".", os_service)
-
-
-class ResponseFileService:
-    def __init__(self, extension, logger=None):
-        self.extension = extension
-        self.logger = logger
-        self.local_file = None
-
-    def commit(self):
-        """Do nothing"""
-        pass
-
-    def header_for_stoutput(self):
-        return "--- {}".format(self.local_file)
-
-    def lims_adapted_file_name(self):
-        return "{}_{}".format(self.extension.context.session.current_step_id, os.path.basename(self.local_file))
-
-    def content(self):
-        self.extension.execute()
-        for row in self.extension.context.response:
-            yield "\t".join(row)
-
-    def print_log(self):
-        pass
-
-    @staticmethod
-    def create_file_service(instance, logger, os_service):
-        response_file_svc = ResponseFileService(instance, logger)
-        return GeneralFileService(response_file_svc, ".", os_service)
 
 
 class DriverFileIntegrationTests(object):

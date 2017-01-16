@@ -1,6 +1,6 @@
 import unittest
 from mock import MagicMock
-from clarity_ext.driverfile import DriverFileService, ResponseFileService
+from clarity_ext.driverfile import DriverFileService
 from clarity_ext.domain.artifact import Artifact
 import logging
 import os
@@ -18,16 +18,6 @@ class TestGeneralFileService(unittest.TestCase):
         file_svc.execute()
         os_service.copy_file.assert_called_with(".{sep}file1.txt".format(sep=os.sep),
                                                 ".{sep}uploaded{sep}art1_file1.txt".format(sep=os.sep))
-
-    def test_run_response_file_service(self):
-        context = fake_context(step_id="step1", shared_files=None, response=[])
-        extension = fake_extension("response.txt", context)
-        os_service = MagicMock()
-        logger = logging.getLogger(__name__)
-        file_svc = ResponseFileService.create_file_service(extension, logger, os_service)
-        file_svc.execute()
-        os_service.copy_file.assert_called_with(".{sep}response.txt".format(sep=os.sep),
-                                                ".{sep}uploaded{sep}step1_response.txt".format(sep=os.sep))
 
 
 def fake_artifact(id, name):
