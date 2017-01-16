@@ -156,9 +156,8 @@ class UploadFileService(object):
             # When not connected to an actual server, we copy the file to another directory for integration tests
             upload_path = os.path.join(self.upload_dir, "uploaded")
             self.logger.info("disable_commits is on, copying the file to {}".format(upload_path))
-            if self.os_service.exists(upload_path):
-                self.os_service.rmdir(upload_path)
-            self.os_service.mkdir(upload_path)
+            if not self.os_service.exists(upload_path):
+                self.os_service.mkdir(upload_path)
             fake_name = "{}_{}".format(artifact.id, os.path.basename(instance_name))
             new_file_path = os.path.join(upload_path, fake_name)
             self.os_service.copy_file(local_path, new_file_path)
