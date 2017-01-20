@@ -145,6 +145,8 @@ class UploadFileService(object):
         :param instance_name: The name of this particular file
         :param content: The content of the file. Can be an enumeration of lines or a string (TODO: feature bloat)
         """
+        print ([x.name for x in self.artifact_service.shared_files()])
+        print (file_handle)
         artifact = utils.single([shared_file for shared_file in self.artifact_service.shared_files()
                                 if shared_file.name == file_handle])
 
