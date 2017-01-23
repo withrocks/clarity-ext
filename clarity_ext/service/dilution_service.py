@@ -1,9 +1,11 @@
+import abc
 import copy
 import codecs
 from clarity_ext.utils import lazyprop
 from clarity_ext.service.dilution_strategies import *
 from jinja2 import Template
 from clarity_ext.service.file_service import Csv
+from clarity_ext.domain.validation import ValidationException, ValidationType
 
 
 class DilutionService(object):
@@ -30,10 +32,10 @@ class DilutionService(object):
             raise ValueError("Volume calculation method is not implemented for these settings: '{}'".
                              format(settings))
 
-    def create_session(self, robots, dilution_settings):
+    def create_session(self, robots, dilution_settings, validator):
         volume_calc_strategy = self.create_strategy(dilution_settings)
         pairs = self.artifact_service.all_aliquot_pairs()
-        return DilutionSession(robots, dilution_settings, volume_calc_strategy, pairs)
+        return DilutionSession(robots, dilution_settings, volume_calc_strategy, pairs, validator)
 
 
 class DilutionSession(object):
@@ -43,7 +45,7 @@ class DilutionSession(object):
 
     NOTE: This class might be merged with DilutionScheme later on.
     """
-    def __init__(self, robots, dilution_settings, volume_calc_strategy, pairs):
+    def __init__(self, robots, dilution_settings, volume_calc_strategy, pairs, validator):
         """
         Creates a DilutionSession object for the robots. Use the DilutionSession object to create
         robot driver files and update values.
@@ -63,12 +65,14 @@ class DilutionSession(object):
         self._driver_files = dict()  # A dictionary of generated driver files
         for robot in robots:
             self.dilution_schemes[robot.name] = DilutionScheme(self.pairs, robot.name,
-                                                               dilution_settings, volume_calc_strategy)
+                                                               dilution_settings, volume_calc_strategy,
+                                                               validator)
 
     def validate(self):
         # Current limitation: Each analyte should have the same target volume and concentration
         for dilution_scheme in self.dilution_schemes.values():
-            dilution_scheme.validate()
+            for result in dilution_scheme.validate():
+                yield result
 
     @lazyprop
     def container_mappings(self):
@@ -377,8 +381,6 @@ class DilutionSettings:
         else:
             return "nM"
 
-import abc
-
 
 class RobotSettings(object):
     __metaclass__ = abc.ABCMeta
@@ -420,10 +422,43 @@ class TemplateHelper:
                 return os.path.join(templates_dir, candidate_file)
 
 
+class DilutionValidator(object):
+    """
+    Validates transfer objects that are to be diluted. Inherit from this object to support behavior
+    different from the default.
+    """
+    def __init__(self, custom_validation=None):
+        self.custom_validation = custom_validation
+
+    def validate(self, transfer):
+        if not transfer.source_initial_volume:
+            yield TransferValidationException("source volume is not set.")
+        if not transfer.source_concentration:
+            yield TransferValidationException("source concentration not set.")
+        if not transfer.requested_concentration:
+            yield TransferValidationException("target concentration is not set.")
+        if not transfer.requested_volume:
+            yield TransferValidationException("target volume is not set.")
+        if self.custom_validation:
+            for ex in self.custom_validation(transfer):
+                yield TransferValidationException(transfer, ex.msg, ex.type)
+
+
+class TransferValidationException(ValidationException):
+    """Wraps a validation exception for Dilution transfer objects"""
+    def __init__(self, transfer, msg, result_type):
+        super(TransferValidationException, self).__init__(msg, result_type)
+        self.transfer = transfer
+
+    def __str__(self):
+        return "{}({}=>{}): {}".format(self._repr_type(), self.transfer.source.well.position,
+                                       self.transfer.destination.well.position, self.msg)
+
+
 class DilutionScheme(object):
     """Creates a dilution scheme, given input and output analytes."""
 
-    def __init__(self, pairs, robot_name, dilution_settings, volume_calc_strategy):
+    def __init__(self, pairs, robot_name, dilution_settings, volume_calc_strategy, validator):
         """
         Calculates all derived values needed in dilute driver file.
 
@@ -448,6 +483,13 @@ class DilutionScheme(object):
 
         self.calculate_transfer_volumes()
         self.do_positioning()
+        self.validator = validator
+
+    def validate(self):
+        """Yields a list of `ValidationException`s, either warnings or errors."""
+        for transfer in self.enumerate_transfers():
+            for exception in self.validator.validate(transfer):
+                yield exception
 
     def enumerate_split_row_transfers(self):
         return self.split_up_high_volume_rows(self.sorted_transfers(self._transfers))

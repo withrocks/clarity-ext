@@ -1,3 +1,4 @@
+from __future__ import print_function
 import importlib
 import os
 import sys
@@ -259,6 +260,9 @@ class ExtensionService(object):
             raise NotImplementedError("Unknown extension type")
         context.cleanup()
         os.chdir(old_dir)
+        # Print notifications. Newlines will cause only the last notification to be shown, so
+        # using slash instead:
+        print("/".join(instance.notifications))
 
     def _validate_against_frozen(self, path, frozen_path):
         if os.path.exists(frozen_path):
@@ -370,6 +374,14 @@ class GeneralExtension(object):
             context=context, logger=self.logger)
         # Expose the IntegrationTest type like this so it doesn't need to be imported
         self.test = IntegrationTest
+        self.notifications = list()
+
+    def notify(self, msg):
+        """
+        Adds text to the notification box in the UI, that's shown when
+        the extension has finished running.
+        """
+        self.notifications.append(msg)
 
     @lazyprop
     def random(self):

@@ -224,6 +224,7 @@ class Csv:
             self.header = list()
             self.data = list()
         self.file_name = file_name
+        self.delim = delim
 
     def _init_from_file_stream(self, file_stream, delim):
         lines = list()
@@ -245,6 +246,15 @@ class Csv:
 
     def __iter__(self):
         return iter(self.data)
+
+    def to_string(self, include_header=True, new_line='\n'):
+        ret = []
+        if include_header:
+            ret.append(self.delim.join(map(str, self.header)))
+        for line in self.data:
+            ret.append(self.delim.join(map(str, line)))
+        return new_line.join(ret)
+
 
 
 class CsvLine:
