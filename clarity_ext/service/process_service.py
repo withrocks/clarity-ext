@@ -34,4 +34,3 @@ class ProcessService(object):
         process step is active
         """
         return "{}/clarity/work-details/{}".format(process.uri.split("/api")[0], process.id.split("-")[1])
-
