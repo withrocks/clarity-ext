@@ -123,7 +123,7 @@ class DilutionSession(object):
         """
         # TODO: Get this from the robot settings class, which is provided when setting up the DilutionSession
         robot_settings = self.robots[robot_name]
-        csv = Csv()
+        csv = Csv(delim="\t")
         csv.header.extend(robot_settings.header)
         for transfer in self.dilution_schemes["hamilton"].enumerate_transfers():
             csv.append(robot_settings.map_transfer_to_row(transfer), transfer)
@@ -261,7 +261,7 @@ class SingleTransfer(object):
     @property
     def updated_source_volume(self):
         return self.source_initial_volume - \
-               self.requested_volume - self.dilution_settings.dilution_waste_volume
+               self.sample_volume - self.dilution_settings.dilution_waste_volume
 
     def __str__(self):
         source = "source({}, conc={})".format(
