@@ -1,5 +1,6 @@
 import re
 import os
+import sys
 import shutil
 import logging
 from lxml import objectify
@@ -140,7 +141,8 @@ class UploadFileService(object):
         self.logger = logger or logging.getLogger(__name__)
         self.artifact_service = artifact_service
 
-    def upload(self, file_handle, instance_name, content, newline=None):
+    def upload(self, file_handle, instance_name, content, newline=None,
+               stdout_max_lines=50):
         """
         :param file_handle: The handle of the file in the Clarity UI
         :param instance_name: The name of this particular file
@@ -171,8 +173,15 @@ class UploadFileService(object):
 
         if self.uploaded_to_stdout:
             print "--- {} => {} ({})".format(local_path, artifact.name, artifact.id)
+            extra = 0
             with self.os_service.open_file(local_path, 'r') as f:
-                print f.read()
+                for ix, line in enumerate(f):
+                    if ix < stdout_max_lines:
+                        sys.stdout.write(line)
+                    else:
+                        extra += 1
+            if extra > 0:
+                sys.stdout.write("<{} more lines>\n".format(extra))
             print "---"
 
     def save_locally(self, content, filename, newline=None):
@@ -254,7 +263,6 @@ class Csv:
         for line in self.data:
             ret.append(self.delim.join(map(str, line)))
         return new_line.join(ret)
-
 
 
 class CsvLine:

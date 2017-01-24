@@ -10,8 +10,9 @@ from clarity_ext.domain.validation import ValidationException, ValidationType
 
 class DilutionService(object):
 
-    def __init__(self, artifact_service):
+    def __init__(self, artifact_service, validation_service):
         self.artifact_service = artifact_service
+        self.validation_service = validation_service
 
     def create_scheme(self, robot_name, dilution_settings):
         # TODO: It's currently necessary to create one dilution scheme per robot type,
@@ -33,9 +34,13 @@ class DilutionService(object):
                              format(settings))
 
     def create_session(self, robots, dilution_settings, validator):
+        """Creates and validates a DilutionSession based on the settings"""
         volume_calc_strategy = self.create_strategy(dilution_settings)
         pairs = self.artifact_service.all_aliquot_pairs()
-        return DilutionSession(robots, dilution_settings, volume_calc_strategy, pairs, validator)
+        session = DilutionSession(robots, dilution_settings, volume_calc_strategy, pairs, validator)
+        results = session.validate()  # The session object will now have info on it's validation results
+        self.validation_service.handle_validation(results)
+        return session
 
 
 class DilutionSession(object):
@@ -63,16 +68,26 @@ class DilutionSession(object):
         self.robots = {robot.name: robot for robot in robots}
         self.dilution_settings = dilution_settings
         self._driver_files = dict()  # A dictionary of generated driver files
+        self.has_errors = False
+        self.has_warnings = False
         for robot in robots:
             self.dilution_schemes[robot.name] = DilutionScheme(self.pairs, robot.name,
                                                                dilution_settings, volume_calc_strategy,
                                                                validator)
 
+    def enumerate_validation_errors(self):
+        dilution_scheme = self.dilution_schemes.values()[0]
+        for result in dilution_scheme.validate():
+            yield result
+
     def validate(self):
         # Current limitation: Each analyte should have the same target volume and concentration
-        for dilution_scheme in self.dilution_schemes.values():
-            for result in dilution_scheme.validate():
-                yield result
+        # TODO: There will be only one dilution_scheme, still refactoring that so there is still one per robot
+        # but only one needs to be validated
+        results = list(self.enumerate_validation_errors())
+        self.has_errors = any(r.type == ValidationType.ERROR for r in results)
+        self.has_warnings = any(r.type == ValidationType.WARNING for r in results)
+        return results
 
     @lazyprop
     def container_mappings(self):
@@ -131,16 +146,15 @@ class TransferEndpoint(object):
     """
     TransferEndpoint wraps an source or destination analyte involved in a dilution
     """
-    # TODO: Handle tube racks
-
     def __init__(self, aliquot, concentration_ref=None):
+        self.aliquot = aliquot
         self.aliquot_name = aliquot.name
         self.well = aliquot.well
         self.container = aliquot.container
         self.concentration = self._referenced_concentration(
             aliquot=aliquot, concentration_ref=concentration_ref)
         # TODO: Temporary fix. This udf is not available on all objects
-        #       The same goes for all other AttributeErrors in this commit 
+        #       The same goes for all other AttributeErrors in this commit
         try:
             self.volume = aliquot.udf_current_sample_volume_ul
         except AttributeError:
@@ -198,8 +212,7 @@ class SingleTransfer(object):
     # Enclose sample data, user input and derived variables for a
     # single row in a dilution
 
-    def __init__(self, source_endpoint, destination_endpoint=None, pair_id=None):
-        self.pair_id = pair_id
+    def __init__(self, source_endpoint, destination_endpoint=None, dilution_settings=None):
         self.aliquot_name = source_endpoint.aliquot_name
         self.is_control = source_endpoint.is_control
         self.is_source_from_original = source_endpoint.is_from_original
@@ -229,6 +242,7 @@ class SingleTransfer(object):
         self.buffer_volume = None
         self.has_to_evaporate = None
         self.scaled_up = False
+        self.dilution_settings = dilution_settings
 
     def set_destination_endpoint(self, destination_endpoint):
         self.target_well = destination_endpoint.well
@@ -243,6 +257,11 @@ class SingleTransfer(object):
         target = "target({}, conc={}, vol={})".format(self.target_well,
                                                       self.requested_concentration, self.requested_volume)
         return "{} => {}".format(source, target)
+
+    @property
+    def updated_source_volume(self):
+        return self.source_initial_volume - \
+               self.requested_volume - self.dilution_settings.dilution_waste_volume
 
     def __str__(self):
         source = "source({}, conc={})".format(
@@ -432,13 +451,13 @@ class DilutionValidator(object):
 
     def validate(self, transfer):
         if not transfer.source_initial_volume:
-            yield TransferValidationException("source volume is not set.")
+            yield TransferValidationException(transfer, "source volume is not set.")
         if not transfer.source_concentration:
-            yield TransferValidationException("source concentration not set.")
+            yield TransferValidationException(transfer, "source concentration not set.")
         if not transfer.requested_concentration:
-            yield TransferValidationException("target concentration is not set.")
+            yield TransferValidationException(transfer, "target concentration is not set.")
         if not transfer.requested_volume:
-            yield TransferValidationException("target volume is not set.")
+            yield TransferValidationException(transfer, "target volume is not set.")
         if self.custom_validation:
             for ex in self.custom_validation(transfer):
                 yield TransferValidationException(transfer, ex.msg, ex.type)
@@ -446,7 +465,11 @@ class DilutionValidator(object):
 
 class TransferValidationException(ValidationException):
     """Wraps a validation exception for Dilution transfer objects"""
-    def __init__(self, transfer, msg, result_type):
+
+    # TODO: This is a convenient wrapper for the design right now, but it would
+    # be preferable to rather switch to a tuple of ValidationException and Transfer object when validating
+    # and handle the formatting in the code outputting the errors.
+    def __init__(self, transfer, msg, result_type=None):
         super(TransferValidationException, self).__init__(msg, result_type)
         self.transfer = transfer
 
@@ -476,8 +499,6 @@ class DilutionScheme(object):
         self._transfers = self._filtered_transfers(
             all_transfers=all_transfers, include_blanks=dilution_settings.include_blanks)
 
-        self.aliquot_pair_by_transfer = self._map_pair_and_transfers(
-            pairs=pairs)
         self.robot_deck_positioner = RobotDeckPositioner(
             robot_name, self._transfers, container.size)
 
@@ -511,21 +532,8 @@ class DilutionScheme(object):
             destination_endpoint = TransferEndpoint(
                 pair.output_artifact, concentration_ref=concentration_ref)
             transfers.append(SingleTransfer(
-                source_endpoint, destination_endpoint, pair_id=id(pair)))
+                source_endpoint, destination_endpoint, self.dilution_settings))
         return transfers
-
-    def _map_pair_and_transfers(self, pairs):
-        """
-        :param pairs: input artifact --- output artifact pair
-        :return: A function returning an artifact pair, given a transfer object
-        """
-        pair_dict = {id(pair): pair for pair in pairs}
-
-        def pair_by_transfer(transfer):
-            by_transfer_dict = {transfer.identifier: pair_dict[
-                transfer.pair_id] for transfer in self._transfers}
-            return by_transfer_dict[transfer.identifier]
-        return pair_by_transfer
 
     def calculate_transfer_volumes(self):
         # Handle volumes etc.

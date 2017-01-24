@@ -3,11 +3,11 @@ from clarity_ext import UnitConversion
 from clarity_ext.repository import ClarityRepository, FileRepository
 from clarity_ext.utils import lazyprop
 from clarity_ext import ClaritySession
-from clarity_ext.service import ArtifactService, FileService, StepLoggerService, ClarityService, ProcessService, UploadFileService
+from clarity_ext.service import (ArtifactService, FileService, StepLoggerService, ClarityService,
+                                 ProcessService, UploadFileService, ValidationService)
 from clarity_ext.repository import StepRepository
 from clarity_ext import utils
 from clarity_ext.service.file_service import OSService
-from clarity_ext.service.validation_service import ERRORS_AND_WARNING_ENTRY_NAME
 
 
 class ExtensionContext(object):
@@ -23,7 +23,7 @@ class ExtensionContext(object):
 
     def __init__(self, session, artifact_service, file_service, current_user,
                  step_logger_service, step_repo, clarity_service, dilution_service, process_service,
-                 upload_file_service, test_mode=False,
+                 upload_file_service, validation_service, test_mode=False,
                  disable_commits=False):
         """
         Initializes the context.
@@ -58,6 +58,7 @@ class ExtensionContext(object):
         self.test_mode = test_mode
         self.clarity_service = clarity_service
         self.process_service = process_service
+        self.validation_service = validation_service
 
         # Add the URL to the current_step
         # TODO: Quick-fix. Turn this around and fetch the process from the process service
@@ -78,8 +79,9 @@ class ExtensionContext(object):
         file_repository = FileRepository(session)
         file_service = FileService(artifact_service, file_repository, False, OSService())
         step_logger_service = StepLoggerService("Step log", file_service)
+        validation_service = ValidationService(step_logger_service)
         clarity_service = ClarityService(ClarityRepository(), step_repo)
-        dilution_service = DilutionService(artifact_service)
+        dilution_service = DilutionService(artifact_service, validation_service)
         process_service = ProcessService()
         upload_file_service = UploadFileService(OSService(), artifact_service,
                                                 uploaded_to_stdout=uploaded_to_stdout,
@@ -87,6 +89,7 @@ class ExtensionContext(object):
         return ExtensionContext(session, artifact_service, file_service, current_user,
                                 step_logger_service, step_repo, clarity_service,
                                 dilution_service, process_service, upload_file_service,
+                                validation_service,
                                 test_mode=test_mode, disable_commits=disable_commits)
 
     @lazyprop
@@ -96,11 +99,15 @@ class ExtensionContext(object):
         without having a visible UDF on the step.
         """
         file_list = [file for file in self.shared_files if file.name ==
-                     ERRORS_AND_WARNING_ENTRY_NAME]
+                     self.step_log_name]
         if not len(file_list) == 1:
             raise ValueError("This step is not configured with the shared file entry for {}".format(
-                ERRORS_AND_WARNING_ENTRY_NAME))
+                step_log_name))
         return file_list[0]
+
+    @property
+    def step_log_name(self):
+        return self.validation_service.step_logger_service.step_logger_name
 
     @lazyprop
     def shared_files(self):

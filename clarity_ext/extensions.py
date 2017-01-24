@@ -370,11 +370,22 @@ class GeneralExtension(object):
         self.context = context
         self.logger = logging.getLogger(self.__class__.__module__)
         self.response = None
-        self.validation_service = ValidationService(
-            context=context, logger=self.logger)
         # Expose the IntegrationTest type like this so it doesn't need to be imported
         self.test = IntegrationTest
         self.notifications = list()
+
+    def usage_warning(self, msg):
+        """
+        Notify the user of an error or warning
+        """
+        self.notify("{}. See {} for details".format(msg, self.context.step_log_name))
+
+    def usage_error(self, msg):
+        """
+        Raise an error which the user can possibly fix by changing input parameters. Will log to the
+        Step log by default.
+        """
+        raise UsageError("{}. See {} for details".format(msg, self.context.step_log_name))
 
     def notify(self, msg):
         """
@@ -525,3 +536,6 @@ class ExtensionTestLogFilter(logging.Filter):
             if record.name.startswith("clarity_ext.extensions"):
                 return False
             return True
+
+class UsageError(Exception):
+    pass
