@@ -84,7 +84,7 @@ class DilutionSession(object):
         # Current limitation: Each analyte should have the same target volume and concentration
         # TODO: There will be only one dilution_scheme, still refactoring that so there is still one per robot
         # but only one needs to be validated
-        results = list(self.enumerate_validation_errors())
+        errors, warnings = list(self.enumerate_validation_errors())
         self.has_errors = any(r.type == ValidationType.ERROR for r in results)
         self.has_warnings = any(r.type == ValidationType.WARNING for r in results)
         return results
@@ -404,11 +404,12 @@ class DilutionSettings:
 class RobotSettings(object):
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, name):
+    def __init__(self, name, file_handle):
         """
         Inherit from this file to supply new settings for a robot
         """
         self.name = name
+        self.file_handle = file_handle
 
     @abc.abstractmethod
     def map_transfer_to_row(self, transfer):
@@ -441,15 +442,16 @@ class TemplateHelper:
                 return os.path.join(templates_dir, candidate_file)
 
 
-class DilutionValidator(object):
+class DilutionValidatorBase(object):
     """
     Validates transfer objects that are to be diluted. Inherit from this object to support behavior
     different from the default.
     """
-    def __init__(self, custom_validation=None):
-        self.custom_validation = custom_validation
-
-    def validate(self, transfer):
+    def pre_rules(self, transfer):
+        """
+        Rules that specify if the calculation can be executed at all, these should not need to
+        be overriden
+        """
         if not transfer.source_initial_volume:
             yield TransferValidationException(transfer, "source volume is not set.")
         if not transfer.source_concentration:
@@ -458,9 +460,49 @@ class DilutionValidator(object):
             yield TransferValidationException(transfer, "target concentration is not set.")
         if not transfer.requested_volume:
             yield TransferValidationException(transfer, "target volume is not set.")
-        if self.custom_validation:
-            for ex in self.custom_validation(transfer):
-                yield TransferValidationException(transfer, ex.msg, ex.type)
+        if True:
+            yield TransferValidationException(transfer, "silly condition met.")
+
+    def rules(self, transfer):
+        """
+        Validates that the transfer is correct. Will not run if `can_start_calculation`
+        returns False.
+
+        This should be overridden to provide custom validation rules
+        """
+        return []
+
+    def _group_by_type(self, results):
+        def by_type(result):
+            return result.type
+
+        ret = dict()
+        for k, g in groupby(sorted(results, key=by_type), key=by_type):
+            ret[k] = list(g)
+        print ret
+        return ret.get(ValidationType.ERROR, list()), ret.get(ValidationType.WARNING, list())
+
+    def validate(self, transfers):
+        """
+        Validates the transfers, first by validating that calculation can be performed, then by
+        running all custom validations.
+
+        Returns a tuple of (errors, warnings).
+        """
+        pre_results = list()
+        for transfer in transfers:
+            pre_results.extend(self.pre_rules(transfer))
+        pre_errors, pre_warnings = self._group_by_type(pre_results)
+        if len(pre_errors) > 0:
+            # Got a non-empty list of errors, can't validate the rest:
+            return pre_errors, pre_warnings
+
+        results = list()
+        for transfer in transfers:
+            results.extend(self.rules(transfer))
+        errors, warnings = self._group_by_type(results)
+
+        return pre_errors + errors, pre_warnings + warnings
 
 
 class TransferValidationException(ValidationException):
@@ -469,11 +511,11 @@ class TransferValidationException(ValidationException):
     # TODO: This is a convenient wrapper for the design right now, but it would
     # be preferable to rather switch to a tuple of ValidationException and Transfer object when validating
     # and handle the formatting in the code outputting the errors.
-    def __init__(self, transfer, msg, result_type=None):
+    def __init__(self, transfer, msg, result_type=ValidationType.ERROR):
         super(TransferValidationException, self).__init__(msg, result_type)
         self.transfer = transfer
 
-    def __str__(self):
+    def __repr__(self):
         return "{}({}=>{}): {}".format(self._repr_type(), self.transfer.source.well.position,
                                        self.transfer.destination.well.position, self.msg)
 
@@ -507,10 +549,8 @@ class DilutionScheme(object):
         self.validator = validator
 
     def validate(self):
-        """Yields a list of `ValidationException`s, either warnings or errors."""
-        for transfer in self.enumerate_transfers():
-            for exception in self.validator.validate(transfer):
-                yield exception
+        """Returns a tuple with (errors, warnings)"""
+        return self.validator.validate(self.enumerate_transfers())
 
     def enumerate_split_row_transfers(self):
         return self.split_up_high_volume_rows(self.sorted_transfers(self._transfers))

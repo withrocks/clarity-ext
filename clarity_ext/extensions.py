@@ -14,7 +14,7 @@ from clarity_ext import ClaritySession
 from clarity_ext.repository import StepRepository
 from clarity_ext.service import ArtifactService
 from test.integration.integration_test_service import IntegrationTest
-from clarity_ext.service.validation_service import ValidationService
+from clarity_ext.domain.validation import ValidationException, ValidationType
 from jinja2 import Template
 import time
 import random
@@ -423,6 +423,12 @@ class GeneralExtension(object):
         if time_tuple is None:
             time_tuple = self.localtime()
         return strftime(fmt, time_tuple)
+
+    def error(self, msg):
+        return ValidationException(msg, ValidationType.ERROR)
+
+    def warning(self, msg):
+        return ValidationException(msg, ValidationType.WARNING)
 
 
 class DriverFileExtension(GeneralExtension):

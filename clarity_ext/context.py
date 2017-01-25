@@ -102,7 +102,7 @@ class ExtensionContext(object):
                      self.step_log_name]
         if not len(file_list) == 1:
             raise ValueError("This step is not configured with the shared file entry for {}".format(
-                step_log_name))
+                self.step_log_name))
         return file_list[0]
 
     @property
