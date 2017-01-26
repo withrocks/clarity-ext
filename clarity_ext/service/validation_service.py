@@ -8,15 +8,12 @@ class ValidationService:
         self.logger = logger
         self.step_logger_service = step_logger_service
 
-    def handle_validation(self, validation_results):
+    def handle_validation(self, results):
         """
         Pushes validation results to the logging framework
         """
-        results = list(validation_results)
-        results = sorted(results, key=lambda r: r.type)
         if len(results) > 0:
-            self._log_debug(
-                "Validation errors, len = {}".format(len(results)))
+            self._log_debug("Validation errors, len = {}".format(len(results)))
             for r in results:
                 msg_row = "{}".format(r)
                 self.step_logger_service.log(msg_row)

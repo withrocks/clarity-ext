@@ -5,21 +5,12 @@ from clarity_ext.utils import lazyprop
 from clarity_ext.service.dilution_strategies import *
 from jinja2 import Template
 from clarity_ext.service.file_service import Csv
-from clarity_ext.domain.validation import ValidationException, ValidationType
+from clarity_ext.domain.validation import ValidationException, ValidationType, ValidationResults, UsageError
 
 
 class DilutionService(object):
-
-    def __init__(self, artifact_service, validation_service):
-        self.artifact_service = artifact_service
+    def __init__(self, validation_service):
         self.validation_service = validation_service
-
-    def create_scheme(self, robot_name, dilution_settings):
-        # TODO: It's currently necessary to create one dilution scheme per robot type,
-        # but it would be preferable that there would be only one
-        volume_calc_strategy = self.create_strategy(dilution_settings)
-        return DilutionScheme(artifact_service=self.artifact_service, robot_name=robot_name,
-                              dilution_settings=dilution_settings, volume_calc_strategy=volume_calc_strategy)
 
     @staticmethod
     def create_strategy(settings):
@@ -33,13 +24,12 @@ class DilutionService(object):
             raise ValueError("Volume calculation method is not implemented for these settings: '{}'".
                              format(settings))
 
-    def create_session(self, robots, dilution_settings, validator):
+    def create_session(self, analyte_pairs, robots, dilution_settings, validator):
         """Creates and validates a DilutionSession based on the settings"""
         volume_calc_strategy = self.create_strategy(dilution_settings)
-        pairs = self.artifact_service.all_aliquot_pairs()
-        session = DilutionSession(robots, dilution_settings, volume_calc_strategy, pairs, validator)
-        results = session.validate()  # The session object will now have info on it's validation results
-        self.validation_service.handle_validation(results)
+        session = DilutionSession(robots, dilution_settings, volume_calc_strategy, analyte_pairs, validator)
+        session.validate()
+        self.validation_service.handle_validation(session.validation_results)
         return session
 
 
@@ -68,26 +58,16 @@ class DilutionSession(object):
         self.robots = {robot.name: robot for robot in robots}
         self.dilution_settings = dilution_settings
         self._driver_files = dict()  # A dictionary of generated driver files
-        self.has_errors = False
-        self.has_warnings = False
+        self.validation_results = None
+
         for robot in robots:
             self.dilution_schemes[robot.name] = DilutionScheme(self.pairs, robot.name,
                                                                dilution_settings, volume_calc_strategy,
                                                                validator)
 
-    def enumerate_validation_errors(self):
-        dilution_scheme = self.dilution_schemes.values()[0]
-        for result in dilution_scheme.validate():
-            yield result
-
     def validate(self):
-        # Current limitation: Each analyte should have the same target volume and concentration
-        # TODO: There will be only one dilution_scheme, still refactoring that so there is still one per robot
-        # but only one needs to be validated
-        errors, warnings = list(self.enumerate_validation_errors())
-        self.has_errors = any(r.type == ValidationType.ERROR for r in results)
-        self.has_warnings = any(r.type == ValidationType.WARNING for r in results)
-        return results
+        dilution_scheme = self.dilution_schemes.values()[0]
+        self.validation_results = dilution_scheme.validate()
 
     @lazyprop
     def container_mappings(self):
@@ -153,12 +133,8 @@ class TransferEndpoint(object):
         self.container = aliquot.container
         self.concentration = self._referenced_concentration(
             aliquot=aliquot, concentration_ref=concentration_ref)
-        # TODO: Temporary fix. This udf is not available on all objects
-        #       The same goes for all other AttributeErrors in this commit
-        try:
-            self.volume = aliquot.udf_current_sample_volume_ul
-        except AttributeError:
-            self.volume = None
+        self.volume = aliquot.udf_current_sample_volume_ul
+        assert self.volume is not None
         self.is_control = False
         if hasattr(aliquot, "is_control"):
             self.is_control = aliquot.is_control
@@ -447,28 +423,21 @@ class DilutionValidatorBase(object):
     Validates transfer objects that are to be diluted. Inherit from this object to support behavior
     different from the default.
     """
-    def pre_rules(self, transfer):
-        """
-        Rules that specify if the calculation can be executed at all, these should not need to
-        be overriden
-        """
-        if not transfer.source_initial_volume:
-            yield TransferValidationException(transfer, "source volume is not set.")
-        if not transfer.source_concentration:
-            yield TransferValidationException(transfer, "source concentration not set.")
-        if not transfer.requested_concentration:
-            yield TransferValidationException(transfer, "target concentration is not set.")
-        if not transfer.requested_volume:
-            yield TransferValidationException(transfer, "target volume is not set.")
-        if True:
-            yield TransferValidationException(transfer, "silly condition met.")
+    @staticmethod
+    def error(msg):
+        return ValidationException(msg, ValidationType.ERROR)
+
+    @staticmethod
+    def warning(msg):
+        return ValidationException(msg, ValidationType.WARNING)
+
 
     def rules(self, transfer):
         """
         Validates that the transfer is correct. Will not run if `can_start_calculation`
         returns False.
 
-        This should be overridden to provide custom validation rules
+        This should be overridden to provide custom validation rules for a particular dilution.
         """
         return []
 
@@ -479,7 +448,6 @@ class DilutionValidatorBase(object):
         ret = dict()
         for k, g in groupby(sorted(results, key=by_type), key=by_type):
             ret[k] = list(g)
-        print ret
         return ret.get(ValidationType.ERROR, list()), ret.get(ValidationType.WARNING, list())
 
     def validate(self, transfers):
@@ -489,20 +457,10 @@ class DilutionValidatorBase(object):
 
         Returns a tuple of (errors, warnings).
         """
-        pre_results = list()
-        for transfer in transfers:
-            pre_results.extend(self.pre_rules(transfer))
-        pre_errors, pre_warnings = self._group_by_type(pre_results)
-        if len(pre_errors) > 0:
-            # Got a non-empty list of errors, can't validate the rest:
-            return pre_errors, pre_warnings
-
-        results = list()
+        results = ValidationResults()
         for transfer in transfers:
             results.extend(self.rules(transfer))
-        errors, warnings = self._group_by_type(results)
-
-        return pre_errors + errors, pre_warnings + warnings
+        return results
 
 
 class TransferValidationException(ValidationException):
@@ -538,8 +496,10 @@ class DilutionScheme(object):
         container = pairs[0].output_artifact.container
         all_transfers = self._create_transfers(
             pairs, concentration_ref=dilution_settings.concentration_ref)
+        self._validate_can_run(all_transfers)
         self._transfers = self._filtered_transfers(
             all_transfers=all_transfers, include_blanks=dilution_settings.include_blanks)
+
 
         self.robot_deck_positioner = RobotDeckPositioner(
             robot_name, self._transfers, container.size)
@@ -548,8 +508,32 @@ class DilutionScheme(object):
         self.do_positioning()
         self.validator = validator
 
+    def _validate_can_run(self, transfers):
+        """
+        Validate that we can run a validation. If there are any errors, we raise a UsageException
+        containing these validation errors.
+        """
+        def pre_conditions(transfer):
+            print transfer
+            if not transfer.source_initial_volume:
+                yield TransferValidationException(transfer, "source volume is not set.")
+            if not transfer.source_concentration:
+                yield TransferValidationException(transfer, "source concentration not set.")
+            if not transfer.requested_concentration:
+                yield TransferValidationException(transfer, "target concentration is not set.")
+            if not transfer.requested_volume:
+                yield TransferValidationException(transfer, "target volume is not set.")
+
+        results = ValidationResults()
+        for transfer in transfers:
+            results.extend(list(pre_conditions(transfer)))
+
+        print results.errors, results.warnings
+        if len(results.errors) > 0:
+            raise UsageError("There were validation errors", results)
+
     def validate(self):
-        """Returns a tuple with (errors, warnings)"""
+        """Returns a ValidationResults object, containing ValidationResult objects"""
         return self.validator.validate(self.enumerate_transfers())
 
     def enumerate_split_row_transfers(self):
@@ -588,8 +572,7 @@ class DilutionScheme(object):
         """
         split_row_transfers = []
         for transfer in transfers:
-            calculation_volume = max(
-                self._get_volume(transfer.sample_volume), self._get_volume(transfer.buffer_volume))
+            calculation_volume = max(transfer.sample_volume, transfer.buffer_volume)
             (n, residual) = divmod(calculation_volume, self.dilution_settings.pipette_max_volume)
             if residual > 0:
                 total_rows = int(n + 1)
@@ -651,11 +634,11 @@ class DilutionScheme(object):
 
     def sorted_transfers(self, transfers):
         def pipetting_volume(transfer):
-            return self._get_volume(transfer.buffer_volume) + self._get_volume(transfer.sample_volume)
+            return transfer.buffer_volume + transfer.sample_volume
 
         def max_added_pip_volume():
-            volumes = map(lambda t: (self._get_volume(t.buffer_volume),
-                                     self._get_volume(t.sample_volume)), self._transfers)
+            # TODO: merge
+            volumes = map(lambda t: (t.buffer_volume, t.sample_volume), self._transfers)
             return max(map(lambda (buffer_vol, sample_vol): buffer_vol + sample_vol, volumes))
 
         # Sort on source position, and in case of splitted rows, pipetting
@@ -664,16 +647,6 @@ class DilutionScheme(object):
         return sorted(
             transfers, key=lambda t: self.robot_deck_positioner.find_sort_number(t) +
             (max_vol - pipetting_volume(t)) / (max_vol + 1.0))
-
-    @staticmethod
-    def _get_volume(volume):
-        # In cases when some parameter is not set (Source conc, Target concentration
-        # or volume), let the error and warnings check in script
-        # catch these exceptions
-        if not volume:
-            return 0
-        else:
-            return volume
 
     def do_positioning(self):
         # Handle positioning

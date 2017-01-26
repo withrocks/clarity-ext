@@ -202,7 +202,7 @@ class Container(DomainObjectMixin):
     def list_wells(self, order=DOWN_FIRST):
         return list(self.enumerate_wells(order))
 
-    def set_well(self, well_pos, artifact_name=None, artifact_id=None, artifact=None):
+    def set_well(self, well_pos, artifact=None):
         # We should support any position that ContainerPosition can handle:
         if not isinstance(well_pos, ContainerPosition):
             well_pos = ContainerPosition.create(well_pos)
@@ -211,10 +211,12 @@ class Container(DomainObjectMixin):
             raise KeyError(
                 "Well id {} is not available in this container (type={})".format(well_pos, self))
 
-        self.wells[well_pos].artifact_name = artifact_name
-        self.wells[well_pos].artifact_id = artifact_id
-        # TODO: Accept only an artifact
         self.wells[well_pos].artifact = artifact
+        if artifact and not artifact.container:
+            artifact.container = self
+
+        if not artifact.well:
+            artifact.well = self.wells[well_pos]
 
     def __iter__(self):
         return self.enumerate_wells(order=self.DOWN_FIRST)

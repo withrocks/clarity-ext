@@ -424,12 +424,6 @@ class GeneralExtension(object):
             time_tuple = self.localtime()
         return strftime(fmt, time_tuple)
 
-    def error(self, msg):
-        return ValidationException(msg, ValidationType.ERROR)
-
-    def warning(self, msg):
-        return ValidationException(msg, ValidationType.WARNING)
-
 
 class DriverFileExtension(GeneralExtension):
     __metaclass__ = ABCMeta
@@ -543,5 +537,3 @@ class ExtensionTestLogFilter(logging.Filter):
                 return False
             return True
 
-class UsageError(Exception):
-    pass

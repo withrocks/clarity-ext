@@ -81,7 +81,7 @@ class ExtensionContext(object):
         step_logger_service = StepLoggerService("Step log", file_service)
         validation_service = ValidationService(step_logger_service)
         clarity_service = ClarityService(ClarityRepository(), step_repo)
-        dilution_service = DilutionService(artifact_service, validation_service)
+        dilution_service = DilutionService(validation_service)
         process_service = ProcessService()
         upload_file_service = UploadFileService(OSService(), artifact_service,
                                                 uploaded_to_stdout=uploaded_to_stdout,
