@@ -103,7 +103,8 @@ class Container(DomainObjectMixin):
     CONTAINER_TYPE_TUBE = 300
     CONTAINER_TYPE_PATTERNED_FLOW_CELL = 400
 
-    def __init__(self, mapping=None, container_type=None, size=None, container_type_name=None):
+    def __init__(self, mapping=None, container_type=None, size=None, container_type_name=None,
+                 container_id=None, name=None):
         """
         :param mapping: A dictionary-like object containing mapping from well
         position to content. It can be non-complete.
@@ -115,8 +116,8 @@ class Container(DomainObjectMixin):
         # TODO: using both container_type and container_type_name is temporary
         self.container_type = container_type
         self.container_type_name = container_type_name
-        self.id = None
-        self.name = None
+        self.id = container_id
+        self.name = name
 
         if size:
             self.size = size

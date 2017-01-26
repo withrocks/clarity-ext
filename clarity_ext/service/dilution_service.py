@@ -350,6 +350,11 @@ class DilutionSettings:
     VOLUME_CALC_FIXED = 1
     VOLUME_CALC_BY_CONC = 2
 
+    CONCENTRATION_REF_TO_STR = {
+        CONCENTRATION_REF_NGUL: "ng/ul",
+        CONCENTRATION_REF_NM: "nM"
+    }
+
     def __init__(self, scale_up_low_volumes=True, concentration_ref=None, include_blanks=False,
                  volume_calc_method=None, make_pools=False, pipette_max_volume=None,
                  dilution_waste_volume=0):
@@ -359,6 +364,7 @@ class DilutionSettings:
         """
         self.scale_up_low_volumes = scale_up_low_volumes
         # TODO: Use py3 enums instead
+        concentration_ref = self._parse_conc_ref(concentration_ref)
         if concentration_ref not in [self.CONCENTRATION_REF_NM, self.CONCENTRATION_REF_NGUL]:
             raise ValueError("Unsupported concentration_ref '{}'".format(concentration_ref))
         self.concentration_ref = concentration_ref
@@ -369,23 +375,29 @@ class DilutionSettings:
         self.pipette_max_volume = pipette_max_volume
         self.dilution_waste_volume = dilution_waste_volume
 
-    @property
-    def concentration_ref_string(self):
-        if self.concentration_ref == self.CONCENTRATION_REF_NGUL:
-            return "ng/ul"
+    def _parse_conc_ref(self, concentration_ref):
+        if isinstance(concentration_ref, basestring):
+            for key, value in DilutionSettings.CONCENTRATION_REF_TO_STR.items():
+                if value == concentration_ref:
+                    return key
         else:
-            return "nM"
+            return concentration_ref
+
+    @staticmethod
+    def concentration_unit_to_string(conc_ref):
+        return DilutionSettings.CONCENTRATION_REF_TO_STR[conc_ref]
 
 
 class RobotSettings(object):
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, name, file_handle):
+    def __init__(self, name, file_handle, file_ext):
         """
         Inherit from this file to supply new settings for a robot
         """
         self.name = name
         self.file_handle = file_handle
+        self.file_ext = file_ext
 
     @abc.abstractmethod
     def map_transfer_to_row(self, transfer):
@@ -405,6 +417,10 @@ class RobotSettings(object):
     def __repr__(self):
         return "<RobotSettings {}>".format(self.name)
 
+    def __str__(self):
+        return "<RobotSettings {name} file_ext={file_ext}>".format(name=self.name,
+                                                                   file_handle=self.file_handle,
+                                                                   file_ext=self.file_ext)
 
 # TODO: Move
 class TemplateHelper:
@@ -514,7 +530,6 @@ class DilutionScheme(object):
         containing these validation errors.
         """
         def pre_conditions(transfer):
-            print transfer
             if not transfer.source_initial_volume:
                 yield TransferValidationException(transfer, "source volume is not set.")
             if not transfer.source_concentration:
@@ -528,8 +543,8 @@ class DilutionScheme(object):
         for transfer in transfers:
             results.extend(list(pre_conditions(transfer)))
 
-        print results.errors, results.warnings
         if len(results.errors) > 0:
+            print results.errors
             raise UsageError("There were validation errors", results)
 
     def validate(self):
