@@ -38,8 +38,8 @@ class Well(DomainObjectMixin):
 
     @property
     def index_right_first(self):
-        # TODO: fix this!
-        return (self.position.col - 1) * self.container.size.height + self.position.row
+        # The position is 1-indexed
+        return (self.position.row - 1) * self.container.size.width + self.position.col
 
 
 class ContainerPosition(namedtuple("ContainerPosition", ["row", "col"])):

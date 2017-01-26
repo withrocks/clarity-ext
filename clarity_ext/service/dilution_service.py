@@ -61,7 +61,7 @@ class DilutionSession(object):
         self.validation_results = None
 
         for robot in robots:
-            self.dilution_schemes[robot.name] = DilutionScheme(self.pairs, robot.name,
+            self.dilution_schemes[robot.name] = DilutionScheme(self.pairs, robot,
                                                                dilution_settings, volume_calc_strategy,
                                                                validator)
 
@@ -105,7 +105,7 @@ class DilutionSession(object):
         robot_settings = self.robots[robot_name]
         csv = Csv(delim="\t")
         csv.header.extend(robot_settings.header)
-        for transfer in self.dilution_schemes["hamilton"].enumerate_transfers():
+        for transfer in self.dilution_schemes[robot_name].enumerate_transfers():
             csv.append(robot_settings.map_transfer_to_row(transfer), transfer)
 
         return csv
@@ -134,54 +134,35 @@ class TransferEndpoint(object):
         self.concentration = self._referenced_concentration(
             aliquot=aliquot, concentration_ref=concentration_ref)
         self.volume = aliquot.udf_current_sample_volume_ul
-        assert self.volume is not None
         self.is_control = False
         if hasattr(aliquot, "is_control"):
             self.is_control = aliquot.is_control
         self.is_from_original = aliquot.is_from_original
-        self.requested_concentration = self._referenced_requested_concentration(
-            aliquot, concentration_ref)
 
-        try:
+        if not aliquot.is_input:
+            self.requested_concentration = self._referenced_requested_concentration(
+                aliquot, concentration_ref)
             self.requested_volume = aliquot.udf_target_vol_ul
-        except AttributeError:
-            self.requested_volume = None
         self.well_index = None
         self.plate_pos = None
 
     def _referenced_concentration(self, aliquot=None, concentration_ref=None):
         if concentration_ref == DilutionSettings.CONCENTRATION_REF_NGUL:
-            try:
-                return aliquot.udf_conc_current_ngul
-            except AttributeError:
-                return None
+            return aliquot.udf_conc_current_ngul
         elif concentration_ref == DilutionSettings.CONCENTRATION_REF_NM:
-            try:
-                return aliquot.udf_conc_current_nm
-            except AttributeError:
-                return None
+            return aliquot.udf_conc_current_nm
         else:
-            raise NotImplementedError(
-                "Concentration ref {} not implemented".format(
-                    concentration_ref)
-            )
+            raise NotImplementedError("Concentration ref {} not implemented".format(
+                    concentration_ref))
 
     def _referenced_requested_concentration(self, aliquot=None, concentration_ref=None):
         if concentration_ref == DilutionSettings.CONCENTRATION_REF_NGUL:
-            try:
-                return aliquot.udf_target_conc_ngul
-            except AttributeError:
-                return None
+            return aliquot.udf_target_conc_ngul
         elif concentration_ref == DilutionSettings.CONCENTRATION_REF_NM:
-            try:
-                return aliquot.udf_target_conc_nm
-            except AttributeError:
-                return None
+            return aliquot.udf_target_conc_nm
         else:
-            raise NotImplementedError(
-                "Concentration ref {} not implemented".format(
-                    concentration_ref)
-            )
+            raise NotImplementedError("Concentration ref {} not implemented".format(
+                concentration_ref))
 
 
 class SingleTransfer(object):
@@ -256,13 +237,14 @@ class EndpointPositioner(object):
     destination placement on a robot deck
     """
 
-    def __init__(self, robot_name, transfer_endpoints, plate_size, plate_pos_prefix):
-        self.robot_name = robot_name
+    def __init__(self, robot_settings, transfer_endpoints, plate_size, plate_pos_prefix):
+        self.robot_settings = robot_settings
         self._plate_size = plate_size
         # TODO: Remove robot specific settings, should be provided in the robot_settings
+        """
         index_method_map = {"hamilton": lambda well: well.index_down_first,
-                            "biomek": lambda well: well.index_right_first}
-        self.indexer = index_method_map[robot_name]
+                            "biomek": lambda well: 0}
+        """
         self.plate_sorting_map = self._build_plate_sorting_map(
             [transfer_endpoint.container for transfer_endpoint in transfer_endpoints])
         self.plate_position_map = self._build_plate_position_map(
@@ -315,21 +297,23 @@ class RobotDeckPositioner(object):
     as well as well indexing
     """
 
-    def __init__(self, robot_name, dilutes, plate_size):
+    def __init__(self, robot_settings, dilutes, plate_size):
         source_endpoints = [dilute.source for dilute in dilutes]
-        source_positioner = EndpointPositioner(robot_name, source_endpoints,
+        source_positioner = EndpointPositioner(robot_settings, source_endpoints,
                                                plate_size, "DNA")
-        destination_endpoints = [
-            dilute.destination for dilute in dilutes]
+        destination_endpoints = [dilute.destination for dilute in dilutes]
         destination_positioner = EndpointPositioner(
-            robot_name, destination_endpoints, plate_size, "END")
+            robot_settings, destination_endpoints, plate_size, "END")
 
-        self._robot_name = robot_name
+        self._robot_settings = robot_settings
         self._plate_size = plate_size
         self._source_positioner = source_positioner
-        self.indexer = source_positioner.indexer
         self.source_plate_position_map = source_positioner.plate_position_map
         self.target_plate_position_map = destination_positioner.plate_position_map
+
+    def get_index_from_well(self, well):
+        """Returns the correct index of this well based on the robot settings"""
+        return self._robot_settings.get_index_from_well(well)
 
     def find_sort_number(self, dilute):
         """Sort dilutes according to plate and well positions in source
@@ -414,13 +398,20 @@ class RobotSettings(object):
         """
         return "\t"
 
+    @abc.abstractmethod
+    def get_index_from_well(self, well):
+        """Returns the numerical index of the well"""
+        pass
+
     def __repr__(self):
         return "<RobotSettings {}>".format(self.name)
 
     def __str__(self):
-        return "<RobotSettings {name} file_ext={file_ext}>".format(name=self.name,
-                                                                   file_handle=self.file_handle,
-                                                                   file_ext=self.file_ext)
+        return "<RobotSettings {name} file_ext='{file_ext}' file_handle='{file_handle}'>".format(
+            name=self.name,
+            file_handle=self.file_handle,
+            file_ext=self.file_ext)
+
 
 # TODO: Move
 class TemplateHelper:
@@ -497,7 +488,7 @@ class TransferValidationException(ValidationException):
 class DilutionScheme(object):
     """Creates a dilution scheme, given input and output analytes."""
 
-    def __init__(self, pairs, robot_name, dilution_settings, volume_calc_strategy, validator):
+    def __init__(self, pairs, robot_settings, dilution_settings, volume_calc_strategy, validator):
         """
         Calculates all derived values needed in dilute driver file.
 
@@ -516,9 +507,8 @@ class DilutionScheme(object):
         self._transfers = self._filtered_transfers(
             all_transfers=all_transfers, include_blanks=dilution_settings.include_blanks)
 
-
         self.robot_deck_positioner = RobotDeckPositioner(
-            robot_name, self._transfers, container.size)
+            robot_settings, self._transfers, container.size)
 
         self.calculate_transfer_volumes()
         self.do_positioning()
@@ -666,11 +656,11 @@ class DilutionScheme(object):
     def do_positioning(self):
         # Handle positioning
         for transfer in self._transfers:
-            transfer.source_well_index = self.robot_deck_positioner.indexer(
+            transfer.source_well_index = self.robot_deck_positioner.get_index_from_well(
                 transfer.source_well)
             transfer.source_plate_pos = self.robot_deck_positioner. \
                 source_plate_position_map[transfer.source_container.id]
-            transfer.target_well_index = self.robot_deck_positioner.indexer(
+            transfer.target_well_index = self.robot_deck_positioner.get_index_from_well(
                 transfer.target_well)
             transfer.target_plate_pos = self.robot_deck_positioner \
                 .target_plate_position_map[transfer.target_container.id]
