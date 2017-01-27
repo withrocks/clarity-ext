@@ -327,6 +327,38 @@ class RobotDeckPositioner(object):
                                                           width=self._plate_size.width)
 
 
+class TransferRuleSettings:
+    """
+    TODO: HERE: This handler should return all objects that specify certain
+    conditions applied when doing the dilution...
+
+    Specifies particular rules that need to be applied to the Transfer object.
+    The user of a DilutionSession object should specify this.
+    """
+    def get_actions(self):
+        """Return TransferRule objects"""
+        pass
+
+
+class TransferRule:
+    __metaclass__ = abc.ABCMeta
+
+    def get_handler(self):
+        pass
+
+    def get_name(self):
+        pass
+
+    @abc.abstractmethod
+    def applies(self, transfer):
+        pass
+
+# TODO: Move these to the extensions:
+class NeedsEvaporationTransferRule(TransferRule):
+    def applies(self, transfer):
+        pass
+
+
 class DilutionSettings:
     """Defines the rules for how a dilution should be performed"""
     CONCENTRATION_REF_NGUL = 1
@@ -496,6 +528,7 @@ class DilutionScheme(object):
         """
         # TODO: Use settings object without mapping over
         self.dilution_settings = dilution_settings
+        self.robot_settings = robot_settings
         self.scale_up_low_volumes = dilution_settings.scale_up_low_volumes
         self.volume_calc_strategy = volume_calc_strategy
 
@@ -666,5 +699,6 @@ class DilutionScheme(object):
                 .target_plate_position_map[transfer.target_container.id]
 
     def __str__(self):
-        return "<DilutionScheme positioner={}>".format(self.robot_deck_positioner)
+        return "<DilutionScheme {}>".format(self.robot_settings.name)
+
 
