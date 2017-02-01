@@ -21,7 +21,7 @@ class Artifact(DomainObjectWithUdfMixin):
         self.name = name
 
 
-class ArtifactPair(DomainObjectMixin):
+class ArtifactPair(object):
     """
     Represents an input/output pair of artifacts
     """
@@ -31,5 +31,5 @@ class ArtifactPair(DomainObjectMixin):
         self.output_artifact = output_artifact
 
     def __repr__(self):
-        return "(in={}, out={})".format(self.input_artifact.id, self.output_artifact.id)
+        return "(in={}, out={})".format(self.input_artifact, self.output_artifact)
 

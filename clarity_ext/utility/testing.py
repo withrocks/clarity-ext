@@ -27,35 +27,32 @@ class TestDataHelper:
                       id=name, name=name)
         return ret
 
-    def create_pair(self, position=None):
-        if position is None:
+    def create_pair(self, pos_from=None, pos_to=None):
+        if pos_from is None:
             well = self.well_enumerator.next()
-            position = well.position
+            pos_from = well.position
+        if pos_to is None:
+            pos_to = pos_from
 
-        name = str(position)
+        name = "FROM:{}".format(pos_from)
         pair = ArtifactPair(self._create_analyte(True, name),
                             self._create_analyte(False, name))
-        self.input_container.set_well(position, artifact=pair.input_artifact)
-        self.output_container.set_well(position, artifact=pair.output_artifact)
+        self.input_container.set_well(pos_from, artifact=pair.input_artifact)
+        self.output_container.set_well(pos_to, artifact=pair.output_artifact)
         self.pairs.append(pair)
         return pair
 
-    def create_dilution_pair(self,
-                             current_concentration,
-                             current_volume,
-                             target_concentration,
-                             target_volume,
-                             position=None):
+    def create_dilution_pair(self, conc1, vol1, conc2, vol2, pos_from=None, pos_to=None):
         """Creates an analyte pair ready for dilution"""
-        pair = self.create_pair(position)
+        pair = self.create_pair(pos_from, pos_to)
         concentration_unit = DilutionSettings.concentration_unit_to_string(self.concentration_unit)
         conc_source_udf = "Conc. Current ({})".format(concentration_unit)
         conc_target_udf = "Target conc. ({})".format(concentration_unit)
-        pair.input_artifact.udf_map = UdfMapping({conc_source_udf: current_concentration,
-                                                  "Current sample volume (ul)": current_volume})
-        pair.output_artifact.udf_map = UdfMapping({conc_source_udf: current_concentration,
-                                                   "Current sample volume (ul)": current_volume,
-                                                   "Target vol. (ul)": target_volume,
-                                                   conc_target_udf: target_concentration})
+        pair.input_artifact.udf_map = UdfMapping({conc_source_udf: conc1,
+                                                  "Current sample volume (ul)": vol1})
+        pair.output_artifact.udf_map = UdfMapping({conc_source_udf: conc1,
+                                                   "Current sample volume (ul)": vol1,
+                                                   "Target vol. (ul)": vol2,
+                                                   conc_target_udf: conc2})
         return pair
 
