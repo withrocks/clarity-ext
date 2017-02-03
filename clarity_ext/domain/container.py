@@ -144,6 +144,13 @@ class Container(DomainObjectMixin):
         for index in xrange(1, self.size.width + 1):
             yield index
 
+    @staticmethod
+    def create_from_container(container):
+        """Creates a container with the same dimensions as the other container"""
+        return Container(container_type=container.container_type,
+                         container_type_name=container.container_type_name,
+                         size=container.size)
+
     @classmethod
     def create_from_rest_resource(cls, resource, api_artifacts=[]):
         """
