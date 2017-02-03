@@ -5,7 +5,7 @@
 #   sample_volume,
 #   the volume in ul taken from the source sample into the destination
 #
-#   buffer_volume,
+#   pipette_buffer_volume,
 #   the volume in ul taken from water/buffer/EB
 #
 # Variables to serve as basis of producing warning messages at validation.
@@ -54,15 +54,15 @@ class OneToOneConcentrationCalc:
             transfer.required_sample_volume = \
                 transfer.target_conc * transfer.target_vol / \
                 transfer.source_conc
-            transfer.required_buffer_volume = \
-                max(transfer.target_vol - transfer.required_sample_volume, 0)
+            transfer.pipette_buffer_volume = \
+                max(transfer.target_vol - transfer.pipette_sample_volume, 0)
             transfer.has_to_evaporate = \
                 (transfer.target_vol - transfer.required_sample_volume) < 0
             if dilution_settings.scale_up_low_volumes and transfer.sample_volume < ROBOT_MIN_VOLUME:
                 scale_factor = float(
                     ROBOT_MIN_VOLUME / transfer.sample_volume)
                 transfer.sample_volume *= scale_factor
-                transfer.buffer_volume *= scale_factor
+                transfer.pipette_buffer_volume *= scale_factor
                 transfer.scaled_up = True
 
 
@@ -72,7 +72,7 @@ class PoolConcentrationCalc:
     * sample_volume,
       depends on the number of samples contained within the pool, otherwise
       like a one-to-one dilution
-    * buffer_volume,
+    * pipette_buffer_volume,
       based on requested volume and all sample volumes within the pool.
       The buffer volume is specified at one single row in the driver
       file, chosen at random among samples within the pool.
@@ -106,14 +106,14 @@ class PoolConcentrationCalc:
                 transfer.sample_volume = \
                     transfer.requested_concentration * transfer.requested_volume / \
                     transfer.source_concentration / len(transfers)
-                transfer.buffer_volume = 0
+                transfer.pipette_buffer_volume = 0
             except (TypeError, ZeroDivisionError):
                 transfer.sample_volume = 0
-                transfer.buffer_volume = 0
+                transfer.pipette_buffer_volume = 0
                 transfer.has_to_evaporate = False
 
         t = transfers[0]
-        t.buffer_volume = max(t.requested_volume -
+        t.pipette_buffer_volume = max(t.requested_volume -
                               sum([tt.sample_volume for tt in transfers]), 0)
 
         min_sample_volume = min(map(lambda t: t.sample_volume, transfers))
@@ -124,7 +124,7 @@ class PoolConcentrationCalc:
                 if scale_up_low_volumes is True and min_sample_volume < ROBOT_MIN_VOLUME:
                     scale_factor = float(ROBOT_MIN_VOLUME/min_sample_volume)
                     t.sample_volume *= scale_factor
-                    t.buffer_volume *= scale_factor
+                    t.pipette_buffer_volume *= scale_factor
                     t.scaled_up = True
             except ZeroDivisionError:
                 # TODO: Move this catch-all exception handler. Can cause difficult to debug issues

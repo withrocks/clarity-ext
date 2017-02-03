@@ -39,13 +39,13 @@ class TestDilutionScheme(unittest.TestCase):
 
         # Test:
         actual = [
-            [dilute.aliquot_name,
-             dilute.source_well_index,
-             dilute.source_plate_pos,
-             round(dilute.sample_volume, 1),
-             round(dilute.buffer_volume, 1),
-             dilute.target_well_index,
-             dilute.target_plate_pos] for dilute in dilution_scheme.split_row_transfers
+            [transfer.aliquot_name,
+             transfer.source_well_index,
+             transfer.source_plate_pos,
+             round(transfer.sample_volume, 1),
+             round(transfer.pipette_buffer_volume, 1),
+             transfer.target_well_index,
+             transfer.target_plate_pos] for transfer in dilution_scheme.split_row_transfers
         ]
 
         validation_results = list(post_validate_dilution(dilution_scheme))
@@ -68,13 +68,13 @@ class TestDilutionScheme(unittest.TestCase):
 
         # Test:
         actual = [
-            [dilute.aliquot_name,
-             dilute.source_well_index,
-             dilute.source_plate_pos,
-             round(dilute.sample_volume, 1),
-             round(dilute.buffer_volume, 1),
-             dilute.target_well_index,
-             dilute.target_plate_pos] for dilute in dilution_scheme.split_row_transfers
+            [transfer.aliquot_name,
+             transfer.source_well_index,
+             transfer.source_plate_pos,
+             round(transfer.sample_volume, 1),
+             round(transfer.pipette_buffer_volume, 1),
+             transfer.target_well_index,
+             transfer.target_plate_pos] for transfer in dilution_scheme.split_row_transfers
         ]
 
         validation_results = list(post_validate_dilution(dilution_scheme))
@@ -121,13 +121,13 @@ class TestDilutionScheme(unittest.TestCase):
 
         # Test:
         actual = [
-            [dilute.aliquot_name,
-             dilute.source_well_index,
-             dilute.source_plate_pos,
-             round(dilute.sample_volume, 1),
-             round(dilute.buffer_volume, 1),
-             dilute.target_well_index,
-             dilute.target_plate_pos] for dilute in dilution_scheme.split_row_transfers
+            [transfer.aliquot_name,
+             transfer.source_well_index,
+             transfer.source_plate_pos,
+             round(transfer.sample_volume, 1),
+             round(transfer.pipette_buffer_volume, 1),
+             transfer.target_well_index,
+             transfer.target_plate_pos] for transfer in dilution_scheme.split_row_transfers
         ]
 
         # Assert:
@@ -172,13 +172,13 @@ class TestDilutionScheme(unittest.TestCase):
         ]
 
         actual = [
-            [dilute.aliquot_name,
-             dilute.source_well_index,
-             dilute.source_plate_pos,
-             round(dilute.sample_volume, 1),
-             round(dilute.buffer_volume, 1),
-             dilute.target_well_index,
-             dilute.target_plate_pos] for dilute in dilution_scheme.split_row_transfers
+            [transfer.aliquot_name,
+             transfer.source_well_index,
+             transfer.source_plate_pos,
+             round(transfer.sample_volume, 1),
+             round(transfer.pipette_buffer_volume, 1),
+             transfer.target_well_index,
+             transfer.target_plate_pos] for transfer in dilution_scheme.split_row_transfers
         ]
         self.assertEqual(dilution_scheme.split_row_transfers[
                          0].has_to_evaporate, False)
@@ -248,13 +248,13 @@ class TestDilutionScheme(unittest.TestCase):
         ]
 
         actual = [
-            [dilute.aliquot_name,
-             dilute.source_well_index,
-             dilute.source_plate_pos,
-             round(dilute.sample_volume, 1),
-             round(dilute.buffer_volume, 1),
-             dilute.target_well_index,
-             dilute.target_plate_pos] for dilute in dilution_scheme.split_row_transfers
+            [transfer.aliquot_name,
+             transfer.source_well_index,
+             transfer.source_plate_pos,
+             round(transfer.sample_volume, 1),
+             round(transfer.pipette_buffer_volume, 1),
+             transfer.target_well_index,
+             transfer.target_plate_pos] for transfer in dilution_scheme.split_row_transfers
         ]
 
         print("actual:")
@@ -300,14 +300,14 @@ class TestDilutionScheme(unittest.TestCase):
 
         # Test:
         actual = [
-            [dilute.aliquot_name,
-             dilute.source_well_index,
-             dilute.source_plate_pos,
+            [transfer.aliquot_name,
+             transfer.source_well_index,
+             transfer.source_plate_pos,
              4,
              0,
-             dilute.target_well_index,
-             dilute.target_plate_pos,
-             ] for dilute in dilution_scheme.split_row_transfers
+             transfer.target_well_index,
+             transfer.target_plate_pos,
+             ] for transfer in dilution_scheme.split_row_transfers
         ]
 
         # Assert:
@@ -328,7 +328,7 @@ class TestDilutionScheme(unittest.TestCase):
         dilution_scheme = self._default_dilution_scheme(svc)
         self.assertEqual(1, len(dilution_scheme._transfers))
         transfer = utils.single(dilution_scheme._transfers)
-        self.assertEqual(transfer.buffer_volume, 0)
+        self.assertEqual(transfer.pipette_buffer_volume, 0)
         self.assertEqual(transfer.has_to_evaporate, True)
         self.assertTrue(isinstance(transfer.requested_volume, float))
 
@@ -497,7 +497,7 @@ def post_validate_dilution(dilution_scheme):
         return "{}=>{}".format(transfer.source_well, transfer.target_well)
 
     for t in dilution_scheme.unsplit_transfers:
-        if t.sample_volume + t.buffer_volume > 100:
+        if t.sample_volume + t.pipette_buffer_volume > 100:
             yield ValidationException("{}, too high destination volume ({}).".format(
                 t.aliquot_name, pos_str(t)))
         if t.has_to_evaporate:

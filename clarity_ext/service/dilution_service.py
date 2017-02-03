@@ -44,6 +44,9 @@ class DilutionService(object):
         Creates a batch and breaks it up if required by the validator
         """
         transfer_batch = self.create_batch(pairs, robot_settings, dilution_settings, volume_calc_strategy, validator)
+        print("Initial transfer batch")
+        print(transfer_batch.report())
+        print("then\n\n")
 
         # This will try to resolve validation errors with the transfer once, in particular the split validation
         # error, in which case it will split the batch into two:
@@ -71,7 +74,7 @@ class DilutionService(object):
         #    NOTE: if split, this will be overwritten
         #    Currently limited to only one-to-one containers (TODO)
         #    The end result is that the index will be set so that it makes sense for the robt and
-        #    the container_ref on the transfers will be set
+        #    the container_pos on the transfers will be set
         container_size = pairs[0].output_artifact.container.size
         robot_deck_positioner = RobotDeckPositioner(robot_settings, container_size)
         #robot_deck_positioner.position_transfers(transfers)
@@ -133,10 +136,14 @@ class DilutionService(object):
         #  - source_location should also bet the original source location
         for temp_transfer in temp_transfer_batch.transfers:
             # NOTE: It's correct that the source_location is being set to the target_location here:
+            from clarity_ext.domain import Analyte
+            # TODO: api_resource should not be required
+            source_analyte = Analyte(None, is_input=True, name="temp-{}".format(temp_transfer.source_analyte.id))
             new_transfer = SingleTransfer(temp_transfer.original.source_conc, temp_transfer.original.source_vol,
                                           temp_transfer.original.target_conc, temp_transfer.original.target_vol,
                                           source_location=temp_transfer.target_location,
-                                          target_location=temp_transfer.original.target_location)
+                                          target_location=temp_transfer.original.target_location,
+                                          source_analyte=source_analyte)
             # TODO: Do the calculations here!
             second_transfers.append(new_transfer)
 
@@ -159,8 +166,8 @@ class DilutionService(object):
             target_container = transfer.target_location.container
             if target_container not in map_target_container_to_temp:
                 temp_container = Container.create_from_container(target_container)
-                temp_container.name = "temp"
-                temp_container.id = "xtemp-{}".format(len(map_target_container_to_temp))
+                temp_container.id = "temp{}".format(len(map_target_container_to_temp) + 1)
+                temp_container.name = temp_container.id
                 map_target_container_to_temp[target_container] = temp_container
 
         for transfer in original_transfers:
@@ -169,13 +176,14 @@ class DilutionService(object):
 
             # TODO: According to the spec the transfer.target_vol is not important, setting it to None
             # TODO: This should be defined by a rule provided by the end user
+
             copy = SingleTransfer(transfer.source_conc, transfer.source_vol,
                                   transfer.source_conc / 10.0, None,
-                                  transfer.source_location, temp_target_location)
+                                  transfer.source_location, temp_target_location, transfer.source_analyte)
 
             # In this case, we'll hardcode the values according to the lab's specs:
-            copy.required_sample_volume = 4
-            copy.required_buffer_volume = 36
+            copy.pipette_sample_volume = 4
+            copy.pipette_buffer_volume = 36
             copy.original = transfer
             yield copy
 
@@ -225,9 +233,6 @@ class DilutionSession(object):
 
         Broken validation rules that can be acted upon automatically will be and the system will be validated again.
         """
-        hamilton = self.robot_settings_by_name["hamilton"]
-        batches = self.dilution_service.create_batches(self.pairs, hamilton, self.dilution_settings,
-                                             self.volume_calc_strategy, self.validator)
         self.transfer_batches = dict()
         # 1. For each robot, get the transfer batches for that robot.
         #    NOTE: There may be more than one transfer batches, if a split is required.
@@ -235,15 +240,17 @@ class DilutionSession(object):
             self.transfer_batches[robot_settings.name] = self.dilution_service.create_batches(
                 self.pairs, robot_settings, self.dilution_settings,
                 self.volume_calc_strategy, self.validator)
-            print robot_settings.name, self.transfer_batches[robot_settings.name]
 
         # Now we have one transfer batch per robot. Let's dump hamilton!
         for transfer_batch in self.transfer_batches["hamilton"]:
             print(transfer_batch.report())
 
-        # NEXT STEP: Create robot files per TB and get errors and warnings all the way up still...
-
-
+        # ... biomek will look the same, but having different transfer_batch per robot gives us the
+        # possibility of having different validations for them
+        """
+        for transfer_batch in self.transfer_batches["biomek"]:
+            print(transfer_batch.report())
+        """
 
     @lazyprop
     def container_mappings(self):
@@ -290,7 +297,7 @@ class DilutionSession(object):
         """
         csv = Csv(delim="\t")  # TODO: \t should be in the robot settings
         csv.header.extend(robot_settings.header)
-        for transfer in transfer_batch.enumerate_transfers():
+        for transfer in transfer_batch.transfers:
             csv.append(robot_settings.map_transfer_to_row(transfer), transfer)
         return csv
 
@@ -305,27 +312,29 @@ class DilutionSession(object):
             rendered = template.render(session=self, **kwargs)
             return rendered
 
+
 class TransferLocation(object):
     """
     Represents either a source or a target of a transfer
     """
-    def __init__(self, container, position, container_ref=None):
+    def __init__(self, container, position):
         """
         :param container: A Container that holds the analyte to be transferred
         :param position: The ContainerPosition pointing to a position within the container, e.g. A:1
-        :param container_ref: A running number used for referencing this on a robot. This will be
-                              used to map to DNA1, END1 etc.
         """
         self.container = container
         self.position = position
-        self.container_ref = container_ref
+
+        # This is not set by the user but by the TransferBatch when the user queries for the object.
+        # TODO: Rename to container_pos
+        self.container_pos = None
 
     @staticmethod
     def create_from_analyte(analyte):
         return TransferLocation(analyte.container, analyte.well.position)
 
     def __repr__(self):
-        return "{}@{}".format(self.container.name, self.position)
+        return "{}({})@{}".format(self.container.name, self.container_pos, self.position)
 
 
 class SingleTransfer(object):
@@ -337,7 +346,8 @@ class SingleTransfer(object):
       * Other metadata that will be used for warnings etc, e.g. has_to_evaporate/scaled_up etc.
     """
 
-    def __init__(self, source_conc, source_vol, target_conc, target_vol, source_location, target_location):
+    def __init__(self, source_conc, source_vol, target_conc, target_vol, source_location, target_location,
+                 source_analyte):
         self.source_conc = source_conc
         self.source_vol = source_vol
         self.target_conc = target_conc
@@ -347,8 +357,8 @@ class SingleTransfer(object):
         self.target_location = target_location
 
         # The calculated values:
-        self.required_sample_volume = None
-        self.required_buffer_volume = None
+        self.pipette_sample_volume = 0
+        self.pipette_buffer_volume = 0
 
         # Meta values for warnings etc.
         self.has_to_evaporate = None
@@ -356,6 +366,8 @@ class SingleTransfer(object):
 
         # In the case of temporary transfers, we keep a pointer to the original for easier calculations
         self.original = None
+
+        self.source_analyte = source_analyte
 
         return
         """
@@ -383,6 +395,10 @@ class SingleTransfer(object):
         """
         self.target_well_index = None
         self.target_plate_short_name = None
+
+    @property
+    def pipette_total_volume(self):
+        return self.pipette_buffer_volume + self.pipette_sample_volume
 
     @staticmethod
     def _referenced_concentration(analyte=None, concentration_ref=None):
@@ -412,7 +428,7 @@ class SingleTransfer(object):
         vol2 = pair.output_artifact.udf_target_vol_ul
         source_location = TransferLocation.create_from_analyte(pair.input_artifact)
         target_location = TransferLocation.create_from_analyte(pair.output_artifact)
-        transfer = SingleTransfer(conc1, vol1, conc2, vol2, source_location, target_location)
+        transfer = SingleTransfer(conc1, vol1, conc2, vol2, source_location, target_location, pair.input_artifact)
         transfer.pair = pair
         return transfer
 
@@ -502,10 +518,10 @@ class RobotDeckPositioner(object):
         self.plate_size = plate_size
         """
         print "HERE", robot_settings, transfers, plate_size
-        source_endpoints = [dilute.source for dilute in dilutes]
+        source_endpoints = [transfer.source for transfer in dilutes]
         source_positioner = EndpointPositioner(robot_settings, source_endpoints,
                                                plate_size, "DNA")
-        destination_endpoints = [dilute.destination for dilute in dilutes]
+        destination_endpoints = [transfer.destination for transfer in dilutes]
         destination_positioner = EndpointPositioner(
             robot_settings, destination_endpoints, plate_size, "END")
 
@@ -611,6 +627,14 @@ class RobotSettings(object):
         """Returns the numerical index of the well"""
         pass
 
+    @staticmethod
+    def source_container_name(transfer_location):
+        return "DNA{}".format(transfer_location.container_pos)
+
+    @staticmethod
+    def target_container_name(transfer_location):
+        return "END{}".format(transfer_location.container_pos)
+
     def __repr__(self):
         return "<RobotSettings {}>".format(self.name)
 
@@ -707,65 +731,76 @@ class TransferBatch(object):
     Encapsulates a list of SingleTransfer objects. Used to generate robot driver files.
     """
     def __init__(self, transfers, depth=0, is_temporary=False):
-        self.transfers = transfers
         self.depth = depth
         self.is_temporary = is_temporary  # temp dilution, no plate will actually be saved.
         self.validation_results = list()
+        self._set_transfers(transfers)
+
+    def _set_transfers(self, transfers):
+        self._transfers = transfers
+        self._set_container_refs()
+
+    def _set_container_refs(self):
+        """
+        Updates the container refs (DNA1, END1 etc) for each container in the transfer.
+        These depend on the state of the entire batch, so they need to be updated
+        if the transfers are updated.
+        """
         self._container_to_container_ref = self._evaluate_container_refs()
 
-        # TODO: These should be configurable
-        self.source_container_ref_templ = "DNA{index}"
-        self.target_container_ref_templ = "END{index}"
-
-    def get_container_refs(self, transfer):
-        """
-        Returns the 'container_refs' for this transfer location.
-
-        This is the number by which the container is indexed, and will be unique per
-        container for each
-        """
-        source_index = self._container_to_container_ref[transfer.source_location.container]
-        target_index = self._container_to_container_ref[transfer.target_location.container]
-        return (self.source_container_ref_templ.format(index=source_index),
-                self.target_container_ref_templ.format(index=target_index))
+        for transfer in self._transfers:
+            # First get the index being used
+            transfer.source_location.container_pos = self._container_to_container_ref[transfer.source_location.container]
+            transfer.target_location.container_pos = self._container_to_container_ref[transfer.target_location.container]
 
     def _evaluate_container_refs(self):
-        """You need to refresh this if the transfers list is updated"""
+        """
+        Figures out the mapping from container to container refs
+        (first input container => 1)
+        (first output container => 1) etc
+
+        The containers are sorted by (not is_temporary, id)
+        """
+
+        def indexed_containers(all_containers):
+            """Returns a map from the containers to an index. The containers are sorted by id"""
+            return [(container, ix + 1) for ix, container in enumerate(
+                sorted(all_containers, key=lambda x: (not x.is_temporary, x.id)))]
+
         container_to_container_ref = dict()
-        container_to_container_ref.update(self._indexed_containers(
-            set(transfer.source_location.container for transfer in self.transfers)))
-        container_to_container_ref.update(self._indexed_containers(
-            set(transfer.target_location.container for transfer in self.transfers)))
+        container_to_container_ref.update(indexed_containers(
+            set(transfer.source_location.container for transfer in self._transfers)))
+        container_to_container_ref.update(indexed_containers(
+            set(transfer.target_location.container for transfer in self._transfers)))
         return container_to_container_ref
 
-    def _indexed_containers(self, all_containers):
-        """Returns a map from the containers to an index. The containers are sorted by id"""
-        return [(container, ix + 1) for ix, container in enumerate(sorted(all_containers, key=lambda x: x.id))]
-
     def enumerate_split_row_transfers(self):
-        return self.split_up_high_volume_rows(self.sorted_transfers(self.transfers))
+        return self.split_up_high_volume_rows(self.sorted_transfers(self._transfers))
 
-    def enumerate_transfers(self):
-        return self.sorted_transfers(self.transfers)
+    @property
+    def transfers(self):
+        return sorted(self._transfers, key=self._transfer_sort_key)
 
-    def sorted_transfers(self, transfers):
-        # TODO: Probably should just be in the service, or some handler
-        # Same goes for "split up high volume rows". This object should just contain
-        # the transfers as they should appear in the final file
-        def pipetting_volume(transfer):
-            return transfer.buffer_volume + transfer.sample_volume
+    def _transfer_sort_key(self, transfer):
+        """
+        Sort the transfers based on:
+            - source position (container_pos)
+            - well index (down first)
+            - pipette volume
+        """
+        # TODO: Rest of the sort stuff
+        # TODO: Makes sense that the user can provide the sorting
+        # print "SORT", (transfer.source_location.container_pos)
+        assert transfer.source_location.container_pos is not None
+        return transfer.source_location.container_pos
 
-        def max_added_pip_volume():
-            # TODO: merge these two:
-            volumes = map(lambda t: (t.buffer_volume, t.sample_volume), self.transfers)
-            return max(map(lambda (buffer_vol, sample_vol): buffer_vol + sample_vol, volumes))
-
-        # Sort on source position, and in case of splitted rows, pipetting
-        # volumes. Let max pipetting volumes be shown first
-        max_vol = max_added_pip_volume()
-        return sorted(
-            transfers, key=lambda t: self.robot_deck_positioner.find_sort_number(t) +
-                                     (max_vol - pipetting_volume(t)) / (max_vol + 1.0))
+    """
+    @property
+    def max_pipette_volume(self):
+        volume = max(t.pipette_total_volume for t in self._transfers)
+        print "HERE", volume
+        return volume
+    """
 
     def pre_validate(self):
         """
@@ -802,15 +837,15 @@ class TransferBatch(object):
         report.append(" - temporary: {}".format(self.is_temporary))
 
         for transfer in self.transfers:
-            source_container_ref, target_container_ref = self.get_container_refs(transfer)
-            report.append("[{}({})/{}({}, {}) => {}({})/{}({}, {})]".format(transfer.source_location.container.name,
-                                                                    source_container_ref,
-                                                                    transfer.source_location.position,
-                                                                    transfer.source_conc, transfer.source_vol,
-                                                                    transfer.target_location.container.name,
-                                                                    target_container_ref,
-                                                                    transfer.target_location.position,
-                                                                    transfer.target_conc, transfer.target_vol))
+            report.append("[{}({})/{}({}, {}) => {}({})/{}({}, {})]".format(
+                transfer.source_location.container.name,
+                transfer.source_location.container_pos,
+                transfer.source_location.position,
+                transfer.source_conc, transfer.source_vol,
+                transfer.target_location.container.name,
+                transfer.target_location.container_pos,
+                transfer.target_location.position,
+                transfer.target_conc, transfer.target_vol))
         return "\n".join(report)
 
 
@@ -834,7 +869,7 @@ class DilutionSchemeNoExists(object):
         """
         split_row_transfers = []
         for transfer in transfers:
-            calculation_volume = max(transfer.sample_volume, transfer.buffer_volume)
+            calculation_volume = max(transfer.sample_volume, transfer.pipette_buffer_volume)
             (n, residual) = divmod(calculation_volume, self.dilution_settings.pipette_max_volume)
             if residual > 0:
                 total_rows = int(n + 1)
@@ -844,7 +879,7 @@ class DilutionSchemeNoExists(object):
             copies = self._create_copies(transfer, total_rows)
             split_row_transfers += copies
             self._split_up_volumes(
-                copies, transfer.sample_volume, transfer.buffer_volume)
+                copies, transfer.sample_volume, transfer.pipette_buffer_volume)
 
         return split_row_transfers
 
@@ -863,7 +898,7 @@ class DilutionSchemeNoExists(object):
         copies = [copy.copy(transfer)]
         for i in xrange(0, total_rows - 1):
             t = copy.copy(transfer)
-            t.buffer_volume = 0
+            t.pipette_buffer_volume = 0
             t.sample_volume = 0
             copies.append(t)
 
@@ -887,7 +922,7 @@ class DilutionSchemeNoExists(object):
             # max of 50 ul. Otherwise, the min volume of 2 ul might be
             # violated.
             if original_buffer_volume > self.dilution_settings.pipette_max_volume:
-                t.buffer_volume = float(
+                t.pipette_buffer_volume = float(
                     original_buffer_volume / number_rows)
 
             if original_sample_volume > self.dilution_settings.pipette_max_volume:

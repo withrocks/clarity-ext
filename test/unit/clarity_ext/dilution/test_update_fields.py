@@ -33,8 +33,8 @@ class UpdateFieldsForDilutionTests(unittest.TestCase):
 
             destination.udf_target_conc_ngul = (transfer.sample_volume *
                                                 transfer.source_concentration /
-                                                (transfer.sample_volume + transfer.buffer_volume))
-            destination.udf_target_vol_ul = transfer.sample_volume + transfer.buffer_volume
+                                                (transfer.sample_volume + transfer.pipette_buffer_volume))
+            destination.udf_target_vol_ul = transfer.sample_volume + transfer.pipette_buffer_volume
             yield source, destination
 
     def _update_fields(self, dilution_scheme, context):
@@ -47,11 +47,11 @@ class UpdateFieldsForDilutionTests(unittest.TestCase):
         dilution_scheme, context = self._init_dilution_scheme(
             concentration_ref=CONCENTRATION_REF_NGUL, analyte_set=analyte_set_with_blank)
         self._update_fields(dilution_scheme, context)
-        dilute = dilution_scheme.unsplit_transfers[-1]
+        transfer = dilution_scheme.unsplit_transfers[-1]
         expected = 29.0
         outcome = dilution_scheme.aliquot_pair_by_transfer(
-            dilute).input_artifact.udf_current_sample_volume_ul
-        print(dilute.aliquot_name)
+            transfer).input_artifact.udf_current_sample_volume_ul
+        print(transfer.aliquot_name)
         self.assertEqual(expected, outcome)
 
     def test_source_volume_update_all(self):
@@ -59,9 +59,9 @@ class UpdateFieldsForDilutionTests(unittest.TestCase):
             concentration_ref=CONCENTRATION_REF_NGUL, analyte_set=analyte_set_with_blank)
         self._update_fields(dilution_scheme, context)
         source_volume_sum = 0
-        for dilute in dilution_scheme.unsplit_transfers:
+        for transfer in dilution_scheme.unsplit_transfers:
             outcome = dilution_scheme.aliquot_pair_by_transfer(
-                dilute).input_artifact.udf_current_sample_volume_ul
+                transfer).input_artifact.udf_current_sample_volume_ul
             source_volume_sum += outcome
         expected_sum = 57.0
         self.assertEqual(expected_sum, source_volume_sum)

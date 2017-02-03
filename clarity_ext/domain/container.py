@@ -119,6 +119,9 @@ class Container(DomainObjectMixin):
         self.id = container_id
         self.name = name
 
+        # Set to True if the plate represents no actual plate in Clarity
+        self.is_temporary = False
+
         if size:
             self.size = size
         else:
