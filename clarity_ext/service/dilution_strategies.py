@@ -29,8 +29,10 @@ class FixedVolumeCalc:
     I.e. no calculations at all. The fixed transfer volume is specified in
     individual scripts
     """
+    def __init__(self, dilution_settings):
+        self.dilution_settings = dilution_settings
 
-    def calculate_transfer_volumes(self, batch=None, dilution_settings=None):
+    def calculate_transfer_volumes(self, batch):
         """
         Do nothing
         """
@@ -45,25 +47,26 @@ class OneToOneConcentrationCalc:
     Transfer volumes are calculated on basis of a requested target
     concentration and target volume by the user.
     """
+    def __init__(self, dilution_settings):
+        self.dilution_settings = dilution_settings
 
-    def __init__(self):
-        pass
-
-    def calculate_transfer_volumes(self, batch=None, dilution_settings=None):
+    def calculate_transfer_volumes(self, batch):
         for transfer in batch.transfers:
-            transfer.required_sample_volume = \
+            transfer.pipette_sample_volume = \
                 transfer.target_conc * transfer.target_vol / \
                 transfer.source_conc
             transfer.pipette_buffer_volume = \
                 max(transfer.target_vol - transfer.pipette_sample_volume, 0)
             transfer.has_to_evaporate = \
-                (transfer.target_vol - transfer.required_sample_volume) < 0
-            if dilution_settings.scale_up_low_volumes and transfer.sample_volume < ROBOT_MIN_VOLUME:
+                (transfer.target_vol - transfer.pipette_sample_volume) < 0
+            if self.dilution_settings.scale_up_low_volumes and transfer.sample_volume < ROBOT_MIN_VOLUME:
                 scale_factor = float(
                     ROBOT_MIN_VOLUME / transfer.sample_volume)
                 transfer.sample_volume *= scale_factor
                 transfer.pipette_buffer_volume *= scale_factor
                 transfer.scaled_up = True
+            transfer.updated_source_vol = transfer.source_vol - transfer.pipette_sample_volume - \
+                                          self.dilution_settings.dilution_waste_volume
 
 
 class PoolConcentrationCalc:
@@ -85,8 +88,8 @@ class PoolConcentrationCalc:
       have to be scaled up.
     """
 
-    def __init__(self):
-        pass
+    def __init__(self, dilution_settings):
+        self.dilution_settings = dilution_settings
 
     def calculate_transfer_volumes(self, transfers=None, scale_up_low_volumes=None):
         transfers = sorted(transfers, key=lambda t: t.target_aliquot_name)
@@ -102,15 +105,10 @@ class PoolConcentrationCalc:
         :return:
         """
         for transfer in transfers:
-            try:
-                transfer.sample_volume = \
-                    transfer.requested_concentration * transfer.requested_volume / \
-                    transfer.source_concentration / len(transfers)
-                transfer.pipette_buffer_volume = 0
-            except (TypeError, ZeroDivisionError):
-                transfer.sample_volume = 0
-                transfer.pipette_buffer_volume = 0
-                transfer.has_to_evaporate = False
+            transfer.sample_volume = \
+                transfer.requested_concentration * transfer.requested_volume / \
+                transfer.source_concentration / len(transfers)
+            transfer.pipette_buffer_volume = 0
 
         t = transfers[0]
         t.pipette_buffer_volume = max(t.requested_volume -
@@ -120,16 +118,8 @@ class PoolConcentrationCalc:
         for t in transfers:
             t.has_to_evaporate = t.requested_volume - \
                 sum([tt.sample_volume for tt in transfers]) < 0
-            try:
-                if scale_up_low_volumes is True and min_sample_volume < ROBOT_MIN_VOLUME:
-                    scale_factor = float(ROBOT_MIN_VOLUME/min_sample_volume)
-                    t.sample_volume *= scale_factor
-                    t.pipette_buffer_volume *= scale_factor
-                    t.scaled_up = True
-            except ZeroDivisionError:
-                # TODO: Move this catch-all exception handler. Can cause difficult to debug issues
-                # when code is refactored
-
-                # Zero sample volume indicates an error that should be caught
-                # later by validation
-                pass
+            if scale_up_low_volumes is True and min_sample_volume < ROBOT_MIN_VOLUME:
+                scale_factor = float(ROBOT_MIN_VOLUME/min_sample_volume)
+                t.sample_volume *= scale_factor
+                t.pipette_buffer_volume *= scale_factor
+                t.scaled_up = True
