@@ -20,9 +20,6 @@
 
 from itertools import groupby
 
-ROBOT_MIN_VOLUME = 2
-
-
 class FixedVolumeCalc:
     """
     Implements sample volume calculations for transfer only dilutions.
@@ -59,10 +56,11 @@ class OneToOneConcentrationCalc:
                 max(transfer.target_vol - transfer.pipette_sample_volume, 0)
             transfer.has_to_evaporate = \
                 (transfer.target_vol - transfer.pipette_sample_volume) < 0
-            if self.dilution_settings.scale_up_low_volumes and transfer.sample_volume < ROBOT_MIN_VOLUME:
+            if self.dilution_settings.scale_up_low_volumes and \
+                transfer.pipette_sample_volume < self.dilution_settings.robot_min_volume:
                 scale_factor = float(
-                    ROBOT_MIN_VOLUME / transfer.sample_volume)
-                transfer.sample_volume *= scale_factor
+                    self.dilution_settings.robot_min_volume / transfer.pipette_sample_volume)
+                transfer.pipette_sample_volume *= scale_factor
                 transfer.pipette_buffer_volume *= scale_factor
                 transfer.scaled_up = True
             transfer.updated_source_vol = transfer.source_vol - transfer.pipette_sample_volume - \

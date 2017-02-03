@@ -141,16 +141,28 @@ class UploadFileService(object):
         self.logger = logger or logging.getLogger(__name__)
         self.artifact_service = artifact_service
 
+    def upload_files(self, file_handle, instance_nameTODO, files, newline=None, stdout_max_lines=50):
+        shared_files = [shared_file for shared_file in self.artifact_service.shared_files()
+                        if shared_file.name == file_handle]
+        pass
+
     def upload(self, file_handle, instance_name, content, newline=None,
                stdout_max_lines=50):
         """
         :param file_handle: The handle of the file in the Clarity UI
         :param instance_name: The name of this particular file
-        :param content: The content of the file. Can be an enumeration of lines or a string
+        :param content: The content of the file. Must be a string or a list of strings.
         """
-        artifact = utils.single([shared_file for shared_file in self.artifact_service.shared_files()
-                                 if shared_file.name == file_handle])
+        # Get the artifact(s) that this maps to
+        shared_files = [shared_file for shared_file in self.artifact_service.shared_files()
+                                 if shared_file.name == file_handle]
 
+        print type(content)
+        print shared_files
+
+        sys.exit()
+
+    def _upload_single(self, content, instance_name, newline, file_handle, artifact, stdout_max_lines):
         local_path = self.save_locally(content, instance_name, newline)
         self.logger.info("Uploading local file '{}' to the LIMS placeholder at {}".format(
             local_path, file_handle))

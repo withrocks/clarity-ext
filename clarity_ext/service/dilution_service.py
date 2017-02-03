@@ -24,7 +24,8 @@ class DilutionService(object):
         session.evaluate()
         # Push the validation results to the validation_service, which logs accordingly etc.
         # TODO: It should throw a UsageError if there are any errors left.
-        self.validation_service.handle_validation(session.validation_results)
+        # TODO: validation not on
+        #self.validation_service.handle_validation(session.validation_results)
         return session
 
     def create_batches(self, pairs, robot_settings, dilution_settings, validator):
@@ -549,7 +550,7 @@ class DilutionSettings:
 
     def __init__(self, scale_up_low_volumes=True, concentration_ref=None, include_blanks=False,
                  volume_calc_method=None, make_pools=False, pipette_max_volume=None,
-                 dilution_waste_volume=0):
+                 dilution_waste_volume=0, robot_min_volume=2):
         """
         :param dilution_waste_volume: Extra volume that should be subtracted from the sample volume
         to account for waste during dilution
@@ -567,6 +568,8 @@ class DilutionSettings:
         self.pipette_max_volume = pipette_max_volume
         self.dilution_waste_volume = dilution_waste_volume
         self.volume_calc_strategy = self._create_strategy()
+        # TODO: This should be a robot setting!
+        self.robot_min_volume = 2
 
     def _create_strategy(self):
         if self.volume_calc_method == self.VOLUME_CALC_FIXED:
