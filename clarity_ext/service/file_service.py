@@ -141,28 +141,42 @@ class UploadFileService(object):
         self.logger = logger or logging.getLogger(__name__)
         self.artifact_service = artifact_service
 
-    def upload_files(self, file_handle, instance_nameTODO, files, newline=None, stdout_max_lines=50):
-        shared_files = [shared_file for shared_file in self.artifact_service.shared_files()
-                        if shared_file.name == file_handle]
-        pass
+    def upload_files(self, file_handle, files, stdout_max_lines=50):
+        """
+        Uploads one or more files to the particular file handle. The file handle must support
+        at least the same number of files.
+
+        # TODO: Check what happens if there are already n files uploaded but the user uploads n-1.
+                It might lead to inconsistency and there should at least be a warning
+
+        :param file_handle: The name that this should be attached to in Clarity, e.g. "Step Log"
+        :param files: A list of tuples, (file_name, file-like-object)
+        """
+        artifacts = [shared_file for shared_file in self.artifact_service.shared_files()
+                     if shared_file.name == file_handle]
+        if len(files) > len(artifacts):
+            raise Exception("Trying to upload {} files to '{}', but only {} are supported".format(
+                            len(files), file_handle, len(artifacts)))
+
+        for artifact, file_and_name in zip(artifacts, files):
+            instance_name, content = file_and_name
+            self._upload_single(artifact, file_handle, instance_name, content, newline=None,
+                                stdout_max_lines=stdout_max_lines)
 
     def upload(self, file_handle, instance_name, content, newline=None,
                stdout_max_lines=50):
         """
         :param file_handle: The handle of the file in the Clarity UI
         :param instance_name: The name of this particular file
-        :param content: The content of the file. Must be a string or a list of strings.
+        :param content: The content of the file. Can be an enumeration of lines or a string
         """
-        # Get the artifact(s) that this maps to
-        shared_files = [shared_file for shared_file in self.artifact_service.shared_files()
-                                 if shared_file.name == file_handle]
+        artifact = utils.single([shared_file for shared_file in self.artifact_service.shared_files()
+                                 if shared_file.name == file_handle])
+        self._upload_single(artifact, file_handle, instance_name, content, newline, stdout_max_lines)
 
-        print type(content)
-        print shared_files
-
-        sys.exit()
-
-    def _upload_single(self, content, instance_name, newline, file_handle, artifact, stdout_max_lines):
+    def _upload_single(self, artifact, file_handle, instance_name, content, newline=None,
+                       stdout_max_lines=50):
+        # TODO: The content should only be string. Handle that newline trick at the caller's
         local_path = self.save_locally(content, instance_name, newline)
         self.logger.info("Uploading local file '{}' to the LIMS placeholder at {}".format(
             local_path, file_handle))

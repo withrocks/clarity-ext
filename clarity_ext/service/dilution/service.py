@@ -2,7 +2,7 @@ import abc
 import copy
 import codecs
 from clarity_ext.utils import lazyprop
-from clarity_ext.service.dilution_strategies import *
+from clarity_ext.service.dilution.strategies import *
 from jinja2 import Template
 from clarity_ext.service.file_service import Csv
 from clarity_ext.domain.validation import ValidationException, ValidationType, ValidationResults, UsageError
@@ -548,9 +548,9 @@ class DilutionSettings:
         CONCENTRATION_REF_NM: "nM"
     }
 
-    def __init__(self, scale_up_low_volumes=True, concentration_ref=None, include_blanks=False,
+    def __init__(self, scale_up_low_volumes=False, concentration_ref=None, include_blanks=False,
                  volume_calc_method=None, make_pools=False, pipette_max_volume=None,
-                 dilution_waste_volume=0, robot_min_volume=2):
+                 dilution_waste_volume=0):
         """
         :param dilution_waste_volume: Extra volume that should be subtracted from the sample volume
         to account for waste during dilution

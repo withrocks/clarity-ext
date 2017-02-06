@@ -1,4 +1,4 @@
-from clarity_ext.service.dilution_service import DilutionService
+from clarity_ext.service.dilution.service import DilutionService
 from clarity_ext import UnitConversion
 from clarity_ext.repository import ClarityRepository, FileRepository
 from clarity_ext.utils import lazyprop

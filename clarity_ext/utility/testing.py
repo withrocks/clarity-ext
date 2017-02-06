@@ -2,7 +2,7 @@
 Various helpers for mocking data quickly, in either unit tests or notebooks.
 """
 from clarity_ext.domain import *
-from clarity_ext.service.dilution_service import *
+from clarity_ext.service.dilution.service import *
 
 
 class TestDataHelper:
