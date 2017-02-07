@@ -13,15 +13,15 @@ class DilutionService(object):
     def __init__(self, validation_service):
         self.validation_service = validation_service
 
-    def create_session(self, analyte_pairs, robots, dilution_settings, validator):
+    def create_session(self, robots, dilution_settings, validator):
         """
-        Creates and validates a DilutionSession based on the settings
+        Creates a DilutionSession based on the settings. Call evaluate to validate the entire session
+        with a particular batch of objects.
 
         A DilutionSession contains several TransferBatch objects that need to be evaluated together
         """
         # TODO: Makes sense that the dilution_settings can return a strategy
-        session = DilutionSession(self, robots, dilution_settings, analyte_pairs, validator)
-        session.evaluate()
+        session = DilutionSession(self, robots, dilution_settings, validator)
         # Push the validation results to the validation_service, which logs accordingly etc.
         # TODO: It should throw a UsageError if there are any errors left.
         # TODO: validation not on
@@ -193,7 +193,7 @@ class DilutionSession(object):
 
     NOTE: This class might be merged with DilutionScheme later on.
     """
-    def __init__(self, dilution_service, robots, dilution_settings, pairs, validator):
+    def __init__(self, dilution_service, robots, dilution_settings, validator):
         """
         Creates a DilutionSession object for the robots. Use the DilutionSession object to create
         robot driver files and update values.
@@ -208,7 +208,6 @@ class DilutionSession(object):
         # For now, we're creating one DilutionScheme per robot. It might not be required later, i.e. if
         # the validation etc. doesn't differ between them
         self.dilution_service = dilution_service
-        self.pairs = pairs
         self.transfer_batches = None
         self.robot_settings_by_name = {robot.name: robot for robot in robots}
         self.dilution_settings = dilution_settings
@@ -219,13 +218,15 @@ class DilutionSession(object):
         # The transfer_batches created by this session. There may be several of these, but at the minimum
         # one per robot. Evaluated when you call evaluate()
         self.transfer_batches = None
+        self.pairs = None  # These are set on evaluation
 
-    def evaluate(self):
+    def evaluate(self, pairs):
         """
         Refreshes all calculations for all registered robots and validates.
 
         Broken validation rules that can be acted upon automatically will be and the system will be validated again.
         """
+        self.pairs = pairs
         self.transfer_batches = dict()
         # 1. For each robot, get the transfer batches for that robot.
         #    NOTE: There may be more than one transfer batches, if a split is required.
@@ -290,8 +291,8 @@ class DilutionSession(object):
         """
         Maps a transfer_batch to a robot file of type Csv
         """
-        csv = Csv(delim="\t")  # TODO: \t should be in the robot settings
-        csv.header.extend(robot_settings.header)
+        csv = Csv(delim=robot_settings.delimiter)  # TODO: \t should be in the robot settings
+        csv.set_header(robot_settings.header)
         for transfer in transfer_batch.transfers:
             csv.append(robot_settings.map_transfer_to_row(transfer), transfer)
         return csv

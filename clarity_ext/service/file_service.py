@@ -270,12 +270,16 @@ class Csv:
             self.append(values)
             if len(lines) == 1:
                 self.key_to_index = {key: ix for ix, key in enumerate(values)}
+
         self.header = lines[0]
         self.data = lines[1:]
 
+    def set_header(self, header):
+        self.key_to_index = {key: ix for ix, key in enumerate(header)}
+        self.header = header
+
     def append(self, values, tag=None):
         """Appends a data line to the CSV, values is a list"""
-        # TODO: key_to_index not supported, and _init_from_files_stream is not using this
         csv_line = CsvLine(values, self, tag)
         self.data.append(csv_line)
 
