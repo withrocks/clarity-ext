@@ -59,9 +59,12 @@ class DilutionExtension(GeneralExtension):
         """
 
         # TODO: Updating temp. UDFs temporarily disabled
-        """
+        # Need to update from the correct transfer_batch if there is more than one (the temporary one)
         # Update the temporary UDFs. These will only be committed when the script should finish
-        for transfer in self.dilution_session.dilution_schemes[self._first_robot.name].enumerate_transfers():
+        transfer_batches = self.dilution_session.single_robot_transfer_batches_for_update()
+        print transfer_batches
+        """
+        for transfer in .enumerate_transfers():
             # For visibility and simplicity, we update temporary UDFs on the target object only, even for those
             # values that will update the source:
             target = transfer.destination.aliquot

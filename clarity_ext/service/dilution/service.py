@@ -6,7 +6,7 @@ from clarity_ext.service.dilution.strategies import *
 from jinja2 import Template
 from clarity_ext.service.file_service import Csv
 from clarity_ext.domain.validation import ValidationException, ValidationType, ValidationResults, UsageError
-from clarity_ext.domain import ArtifactPair
+from clarity_ext import utils
 
 
 class DilutionService(object):
@@ -47,30 +47,18 @@ class DilutionService(object):
         Creates one batch (one-to-one relationship with a robot driver file) based on the input arguments.
 
         """
-        # 1. Get a list of SingleTransfer objects
+        # Get a list of SingleTransfer objects
         transfers = [SingleTransfer.create_from_analyte_pair(pair, dilution_settings.concentration_ref)
                      for pair in pairs if self._include_pair(pair, dilution_settings)]
 
-        # 2. Wrap the transfers in a TransferBatch object, it will do a basic validation on itself:
-        #    and raise a UsageError if it can't be used.
+        # Wrap the transfers in a TransferBatch object, it will do a basic validation on itself:
+        # and raise a UsageError if it can't be used.
         batch = TransferBatch(transfers)
 
-        # 3. Based on the robot settings, create a RobotDeckPositioner that sets the correct
-        #    position for each transfer, given that we're mapping using the default settings.
-        #    NOTE: if split, this will be overwritten
-        #    Currently limited to only one-to-one containers (TODO)
-        #    The end result is that the index will be set so that it makes sense for the robt and
-        #    the container_pos on the transfers will be set
-        container_size = pairs[0].output_artifact.container.size
-        robot_deck_positioner = RobotDeckPositioner(robot_settings, container_size)
-        #robot_deck_positioner.position_transfers(transfers)
-        # TODO: Rethinking this a bit...
-        #robot_deck_positioner.position_transfers(transfers)
-
-        # 5. Based on the volume calculation strategy, calculate the volumes
+        # Based on the volume calculation strategy, calculate the volumes
         dilution_settings.volume_calc_strategy.calculate_transfer_volumes(batch)
 
-        # 6. Finished calculating volumes so we can safely validate the batch:
+        # Finished calculating volumes so we can safely validate the batch:
         batch.validate(validator)
         return batch
 
@@ -308,18 +296,67 @@ class DilutionSession(object):
             rendered = template.render(session=self, **kwargs)
             return rendered
 
+    def single_robot_transfer_batches_for_update(self):
+        """
+        Helper method that returns the first robot transfer batch, but validates first that
+        the updated_source_vol is the same on both. This supports the use case where the
+        user doesn't have to tell us which robot driver file they used, because the results will be the same.
+        """
+        # TODO: Rename transfer_batches to *_by_robot
+        all_robots = self.transfer_batches.items()
+        candidate_name, candidate_batches = all_robots[0]
+
+        for current_name, current_batches in all_robots[1:]:
+            # Validate that the requirement holds:
+
+            # Both need to have the same number of transfer batches:
+            if len(candidate_batches) != len(current_batches):
+                raise Exception("Can't select a single robot for update. Different number of batches between {} and {}".
+                                format(candidate_name, current_name))
+
+            # For each transfer in the candidate, we must have a corresponding transfer in
+            # the current having the same update_source_vol. Other values can be different (e.g.
+            # sort order, plate names on robots etc.)
+            # TODO: This assumes that the transfer batches are always in the same order, which they should,
+            # but it would make sense to enforce the order before this.
+            for candidate_batch, current_batch in zip(candidate_batches, current_batches):
+                if len(candidate_batch.transfers) != len(current_batch.transfers):
+                    raise Exception("Number of transfers differ between {} and {}".format(candidate_name, current_name))
+                for candidate_transfer in candidate_batch.transfers:
+                    current_transfer = utils.single([t for t in current_batch.transfers
+                                                     if t.source_analyte == candidate_transfer.source_analyte])
+                    # Now, we require only that the updated source volume must be the same between the two, other
+                    # values may differ. If there is a difference, the caller will have to have the
+                    # user select which driver file was actually used before updating based on this session object
+                    if candidate_transfer.updated_source_vol != current_transfer.updated_source_vol:
+                        raise Exception("Inconsistent updated_source_vol between two transfers. It's not possible to "
+                                        "infer the source volume without explicitly selecting the robot that was used.")
+        return candidate_batches
+
+    def enumerate_transfers_for_update(self):
+        """
+        Returns the transfers that require an update. Supports both the case of both regular dilution and "looped"
+        (i.e. when we have more than one driver file). Relies on there being only one robot or that they are consistent
+        in the reported updated_source_vol.
+        """
+        transfer_batches = self.single_robot_transfer_batches_for_update()
+        for transfer_batch in transfer_batches:
+            for transfer in transfer_batch.transfers:
+                yield transfer  # TODO!
+
 
 class TransferLocation(object):
     """
     Represents either a source or a target of a transfer
     """
-    def __init__(self, container, position):
+    def __init__(self, container, position, well):
         """
         :param container: A Container that holds the analyte to be transferred
         :param position: The ContainerPosition pointing to a position within the container, e.g. A:1
         """
         self.container = container
         self.position = position
+        self.well = well  # TODO: Use only well, not position
 
         # This is not set by the user but by the TransferBatch when the user queries for the object.
         # TODO: Rename to container_pos
@@ -327,7 +364,7 @@ class TransferLocation(object):
 
     @staticmethod
     def create_from_analyte(analyte):
-        return TransferLocation(analyte.container, analyte.well.position)
+        return TransferLocation(analyte.container, analyte.well.position, analyte.well)
 
     def __repr__(self):
         return "{}({})@{}".format(self.container.name, self.container_pos, self.position)
@@ -367,8 +404,6 @@ class SingleTransfer(object):
 
         self.updated_source_vol = None
 
-        # TODO: positions after actually positioning on a robot
-
     def report(self):
         """Returns a detailed view of this transfer object for debugging and validation"""
         report = list()
@@ -382,7 +417,6 @@ class SingleTransfer(object):
         report.append(" - target_vol: {}".format(self.target_vol))
         report.append(" - updated_source_vol: {}".format(self.updated_source_vol))
         return "\n".join(report)
-
 
     @property
     def pipette_total_volume(self):
@@ -427,8 +461,6 @@ class SingleTransfer(object):
                                                       self.requested_concentration, self.requested_volume)
         return "{} => {}".format(source, target)
 
-
-
     def __repr__(self):
         return "<SingleTransfer {}({},{})=>{}({},{})>".format(self.source_location,
                                                               self.source_conc,
@@ -436,105 +468,6 @@ class SingleTransfer(object):
                                                               self.target_location,
                                                               self.target_conc,
                                                               self.target_vol)
-
-
-class EndpointPositioner(object):
-    """
-    Handles positions for all plates and wells for either source or
-    destination placement on a robot deck
-    """
-
-    def __init__(self, robot_settings, transfer_endpoints, plate_size, plate_pos_prefix):
-        self.robot_settings = robot_settings
-        self._plate_size = plate_size
-        self.plate_sorting_map = self._build_plate_sorting_map(
-            [transfer_endpoint.analyte.container for transfer_endpoint in transfer_endpoints])
-        self.plate_position_map = self._build_plate_position_map(
-            self.plate_sorting_map, plate_pos_prefix)
-
-    @staticmethod
-    def _build_plate_position_map(plate_sorting_map, plate_pos_prefix):
-        # Fetch a unique list of container names from input
-        # Make a dictionary with container names and plate positions
-        # eg. END1, DNA2
-        plate_positions = []
-        for key, value in plate_sorting_map.iteritems():
-            plate_position = "{}{}".format(plate_pos_prefix, value)
-            plate_positions.append((key, plate_position))
-
-        plate_positions = dict(plate_positions)
-        return plate_positions
-
-    @staticmethod
-    def _build_plate_sorting_map(containers):
-        # Fetch an unique list of container names from input
-        # Make a dictionary with container names and plate position sort numbers
-        unique_containers = sorted(list(
-            {container.id for container in containers}))
-        positions = range(1, len(unique_containers) + 1)
-        plate_position_numbers = dict(zip(unique_containers, positions))
-        return plate_position_numbers
-
-    def find_sort_number(self, transfer):
-        """Sort dilutes according to plate and well positions
-        """
-        plate_base_number = self._plate_size.width * self._plate_size.height + 1
-        plate_sorting = self.plate_sorting_map[
-            transfer.source_container.id
-        ]
-        # Sort order for wells are always based on down first indexing
-        # regardless the robot type
-        return plate_sorting * plate_base_number + transfer.source_well.index_down_first
-
-    def __str__(self):
-        return "<{type} {robot} {height}x{width}>".format(type=self.__class__.__name__,
-                                                          robot=self.robot_name,
-                                                          height=self._plate_size.size.height,
-                                                          width=self._plate_size.size.width)
-
-
-class RobotDeckPositioner(object):
-    """
-    Handle plate positions on the robot deck (target and source)
-    as well as well indexing
-    """
-
-    def __init__(self, robot_settings, plate_size):
-        self.robot_settings = robot_settings
-        self.plate_size = plate_size
-        """
-        print "HERE", robot_settings, transfers, plate_size
-        source_endpoints = [transfer.source for transfer in dilutes]
-        source_positioner = EndpointPositioner(robot_settings, source_endpoints,
-                                               plate_size, "DNA")
-        destination_endpoints = [transfer.destination for transfer in dilutes]
-        destination_positioner = EndpointPositioner(
-            robot_settings, destination_endpoints, plate_size, "END")
-
-        self._robot_settings = robot_settings
-        self._plate_size = plate_size
-        self._source_positioner = source_positioner
-        self.source_plate_position_map = source_positioner.plate_position_map
-        self.target_plate_position_map = destination_positioner.plate_position_map
-        """
-
-    def position_transfers(self, transfers):
-        """
-        TODO: Have this handle only the indexing. Setting DNA1, END1 etc should happen before
-        """
-        return
-        for transfer in transfers:
-            transfer.source_well_index = self.get_index_from_well(
-                transfer.source_well)
-            transfer.source_plate_pos = self.source_plate_position_map[transfer.source_container.id]
-            transfer.target_well_index = self.robot_settings.get_index_from_well(transfer.target_well)
-            transfer.target_plate_pos = self.target_plate_position_map[transfer.target_container.id]
-
-    def __str__(self):
-        return "<{type} {robot} {height}x{width}>".format(type=self.__class__.__name__,
-                                                          robot=self._robot_name,
-                                                          height=self._plate_size.height,
-                                                          width=self._plate_size.width)
 
 
 class DilutionSettings:
@@ -788,19 +721,13 @@ class TransferBatch(object):
             - well index (down first)
             - pipette volume
         """
-        # TODO: Rest of the sort stuff
-        # TODO: Makes sense that the user can provide the sorting
-        # print "SORT", (transfer.source_location.container_pos)
+        # TODO: Makes sense that the user can provide the sorting. Remove from the TransferBatch or have
+        # the user supply the key. Seems to be a representation-only issue, so suggest we move it to RobotSettings
         assert transfer.source_location.container_pos is not None
-        return transfer.source_location.container_pos
-
-    """
-    @property
-    def max_pipette_volume(self):
-        volume = max(t.pipette_total_volume for t in self._transfers)
-        print "HERE", volume
-        return volume
-    """
+        assert transfer.source_location.well is not None
+        return (transfer.source_location.container_pos,\
+                transfer.source_location.well.index_down_first,
+                transfer.pipette_total_volume)
 
     def pre_validate(self):
         """

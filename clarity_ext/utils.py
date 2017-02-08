@@ -4,6 +4,7 @@ import shutil
 import hashlib
 import logging
 from contextlib import contextmanager
+import types
 
 
 # http://stackoverflow.com/a/3013910/282024
@@ -69,6 +70,8 @@ def clean_directory(path, skip=[]):
 
 def single(seq):
     """Returns the first element in a list, throwing an exception if there is an unexpected number of items"""
+    if isinstance(seq, types.GeneratorType):
+        seq = list(seq)
     if len(seq) != 1:
         raise ValueError(
             "Unexpected number of items in the list ({})".format(len(seq)))

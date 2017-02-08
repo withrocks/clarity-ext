@@ -63,8 +63,12 @@ class OneToOneConcentrationCalc:
                 transfer.pipette_sample_volume *= scale_factor
                 transfer.pipette_buffer_volume *= scale_factor
                 transfer.scaled_up = True
-            transfer.updated_source_vol = transfer.source_vol - transfer.pipette_sample_volume - \
-                                          self.dilution_settings.dilution_waste_volume
+            transfer.updated_source_vol = round(transfer.source_vol - transfer.pipette_sample_volume - \
+                                                self.dilution_settings.dilution_waste_volume, 1)
+
+            # Rounding (TODO, get validated by RE)
+            transfer.pipette_sample_volume = round(transfer.pipette_sample_volume, 1)
+            transfer.pipette_buffer_volume = round(transfer.pipette_buffer_volume, 1)
 
 
 class PoolConcentrationCalc:
