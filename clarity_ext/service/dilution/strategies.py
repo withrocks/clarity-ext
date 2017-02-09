@@ -49,6 +49,10 @@ class OneToOneConcentrationCalc:
 
     def calculate_transfer_volumes(self, batch):
         for transfer in batch.transfers:
+            if transfer.source_analyte.is_control:
+                transfer.pipette_buffer_volume = transfer.target_vol
+                continue
+
             transfer.pipette_sample_volume = \
                 transfer.target_conc * transfer.target_vol / \
                 transfer.source_conc

@@ -79,6 +79,7 @@ class DilutionService(object):
         for transfer in transfer_batch.transfers:
             if transfer not in split:
                 no_split.append(transfer)
+        print "HEREA", split
 
         if len(split) > 0:
             # One or more pairs require a split. We need to take out these pairs and create two new
@@ -171,7 +172,7 @@ class DilutionService(object):
 
     def _include_pair(self, pair, dilution_settings):
         # TODO: Rename the dilution_setting rule to include_control
-        return not pair.input_artifact.is_control or dilution_settings.include_blanks
+        return not pair.input_artifact.is_control or dilution_settings.include_control
 
 
 class DilutionSession(object):
@@ -444,12 +445,19 @@ class SingleTransfer(object):
 
     @classmethod
     def create_from_analyte_pair(cls, pair, concentration_ref):
+        source_location = TransferLocation.create_from_analyte(pair.input_artifact)
+        target_location = TransferLocation.create_from_analyte(pair.output_artifact)
+
+        if pair.input_artifact.is_control:
+            vol2 = pair.output_artifact.udf_target_vol_ul
+            # The transfer for controls does only require target volume. Other values will be ignored.
+            transfer = SingleTransfer(0, 0, 0, vol2, source_location, target_location, pair.input_artifact)
+            return transfer
+
         conc1 = cls._referenced_concentration(pair.input_artifact, concentration_ref)
         vol1 = pair.input_artifact.udf_current_sample_volume_ul
         conc2 = cls._referenced_requested_concentration(pair.output_artifact, concentration_ref)
         vol2 = pair.output_artifact.udf_target_vol_ul
-        source_location = TransferLocation.create_from_analyte(pair.input_artifact)
-        target_location = TransferLocation.create_from_analyte(pair.output_artifact)
         transfer = SingleTransfer(conc1, vol1, conc2, vol2, source_location, target_location, pair.input_artifact)
         transfer.pair = pair
         return transfer
@@ -504,6 +512,7 @@ class DilutionSettings:
         self.volume_calc_strategy = self._create_strategy()
         # TODO: This should be a robot setting!
         self.robot_min_volume = 2
+        self.include_control = True
 
     def _create_strategy(self):
         if self.volume_calc_method == self.VOLUME_CALC_FIXED:

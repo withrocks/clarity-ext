@@ -95,10 +95,10 @@ class DilutionExtension(GeneralExtension):
         dilution_settings = self.get_dilution_settings()
         validator = self.get_validator()
         pairs = self.context.artifact_service.all_aliquot_pairs()
-        session = self.context.dilution_service.create_session(pairs,
-                                                               robot_settings,
+        session = self.context.dilution_service.create_session(robot_settings,
                                                                dilution_settings,
                                                                validator)
+        session.evaluate(pairs)
         # Ensure that errors and warnings are logged:
         # TODO: Validation temp. off
         """
