@@ -20,6 +20,9 @@ class ArtifactService:
         self._artifacts = None
         self._parent_input_artifacts_by_sample_id = None
 
+    def invalidate_cache(self):
+        self._artifacts = None
+
     def all_artifacts(self):
         # NOTE: The underlying REST library does also do some caching, but since this library wraps
         # objects, some benefit may be achieved by caching on this level too.

@@ -65,3 +65,43 @@ class DilutionTestDataHelper:
                                                    conc_target_udf: conc2})
         return pair
 
+
+def mock_context(**kwargs):
+    """Creates a mock with the service provided as keyword arguments, filling the rest with MagicMock"""
+    from clarity_ext.context import ExtensionContext
+    # TODO: Needs to be updated when the signature is updated. Fix that (or use a better approach)
+    for arg in ["session", "artifact_service", "file_service", "current_user", "step_logger_service",
+                "step_repo", "clarity_service", "dilution_service", "process_service",
+                "upload_file_service", "validation_service"]:
+        kwargs.setdefault(arg, MagicMock())
+    return ExtensionContext(**kwargs)
+
+
+class TestExtensionContext(object):
+    """
+    A helper (wrapper) for creating test ExtensionContext objects, which are used for integration tests of the
+    type where you want to mock all repositories, but keep the services hooked up as they would be in production.
+
+    Wraps that kind of mocked ExtensionContext and provides various convenience methods for adding data to the mocked
+    repositories.
+
+    The idea is that this should be usable by users that have little knowledge about how the framework works.
+    """
+    def __init__(self):
+        from clarity_ext.context import ExtensionContext
+        session = MagicMock()
+        step_repo = MagicMock()
+        self._artifacts = list()
+        step_repo.all_artifacts = self._all_artifacts
+        self.context = ExtensionContext.create_mocked(session, step_repo)
+        self._shared_files = list()
+
+    def _all_artifacts(self):
+        return self._shared_files   # TODO: Append others
+
+    def add_shared_result_file(self, f):
+        assert f.name is not None, "You need to supply a name"
+        f.id = "92-{}".format(len(self._shared_files))
+        self._shared_files.append((None, f))
+        print self._artifacts
+

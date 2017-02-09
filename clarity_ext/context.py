@@ -92,12 +92,43 @@ class ExtensionContext(object):
                                 validation_service,
                                 test_mode=test_mode, disable_commits=disable_commits)
 
+    @staticmethod
+    def create_mocked(session, step_repo, test_mode=False, uploaded_to_stdout=False,
+                      disable_commits=False, upload_files=True):
+        """
+        A convenience method for creating an ExtensionContext that mocks out repos only. Used in integration tests
+        that mock external requirements only. Since external data is always fetched through repositories only, this
+        is ensured to limit calls to in-memory calls only, which under the developer's control.
+
+        The session object, although not a repository, is also sent in.
+        """
+        # TODO: Reuse in create
+        step_repo = step_repo
+        artifact_service = ArtifactService(step_repo)
+        current_user = step_repo.current_user()
+        file_repository = FileRepository(session)
+        file_service = FileService(artifact_service, file_repository, False, OSService())
+        step_logger_service = StepLoggerService("Step log", file_service)
+        validation_service = ValidationService(step_logger_service)
+        clarity_service = ClarityService(ClarityRepository(), step_repo)
+        dilution_service = DilutionService(validation_service)
+        process_service = ProcessService()
+        upload_file_service = UploadFileService(OSService(), artifact_service,
+                                                uploaded_to_stdout=uploaded_to_stdout,
+                                                disable_commits=not upload_files)
+        return ExtensionContext(session, artifact_service, file_service, current_user,
+                                step_logger_service, step_repo, clarity_service,
+                                dilution_service, process_service, upload_file_service,
+                                validation_service,
+                                test_mode=test_mode, disable_commits=disable_commits)
+
     @lazyprop
     def error_log_artifact(self):
         """
         Returns a file on the current step that can be used for marking the step as having an error
         without having a visible UDF on the step.
         """
+        print self.shared_files, "HERE!", self.step_log_name
         file_list = [file for file in self.shared_files if file.name ==
                      self.step_log_name]
         if not len(file_list) == 1:
@@ -109,7 +140,7 @@ class ExtensionContext(object):
     def step_log_name(self):
         return self.validation_service.step_logger_service.step_logger_name
 
-    @lazyprop
+    @property
     def shared_files(self):
         """
         Fetches all share files for the current step

@@ -79,7 +79,6 @@ class DilutionService(object):
         for transfer in transfer_batch.transfers:
             if transfer not in split:
                 no_split.append(transfer)
-        print "HEREA", split
 
         if len(split) > 0:
             # One or more pairs require a split. We need to take out these pairs and create two new

@@ -95,6 +95,7 @@ class DilutionExtension(GeneralExtension):
         dilution_settings = self.get_dilution_settings()
         validator = self.get_validator()
         pairs = self.context.artifact_service.all_aliquot_pairs()
+        print pairs
         session = self.context.dilution_service.create_session(robot_settings,
                                                                dilution_settings,
                                                                validator)
