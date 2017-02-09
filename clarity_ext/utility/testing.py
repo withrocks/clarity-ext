@@ -11,13 +11,13 @@ class DilutionTestDataHelper:
     A helper for creating mock containers and artifacts related to Dilution, in as simple a way
     as possible, even for end-users testing things in notebooks, but can also be used in tests.
     """
-    def __init__(self, dilution_settings, robots, settings, validator,
+    def __init__(self, robots, settings, validator,
                  create_well_order=Container.DOWN_FIRST):
         self.input_container = Container(container_type=Container.CONTAINER_TYPE_96_WELLS_PLATE,
                                          container_id="input", name="input")
         self.output_container = Container(container_type=Container.CONTAINER_TYPE_96_WELLS_PLATE,
                                           container_id="output", name="output")
-        self.concentration_unit = dilution_settings.concentration_ref
+        self.concentration_unit = settings.concentration_ref
         self.well_enumerator = self.input_container.enumerate_wells(create_well_order)
         self.pairs = list()
         self.robots = robots
@@ -91,17 +91,27 @@ class TestExtensionContext(object):
         from clarity_ext.context import ExtensionContext
         session = MagicMock()
         step_repo = MagicMock()
-        self._artifacts = list()
         step_repo.all_artifacts = self._all_artifacts
         self.context = ExtensionContext.create_mocked(session, step_repo)
         self._shared_files = list()
+        self._analytes = list()
 
     def _all_artifacts(self):
-        return self._shared_files   # TODO: Append others
+        return self._shared_files + self._analytes   # TODO: Append others
 
     def add_shared_result_file(self, f):
         assert f.name is not None, "You need to supply a name"
         f.id = "92-{}".format(len(self._shared_files))
         self._shared_files.append((None, f))
-        print self._artifacts
+
+    def add_analyte_pair(self, input, output):
+        # TODO: Set id and name if not provided
+        self._analytes.append((input, output))
+
+
+class TestExtensionWrapper(object):
+    """Similar to TestExtensionContext, but wraps an entire extension"""
+    def __init__(self, extension_type):
+        self.context_wrapper = TestExtensionContext()
+        self.extension = extension_type(self.context_wrapper.context)
 

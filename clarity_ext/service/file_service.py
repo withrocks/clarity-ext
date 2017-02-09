@@ -1,3 +1,4 @@
+from __future__ import print_function
 import re
 import os
 import sys
@@ -154,8 +155,6 @@ class UploadFileService(object):
         """
         artifacts = [shared_file for shared_file in self.artifact_service.shared_files()
                      if shared_file.name == file_handle]
-        print id(self.artifact_service)
-        print "HERE", artifacts, self.artifact_service.shared_files()
         if len(files) > len(artifacts):
             raise Exception("Trying to upload {} files to '{}', but only {} are supported".format(
                             len(files), file_handle, len(artifacts)))
@@ -200,7 +199,7 @@ class UploadFileService(object):
             self.os_service.attach_file_for_epp(local_path, artifact)
 
         if self.uploaded_to_stdout:
-            print "--- {} => {} ({})".format(local_path, artifact.name, artifact.id)
+            print("--- {} => {} ({})".format(local_path, artifact.name, artifact.id))
             extra = 0
             with self.os_service.open_file(local_path, 'r') as f:
                 for ix, line in enumerate(f):
@@ -210,7 +209,7 @@ class UploadFileService(object):
                         extra += 1
             if extra > 0:
                 sys.stdout.write("<{} more lines>\n".format(extra))
-            print "---"
+            print("---")
 
     def save_locally(self, content, filename, newline=None):
         """

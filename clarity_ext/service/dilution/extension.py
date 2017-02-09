@@ -41,7 +41,6 @@ class DilutionExtension(GeneralExtension):
             self.logger.info("Creating robot file for {}".format(robot.name))
             # We might get more than one file, in the case of a split
             robot_files = self.dilution_session.driver_files(robot.name)
-            print robot_files
 
             files = [(self._get_filename(robot.name, ext=robot.file_ext, seq=ix + 1),
                       f.to_string(include_header=False, new_line='\r\n'))
@@ -62,7 +61,6 @@ class DilutionExtension(GeneralExtension):
         # Need to update from the correct transfer_batch if there is more than one (the temporary one)
         # Update the temporary UDFs. These will only be committed when the script should finish
         transfer_batches = self.dilution_session.single_robot_transfer_batches_for_update()
-        print transfer_batches
         """
         for transfer in .enumerate_transfers():
             # For visibility and simplicity, we update temporary UDFs on the target object only, even for those
@@ -95,7 +93,6 @@ class DilutionExtension(GeneralExtension):
         dilution_settings = self.get_dilution_settings()
         validator = self.get_validator()
         pairs = self.context.artifact_service.all_aliquot_pairs()
-        print pairs
         session = self.context.dilution_service.create_session(robot_settings,
                                                                dilution_settings,
                                                                validator)

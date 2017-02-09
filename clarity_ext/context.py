@@ -128,7 +128,6 @@ class ExtensionContext(object):
         Returns a file on the current step that can be used for marking the step as having an error
         without having a visible UDF on the step.
         """
-        print self.shared_files, "HERE!", self.step_log_name
         file_list = [file for file in self.shared_files if file.name ==
                      self.step_log_name]
         if not len(file_list) == 1:
