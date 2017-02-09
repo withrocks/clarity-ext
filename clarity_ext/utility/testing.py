@@ -92,7 +92,8 @@ class TestExtensionContext(object):
         session = MagicMock()
         step_repo = MagicMock()
         step_repo.all_artifacts = self._all_artifacts
-        self.context = ExtensionContext.create_mocked(session, step_repo)
+        os_service = MagicMock()
+        self.context = ExtensionContext.create_mocked(session, step_repo, os_service)
         self._shared_files = list()
         self._analytes = list()
 

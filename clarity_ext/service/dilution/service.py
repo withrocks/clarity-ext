@@ -222,20 +222,6 @@ class DilutionSession(object):
             self.transfer_batches[robot_settings.name] = self.dilution_service.create_batches(
                 self.pairs, robot_settings, self.dilution_settings, self.validator)
 
-        # Now we have one transfer batch per robot. Let's dump hamilton!
-        """
-        for transfer_batch in self.transfer_batches["hamilton"]:
-            print(transfer_batch.report(True))
-            print("")
-
-        """
-        # ... biomek will look the same, but having different transfer_batch per robot gives us the
-        # possibility of having different validations for them
-        """
-        for transfer_batch in self.transfer_batches["biomek"]:
-            print(transfer_batch.report())
-        """
-
     @lazyprop
     def container_mappings(self):
         # Returns a mapping of all containers we're diluting to/from
@@ -277,12 +263,16 @@ class DilutionSession(object):
 
     def _transfer_batch_to_robot_file(self, transfer_batch, robot_settings):
         """
-        Maps a transfer_batch to a robot file of type Csv
+        Maps a transfer_batch to a robot file of type Csv. The transfer_batch is sorted and grouped as required.
         """
+
         csv = Csv(delim=robot_settings.delimiter)  # TODO: \t should be in the robot settings
         csv.set_header(robot_settings.header)
-        for transfer in transfer_batch.transfers:
-            csv.append(robot_settings.map_transfer_to_row(transfer), transfer)
+        sorted_transfers = sorted(transfer_batch.transfers, key=robot_settings.transfer_sort_key)
+
+        for transfer in sorted_transfers:
+            for split in robot_settings.row_split(transfer):
+                csv.append(robot_settings.map_transfer_to_row(split), split)
         return csv
 
     def create_general_driver_file(self, template_path, **kwargs):
@@ -399,9 +389,7 @@ class SingleTransfer(object):
 
         # In the case of temporary transfers, we keep a pointer to the original for easier calculations
         self.original = None
-
         self.source_analyte = source_analyte
-
         self.updated_source_vol = None
 
     def report(self):
@@ -548,6 +536,16 @@ class RobotSettings(object):
         self.file_handle = file_handle
         self.file_ext = file_ext
 
+    @abc.abstractproperty
+    def row_split(self, transfer):
+        """
+        Defines at which level the transfer requires a split. If a split is required, return the new splits.
+
+        Input should be a single transfer, while the output should always be a list, possibly containing only
+        the same transfer, but possibly several, depending on the business rule.
+        """
+        pass
+
     @abc.abstractmethod
     def map_transfer_to_row(self, transfer):
         """
@@ -576,6 +574,20 @@ class RobotSettings(object):
     def target_container_name(transfer_location):
         return "END{}".format(transfer_location.container_pos)
 
+    @staticmethod
+    def transfer_sort_key(transfer):
+        """
+        Sort the transfers based on:
+            - source position (container_pos)
+            - well index (down first)
+            - pipette volume
+        """
+        assert transfer.source_location.container_pos is not None
+        assert transfer.source_location.well is not None
+        return (transfer.source_location.container_pos,
+                transfer.source_location.well.index_down_first,
+                transfer.pipette_total_volume)
+
     def __repr__(self):
         return "<RobotSettings {}>".format(self.name)
 
@@ -586,17 +598,18 @@ class RobotSettings(object):
             file_ext=self.file_ext)
 
 
+"""
 # TODO: Move
 class TemplateHelper:
     @staticmethod
     def get_from_package(package, name):
-        """Loads a Jinja template from the package"""
+        "Loads a Jinja template from the package"
         import os
         templates_dir = os.path.dirname(package.__file__)
         for candidate_file in os.listdir(templates_dir):
             if candidate_file == name:
                 return os.path.join(templates_dir, candidate_file)
-
+"""
 
 class DilutionValidatorBase(object):
     """
@@ -644,7 +657,7 @@ class DilutionValidatorBase(object):
         Returns a tuple of (errors, warnings).
         """
         results = ValidationResults()
-        for transfer in transfer_batch.transfers:
+        for transfer in transfer_batch._transfers:
             validation_exceptions = list(self.rules(transfer))
             for exception in validation_exceptions:
                 if not exception.transfer:
@@ -715,27 +728,13 @@ class TransferBatch(object):
             set(transfer.target_location.container for transfer in self._transfers)))
         return container_to_container_ref
 
-    def enumerate_split_row_transfers(self):
-        return self.split_up_high_volume_rows(self.sorted_transfers(self._transfers))
-
     @property
     def transfers(self):
-        return sorted(self._transfers, key=self._transfer_sort_key)
-
-    def _transfer_sort_key(self, transfer):
         """
-        Sort the transfers based on:
-            - source position (container_pos)
-            - well index (down first)
-            - pipette volume
+        Enumerates the transfers. The underlying transfer list is sorted by self._transfer_sort_key
+        and row split is performed if needed
         """
-        # TODO: Makes sense that the user can provide the sorting. Remove from the TransferBatch or have
-        # the user supply the key. Seems to be a representation-only issue, so suggest we move it to RobotSettings
-        assert transfer.source_location.container_pos is not None
-        assert transfer.source_location.well is not None
-        return (transfer.source_location.container_pos,\
-                transfer.source_location.well.index_down_first,
-                transfer.pipette_total_volume)
+        return self._transfers
 
     def pre_validate(self):
         """
@@ -752,7 +751,7 @@ class TransferBatch(object):
             if not transfer.target_vol:
                 yield TransferValidationException(transfer, "target volume is not set.")
         # 1. Go through the built-in validations first:
-        for transfer in self.transfers:
+        for transfer in self._transfers:
             self.results.extend(list(pre_conditions(transfer)))
 
         if len(results.errors) > 0:
@@ -771,7 +770,7 @@ class TransferBatch(object):
         report.append("-" * len(report[-1]))
         report.append(" - temporary: {}".format(self.is_temporary))
 
-        for transfer in self.transfers:
+        for transfer in self._transfers:
             if details:
                 report.append(transfer.report())
             else:
@@ -876,4 +875,3 @@ class NeedsSplitValidationException(TransferValidationException):
         super(NeedsSplitValidationException, self).__init__(None,
                                                             "The transfer requires a split",
                                                             ValidationType.ERROR)
-

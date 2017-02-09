@@ -48,14 +48,13 @@ class OneToOneConcentrationCalc:
         self.dilution_settings = dilution_settings
 
     def calculate_transfer_volumes(self, batch):
-        for transfer in batch.transfers:
+        for transfer in batch.transfers:  # TODO: change _transfers to something else?
             if transfer.source_analyte.is_control:
                 transfer.pipette_buffer_volume = transfer.target_vol
                 continue
 
             transfer.pipette_sample_volume = \
-                transfer.target_conc * transfer.target_vol / \
-                transfer.source_conc
+                transfer.target_conc * transfer.target_vol / float(transfer.source_conc)
             transfer.pipette_buffer_volume = \
                 max(transfer.target_vol - transfer.pipette_sample_volume, 0)
             transfer.has_to_evaporate = \
@@ -69,8 +68,6 @@ class OneToOneConcentrationCalc:
                 transfer.scaled_up = True
             transfer.updated_source_vol = round(transfer.source_vol - transfer.pipette_sample_volume - \
                                                 self.dilution_settings.dilution_waste_volume, 1)
-
-            # Rounding (TODO, get validated by RE)
             transfer.pipette_sample_volume = round(transfer.pipette_sample_volume, 1)
             transfer.pipette_buffer_volume = round(transfer.pipette_buffer_volume, 1)
 
