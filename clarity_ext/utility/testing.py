@@ -11,8 +11,7 @@ class DilutionTestDataHelper:
     A helper for creating mock containers and artifacts related to Dilution, in as simple a way
     as possible, even for end-users testing things in notebooks, but can also be used in tests.
     """
-    def __init__(self, robots, settings, validator,
-                 create_well_order=Container.DOWN_FIRST):
+    def __init__(self, settings, create_well_order=Container.DOWN_FIRST):
         self.input_container = Container(container_type=Container.CONTAINER_TYPE_96_WELLS_PLATE,
                                          container_id="input", name="input")
         self.output_container = Container(container_type=Container.CONTAINER_TYPE_96_WELLS_PLATE,
@@ -20,21 +19,17 @@ class DilutionTestDataHelper:
         self.concentration_unit = settings.concentration_ref
         self.well_enumerator = self.input_container.enumerate_wells(create_well_order)
         self.pairs = list()
-        self.robots = robots
-        self.settings = settings
-        self.validator = validator
-        dilution_service = DilutionService(validation_service=MagicMock())
-        self.session = dilution_service.create_session(self.robots, self.settings, self.validator)
+        #self.robots = robots
+        #self.settings = settings
+        #self.validator = validator
+        #dilution_service = DilutionService(validation_service=MagicMock())
+        #self.session = dilution_service.create_session(self.robots, self.settings, self.validator)
 
     def _create_analyte(self, is_input, partial_name):
         name = "{}-{}".format("in" if is_input else "out", partial_name)
         ret = Analyte(api_resource=None, is_input=is_input,
                       id=name, name=name)
         return ret
-
-    def evaluate(self):
-        self.session.evaluate(self.pairs)
-        return self.session
 
     def create_pair(self, pos_from=None, pos_to=None):
         if pos_from is None:
