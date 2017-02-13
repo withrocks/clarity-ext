@@ -48,6 +48,6 @@ class UsageError(Exception):
     Throw a usage error if there is an error with parameters the user can change. Include
     any validation errors if applicable, they will be logged appropriately by the framework.
     """
-    def __init__(self, msg, validation_results):
+    def __init__(self, msg, validation_results=None):
         super(UsageError, self).__init__(msg)
         self.validation_results = validation_results

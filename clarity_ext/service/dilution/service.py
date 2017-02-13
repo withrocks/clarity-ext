@@ -267,9 +267,8 @@ class DilutionSession(object):
 
     def all_driver_files(self):
         """Returns all robot driver files in tuples (robot, robot_file)"""
-        for robot_name in self.robots:
-            # TODO
-            yield robot_name, self.driver_file(robot_name)
+        for robot_name in self.robot_settings_by_name:
+            yield robot_name, self.driver_files(robot_name)
 
     def _create_robot_driver_files(self, robot_name):
         """
@@ -453,19 +452,31 @@ class SingleTransfer(object):
 
     @classmethod
     def create_from_analyte_pair(cls, pair, concentration_ref):
+        def raise_target_measurements_missing(artifact_pair):
+            raise UsageError("You need to provide target volume and concentration for all samples. "
+                             "Missing for {}.".format(artifact_pair.output_artifact.id))
+
         source_location = TransferLocation.create_from_analyte(pair.input_artifact)
         target_location = TransferLocation.create_from_analyte(pair.output_artifact)
 
         if pair.input_artifact.is_control:
-            vol2 = pair.output_artifact.udf_target_vol_ul
+            try:
+                vol2 = pair.output_artifact.udf_target_vol_ul
+            except AttributeError:
+                raise_target_measurements_missing(pair)
+
             # The transfer for controls does only require target volume. Other values will be ignored.
             transfer = SingleTransfer(0, 0, 0, vol2, source_location, target_location, pair.input_artifact)
             return transfer
 
-        conc1 = cls._referenced_concentration(pair.input_artifact, concentration_ref)
-        vol1 = pair.input_artifact.udf_current_sample_volume_ul
-        conc2 = cls._referenced_requested_concentration(pair.output_artifact, concentration_ref)
-        vol2 = pair.output_artifact.udf_target_vol_ul
+        try:
+            conc1 = cls._referenced_concentration(pair.input_artifact, concentration_ref)
+            vol1 = pair.input_artifact.udf_current_sample_volume_ul
+            conc2 = cls._referenced_requested_concentration(pair.output_artifact, concentration_ref)
+            vol2 = pair.output_artifact.udf_target_vol_ul
+        except AttributeError:
+            raise_target_measurements_missing(pair)
+
         transfer = SingleTransfer(conc1, vol1, conc2, vol2, source_location, target_location, pair.input_artifact)
         transfer.pair = pair
         return transfer
@@ -602,20 +613,6 @@ class RobotSettings(object):
             name=self.name,
             file_handle=self.file_handle,
             file_ext=self.file_ext)
-
-
-"""
-# TODO: Move
-class TemplateHelper:
-    @staticmethod
-    def get_from_package(package, name):
-        "Loads a Jinja template from the package"
-        import os
-        templates_dir = os.path.dirname(package.__file__)
-        for candidate_file in os.listdir(templates_dir):
-            if candidate_file == name:
-                return os.path.join(templates_dir, candidate_file)
-"""
 
 
 class DilutionValidatorBase(object):

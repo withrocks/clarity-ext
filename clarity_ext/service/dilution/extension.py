@@ -49,13 +49,12 @@ class DilutionExtension(GeneralExtension):
 
         # Upload the metadata file:
         # TODO: Temporarily disable metadata file
-        """
+        print "HERE"
         metafile = self.generate_metadata_file()
         self.context.upload_file_service.upload("Metadata",
                                                 self._get_filename("metadata", ".xml"),
                                                 metafile,
                                                 stdout_max_lines=3)
-        """
 
         # TODO: Updating temp. UDFs temporarily disabled
         # Need to update from the correct transfer_batch if there is more than one (the temporary one)
@@ -135,15 +134,22 @@ class DilutionExtension(GeneralExtension):
         pass
 
     def generate_metadata_file(self):
-        template = TemplateHelper.get_from_package(templates_module, "metadata.xml.j2")
+        from clarity_ext.utils import get_jinja_template_from_package
+        from clarity_ext_scripts.dilution.settings import MetadataInfo
+        import clarity_ext_scripts.dilution.resources as templates_module
+        #from clarity_ext_scripts.dilution.settings import
+        template = get_jinja_template_from_package(templates_module, "metadata.xml.j2")
         metadata_info = MetadataInfo(self.dilution_session,
                                      "somefile_TODO", self.context.current_user, self.context)
 
         # NOTE: Using the dilution_scheme for hamilton when generating the metadata file, temporary
+        # TODO: Rename scheme to batch
+        from clarity_ext import utils
+        transfer_batch = utils.single(self.dilution_session.single_robot_transfer_batches_for_update())
         metafile = self.dilution_session.create_general_driver_file(
             template,
             info=metadata_info,
-            scheme=self.dilution_session.dilution_schemes[self._first_robot.name],
+            scheme=transfer_batch,
             context=self.context)
         return metafile
 
