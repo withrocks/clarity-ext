@@ -48,8 +48,6 @@ class DilutionExtension(GeneralExtension):
             self.context.upload_file_service.upload_files(robot.file_handle, files)
 
         # Upload the metadata file:
-        # TODO: Temporarily disable metadata file
-        print "HERE"
         metafile = self.generate_metadata_file()
         self.context.upload_file_service.upload("Metadata",
                                                 self._get_filename("metadata", ".xml"),
@@ -60,20 +58,30 @@ class DilutionExtension(GeneralExtension):
         # Need to update from the correct transfer_batch if there is more than one (the temporary one)
         # Update the temporary UDFs. These will only be committed when the script should finish
         transfer_batches = self.dilution_session.single_robot_transfer_batches_for_update()
-        """
-        for transfer in .enumerate_transfers():
-            # For visibility and simplicity, we update temporary UDFs on the target object only, even for those
-            # values that will update the source:
-            target = transfer.destination.aliquot
-            target.udf_dil_calc_source_vol = transfer.updated_source_volume
-            # NOTE: These are not strictly required, since there is currently a 1-1 relationship between
-            # the requested values and the end results, but might be handy in some cases. Keeping it until
-            # we know that we definitely don't need it.
-            target.udf_dil_calc_target_vol = transfer.requested_volume
-            target.udf_dil_calc_target_conc = transfer.requested_concentration
-            self.context.update(target)
+
+        # We expect one transfer batch, or two in the case of splits
+        assert len(transfer_batches) <= 2
+
+        if len(transfer_batches) == 1:
+            transfer_batch = transfer_batches[0]
+            for transfer in transfer_batch.transfers:
+                if transfer.source_analyte.is_control:
+                    continue
+
+                # NOTE: The following three values are temporarily set on the target analyte and will be
+                # committed when the script dilution_commit runs.
+
+                # Set the volume on the target to be committed. Not strictly required but clearer and less error-prone
+                transfer.target_analyte.udf_dil_calc_target_vol = transfer.target_vol
+                transfer.target_analyte.udf_dil_calc_target_conc = transfer.target_conc
+
+                # Update the source vol:
+                transfer.target_analyte.udf_dil_calc_source_vol = transfer.updated_source_vol
+                self.context.update(transfer.target_analyte)
+        else:
+            # TODO: Looped, fix
+            raise NotImplementedError("Updating values for looped is not supported yet")
         self.context.commit()
-        """
 
     @property
     def _first_robot(self):

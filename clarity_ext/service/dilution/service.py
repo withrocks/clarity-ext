@@ -387,7 +387,7 @@ class SingleTransfer(object):
     """
 
     def __init__(self, source_conc, source_vol, target_conc, target_vol, source_location, target_location,
-                 source_analyte):
+                 source_analyte, target_analyte):
         self.source_conc = source_conc
         self.source_vol = source_vol
         self.target_conc = target_conc
@@ -407,6 +407,7 @@ class SingleTransfer(object):
         # In the case of temporary transfers, we keep a pointer to the original for easier calculations
         self.original = None
         self.source_analyte = source_analyte
+        self.target_analyte = target_analyte
         self.updated_source_vol = None
 
         # The TransferBatch takes care of marking the transfer as being a part of it
@@ -466,7 +467,8 @@ class SingleTransfer(object):
                 raise_target_measurements_missing(pair)
 
             # The transfer for controls does only require target volume. Other values will be ignored.
-            transfer = SingleTransfer(0, 0, 0, vol2, source_location, target_location, pair.input_artifact)
+            transfer = SingleTransfer(0, 0, 0, vol2, source_location, target_location,
+                                      pair.input_artifact, pair.output_artifact)
             return transfer
 
         try:
@@ -477,7 +479,8 @@ class SingleTransfer(object):
         except AttributeError:
             raise_target_measurements_missing(pair)
 
-        transfer = SingleTransfer(conc1, vol1, conc2, vol2, source_location, target_location, pair.input_artifact)
+        transfer = SingleTransfer(conc1, vol1, conc2, vol2, source_location, target_location,
+                                  pair.input_artifact, pair.output_artifact)
         transfer.pair = pair
         return transfer
 
