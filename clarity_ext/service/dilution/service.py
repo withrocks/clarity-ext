@@ -32,17 +32,18 @@ class DilutionService(object):
         """
         Creates a batch and breaks it up if required by the validator
         """
-        transfer_batch = self.create_batch(pairs, robot_settings, dilution_settings, validator)
+        strategy = DilutionService.create_strategy(dilution_settings, robot_settings)
+        transfer_batch = self.create_batch(pairs, robot_settings, dilution_settings, validator, strategy)
         #print("Initial transfer batch"); print(transfer_batch.report(True))
 
         # This will try to resolve validation errors with the transfer once, in particular the split validation
         # error, in which case it will split the batch into two:
-        ret = self._try_resolve_transfer_batch_validation(transfer_batch, dilution_settings)
+        ret = self._try_resolve_transfer_batch_validation(transfer_batch, dilution_settings, strategy)
 
         # Now ret either has the original transfer_batch or a list of splits:
         return ret
 
-    def create_batch(self, pairs, robot_settings, dilution_settings, validator):
+    def create_batch(self, pairs, robot_settings, dilution_settings, validator, strategy):
         """
         Creates one batch (one-to-one relationship with a robot driver file) based on the input arguments.
 
@@ -56,13 +57,25 @@ class DilutionService(object):
         batch = TransferBatch(transfers, name=robot_settings.name)
 
         # Based on the volume calculation strategy, calculate the volumes
-        dilution_settings.volume_calc_strategy.calculate_transfer_volumes(batch)
+        strategy.calculate_transfer_volumes(batch)
 
         # Finished calculating volumes so we can safely validate the batch:
-        batch.validate(validator)
+        batch.validate(validator, robot_settings, dilution_settings)
         return batch
 
-    def _try_resolve_transfer_batch_validation(self, transfer_batch, dilution_settings):
+    @staticmethod
+    def create_strategy(dilution_settings, robot_settings):
+        if dilution_settings.volume_calc_method == DilutionSettings.VOLUME_CALC_FIXED:
+            return FixedVolumeCalc(dilution_settings)
+        elif dilution_settings.volume_calc_method == DilutionSettings.VOLUME_CALC_BY_CONC and not dilution_settings.make_pools:
+            return OneToOneConcentrationCalc(dilution_settings, robot_settings)
+        elif dilution_settings.volume_calc_method == DilutionSettings.VOLUME_CALC_BY_CONC and dilution_settings.make_pools:
+            return PoolConcentrationCalc(dilution_settings)
+        else:
+            raise ValueError("Volume calculation method is not implemented for these settings: '{}'".
+                             format(self))
+
+    def _try_resolve_transfer_batch_validation(self, transfer_batch, dilution_settings, strategy):
         """
         Validates a single TransferBatch, trying to resolve errors that can be resolved.
 
@@ -75,7 +88,7 @@ class DilutionService(object):
         # TODO: If this gets more complex (i.e. we want to handle more validation errors in this way)
         # consider doing it through handlers.
         for validation_result in transfer_batch.validation_results:
-            if isinstance(validation_result, NeedsSplitValidationException):
+            if isinstance(validation_result, NeedsBatchSplit):
                 split.append(validation_result.transfer)
 
         # Now push all validation errors over to the validation service. Also those we handled ourselves.
@@ -92,12 +105,12 @@ class DilutionService(object):
             if transfer_batch.depth > 0:
                 raise UsageError(
                     "The dilution can not be performed. Splits of transfer batches of depth {} are not supported".format(dilution_scheme.depth))
-            return self._split_transfer_batch(split, no_split, dilution_settings)
+            return self._split_transfer_batch(split, no_split, dilution_settings, strategy)
         else:
             # No validation errors, we can go ahead with the single transfer_batch
             return [transfer_batch]
 
-    def _split_transfer_batch(self, split, no_split, dilution_settings):
+    def _split_transfer_batch(self, split, no_split, dilution_settings, strategy):
         # Now, TB1 should map from source to target in a temporary plate
         # The target location should be the same as the actual target location
 
@@ -108,7 +121,7 @@ class DilutionService(object):
         first_transfers = list(self._calculate_split_transfers(split))
         temp_transfer_batch = TransferBatch(first_transfers, depth=1, is_temporary=True)
 
-        dilution_settings.volume_calc_strategy.calculate_transfer_volumes(temp_transfer_batch)
+        strategy.calculate_transfer_volumes(temp_transfer_batch)
 
         #print ("TB1"); print temp_transfer_batch.report(True)
 
@@ -133,7 +146,7 @@ class DilutionService(object):
         second_transfers.extend(no_split)
 
         final_transfer_batch = TransferBatch(second_transfers, depth=1)
-        dilution_settings.volume_calc_strategy.calculate_transfer_volumes(final_transfer_batch)
+        strategy.calculate_transfer_volumes(final_transfer_batch)
 
         #print("TB2"); print final_transfer_batch.report(True)
 
@@ -203,7 +216,6 @@ class DilutionSession(object):
         # For now, we're creating one DilutionScheme per robot. It might not be required later, i.e. if
         # the validation etc. doesn't differ between them
         self.dilution_service = dilution_service
-        self.transfer_batches = None
         self.robot_settings_by_name = {robot.name: robot for robot in robots}
         self.dilution_settings = dilution_settings
         self._driver_files = dict()  # A dictionary of generated driver files
@@ -212,7 +224,7 @@ class DilutionSession(object):
 
         # The transfer_batches created by this session. There may be several of these, but at the minimum
         # one per robot. Evaluated when you call evaluate()
-        self.transfer_batches = None
+        self.transfer_batches_by_robot = None
         self.pairs = None  # These are set on evaluation
 
     def evaluate(self, pairs):
@@ -222,11 +234,11 @@ class DilutionSession(object):
         Broken validation rules that can be acted upon automatically will be and the system will be validated again.
         """
         self.pairs = pairs
-        self.transfer_batches = dict()
+        self.transfer_batches_by_robot = dict()
         # 1. For each robot, get the transfer batches for that robot.
         #    NOTE: There may be more than one transfer batches, if a split is required.
         for robot_settings in self.robot_settings_by_name.values():
-            self.transfer_batches[robot_settings.name] = self.dilution_service.create_batches(
+            self.transfer_batches_by_robot[robot_settings.name] = self.dilution_service.create_batches(
                 self.pairs, robot_settings, self.dilution_settings, self.validator)
 
     @lazyprop
@@ -265,7 +277,7 @@ class DilutionSession(object):
         """
         # TODO: Get this from the robot settings class, which is provided when setting up the DilutionSession
         robot_settings = self.robot_settings_by_name[robot_name]
-        for transfer_batch in self.transfer_batches[robot_name]:
+        for transfer_batch in self.transfer_batches_by_robot[robot_name]:
             yield self._transfer_batch_to_robot_file(transfer_batch, robot_settings)
 
     def _transfer_batch_to_robot_file(self, transfer_batch, robot_settings):
@@ -299,8 +311,7 @@ class DilutionSession(object):
         the updated_source_vol is the same on both. This supports the use case where the
         user doesn't have to tell us which robot driver file they used, because the results will be the same.
         """
-        # TODO: Rename transfer_batches to *_by_robot
-        all_robots = self.transfer_batches.items()
+        all_robots = self.transfer_batches_by_robot.items()
         candidate_name, candidate_batches = all_robots[0]
 
         for current_name, current_batches in all_robots[1:]:
@@ -488,8 +499,7 @@ class DilutionSettings:
     }
 
     def __init__(self, scale_up_low_volumes=False, concentration_ref=None, include_blanks=False,
-                 volume_calc_method=None, make_pools=False, pipette_max_volume=None,
-                 dilution_waste_volume=0):
+                 volume_calc_method=None, make_pools=False):
         """
         :param dilution_waste_volume: Extra volume that should be subtracted from the sample volume
         to account for waste during dilution
@@ -504,23 +514,8 @@ class DilutionSettings:
         self.include_blanks = include_blanks
         self.volume_calc_method = volume_calc_method
         self.make_pools = make_pools
-        self.pipette_max_volume = pipette_max_volume
-        self.dilution_waste_volume = dilution_waste_volume
-        self.volume_calc_strategy = self._create_strategy()
-        # TODO: This should be a robot setting!
-        self.robot_min_volume = 2
         self.include_control = True
 
-    def _create_strategy(self):
-        if self.volume_calc_method == self.VOLUME_CALC_FIXED:
-            return FixedVolumeCalc(self)
-        elif self.volume_calc_method == self.VOLUME_CALC_BY_CONC and self.make_pools is False:
-            return OneToOneConcentrationCalc(self)
-        elif self.volume_calc_method == self.VOLUME_CALC_BY_CONC and self.make_pools is True:
-            return PoolConcentrationCalc(self)
-        else:
-            raise ValueError("Volume calculation method is not implemented for these settings: '{}'".
-                             format(self))
 
     def _parse_conc_ref(self, concentration_ref):
         if isinstance(concentration_ref, basestring):
@@ -545,6 +540,7 @@ class RobotSettings(object):
         self.name = name
         self.file_handle = file_handle
         self.file_ext = file_ext
+        self.max_pipette_vol_for_row_split = None
 
     @abc.abstractproperty
     def row_split(self, transfer):
@@ -635,16 +631,22 @@ class DilutionValidatorBase(object):
     def warning(msg):
         return TransferValidationException(None, msg, ValidationType.WARNING)
 
-    def needs_split(self):
+    def needs_batch_split(self):
         """
         Certain transfers may require a split to be successful in the current state
 
         NOTE: This is for splitting into two TransferBatches (not splitting into rows).
         TODO: Naming should make that clear.
         """
-        return NeedsSplitValidationException()
+        return NeedsBatchSplit()
 
-    def rules(self, transfer):
+    def needs_row_split(self):
+        return NeedsRowSplit()
+
+    def needs_evaporation(self):
+        return NeedsEvaporation()
+
+    def rules(self, transfer, robot_settings, dilution_settings):
         """
         Validates that the transfer is correct. Will not run if `can_start_calculation`
         returns False.
@@ -662,7 +664,7 @@ class DilutionValidatorBase(object):
             ret[k] = list(g)
         return ret.get(ValidationType.ERROR, list()), ret.get(ValidationType.WARNING, list())
 
-    def validate(self, transfer_batch):
+    def validate(self, transfer_batch, robot_settings, dilution_settings):
         """
         Validates the transfers, first by validating that calculation can be performed, then by
         running all custom validations.
@@ -671,7 +673,8 @@ class DilutionValidatorBase(object):
         """
         results = ValidationResults()
         for transfer in transfer_batch._transfers:
-            validation_exceptions = list(self.rules(transfer))
+            # TODO: Rename rules to validate too?
+            validation_exceptions = list(self.rules(transfer, robot_settings, dilution_settings))
             for exception in validation_exceptions:
                 if not exception.transfer:
                     exception.transfer = transfer
@@ -681,10 +684,9 @@ class DilutionValidatorBase(object):
 
 class TransferValidationException(ValidationException):
     """Wraps a validation exception for Dilution transfer objects"""
-    def __init__(self, transfer, msg, category, result_type=ValidationType.ERROR):
+    def __init__(self, transfer, msg, result_type=ValidationType.ERROR):
         super(TransferValidationException, self).__init__(msg, result_type)
         self.transfer = transfer
-        self.category = category
 
     def __repr__(self):
         return "{}: {} transfer ({}@{} => {}@{}) - {}".format(
@@ -776,9 +778,9 @@ class TransferBatch(object):
         if len(results.errors) > 0:
             raise UsageError("There were validation errors", results)
 
-    def validate(self, validator):
+    def validate(self, validator, robot_settings, dilution_settings):
         # Run the validator on the object and save the results on the object.
-        self.validation_results.extend(validator.validate(self))
+        self.validation_results.extend(validator.validate(self, robot_settings, dilution_settings))
 
     def report(self, details=False):
         """
@@ -889,8 +891,18 @@ class DilutionSchemeNoExists(object):
         return "<DilutionScheme {}>".format(self.robot_settings.name)
 
 
-class NeedsSplitValidationException(TransferValidationException):
+class NeedsBatchSplit(TransferValidationException):
     def __init__(self):
-        super(NeedsSplitValidationException, self).__init__(None,
-                                                            "The transfer requires a split",
-                                                            ValidationType.ERROR)
+        super(NeedsBatchSplit, self).__init__(None, "The transfer requires a split into another batch",
+                                              ValidationType.WARNING)
+
+
+class NeedsRowSplit(TransferValidationException):
+    def __init__(self):
+        super(NeedsRowSplit, self).__init__(None, "The transfer requires a row split", ValidationType.WARNING)
+
+
+class NeedsEvaporation(TransferValidationException):
+    def __init__(self):
+        super(NeedsEvaporation, self).__init__(None, "The transfer requires evaporation", ValidationType.WARNING)
+

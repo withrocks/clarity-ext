@@ -93,9 +93,23 @@ class TestExtensionContext(object):
         step_repo.all_artifacts = self._all_artifacts
         os_service = MagicMock()
         file_repository = MagicMock()
+
         self.context = ExtensionContext.create_mocked(session, step_repo, os_service, file_repository)
+        # TODO: only mocking this one method of the validation_service for now (quick fix)
+        self.context.validation_service.handle_single_validation = MagicMock()
+
         self._shared_files = list()
         self._analytes = list()
+
+    def logged_validation_results(self):
+        return [call[0][0] for call in self.context.validation_service.handle_single_validation.call_args_list]
+
+    def count_logged_validation_results_of_type(self, t):
+        return len([result for result in self.logged_validation_results() if type(result) == t])
+
+    def count_logged_validation_results_with_msg(self, msg):
+        return len([result for result in self.logged_validation_results()
+                    if result.msg == msg])
 
     def _all_artifacts(self):
         return self._shared_files + self._analytes
