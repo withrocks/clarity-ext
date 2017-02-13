@@ -59,10 +59,12 @@ class OneToOneConcentrationCalc:
                 max(transfer.target_vol - transfer.pipette_sample_volume, 0)
             transfer.has_to_evaporate = \
                 (transfer.target_vol - transfer.pipette_sample_volume) < 0
-            if self.dilution_settings.scale_up_low_volumes and \
-                transfer.pipette_sample_volume < self.dilution_settings.robot_min_volume:
-                scale_factor = float(
-                    self.dilution_settings.robot_min_volume / transfer.pipette_sample_volume)
+
+            # In the case of looped dilutions, we scale up on the temporary plate only
+            # Scaling up is not needed on the regular case because it's covered by looping
+            if (batch.is_temporary and self.dilution_settings.scale_up_low_volumes and
+                transfer.pipette_sample_volume < self.dilution_settings.robot_min_volume):
+                scale_factor = self.dilution_settings.robot_min_volume / float(transfer.pipette_sample_volume)
                 transfer.pipette_sample_volume *= scale_factor
                 transfer.pipette_buffer_volume *= scale_factor
                 transfer.scaled_up = True

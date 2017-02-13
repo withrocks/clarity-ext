@@ -53,7 +53,7 @@ class DilutionService(object):
 
         # Wrap the transfers in a TransferBatch object, it will do a basic validation on itself:
         # and raise a UsageError if it can't be used.
-        batch = TransferBatch(transfers)
+        batch = TransferBatch(transfers, name=robot_settings.name)
 
         # Based on the volume calculation strategy, calculate the volumes
         dilution_settings.volume_calc_strategy.calculate_transfer_volumes(batch)
@@ -72,9 +72,15 @@ class DilutionService(object):
         split = list()
         no_split = list()
 
+        # TODO: If this gets more complex (i.e. we want to handle more validation errors in this way)
+        # consider doing it through handlers.
         for validation_result in transfer_batch.validation_results:
             if isinstance(validation_result, NeedsSplitValidationException):
                 split.append(validation_result.transfer)
+
+        # Now push all validation errors over to the validation service. Also those we handled ourselves.
+        # It will take care of logging:
+        self.validation_service.handle_validation(transfer_batch.validation_results)
 
         for transfer in transfer_batch.transfers:
             if transfer not in split:
@@ -150,7 +156,8 @@ class DilutionService(object):
 
         for transfer in original_transfers:
             temp_target_container = map_target_container_to_temp[transfer.target_location.container]
-            temp_target_location = TransferLocation(temp_target_container, transfer.target_location.position)
+            temp_target_location = TransferLocation(temp_target_container, transfer.target_location.position,
+                                                    transfer.target_location.well)
 
             # TODO: This should be defined by a rule provided by the end user
             static_sample_volume = 4
@@ -392,6 +399,9 @@ class SingleTransfer(object):
         self.source_analyte = source_analyte
         self.updated_source_vol = None
 
+        # The TransferBatch takes care of marking the transfer as being a part of it
+        self.transfer_batch = None
+
     def report(self):
         """Returns a detailed view of this transfer object for debugging and validation"""
         report = list()
@@ -611,6 +621,7 @@ class TemplateHelper:
                 return os.path.join(templates_dir, candidate_file)
 """
 
+
 class DilutionValidatorBase(object):
     """
     Validates transfer objects that are to be diluted. Inherit from this object to support behavior
@@ -624,10 +635,12 @@ class DilutionValidatorBase(object):
     def warning(msg):
         return TransferValidationException(None, msg, ValidationType.WARNING)
 
-    @staticmethod
-    def needs_split():
+    def needs_split(self):
         """
         Certain transfers may require a split to be successful in the current state
+
+        NOTE: This is for splitting into two TransferBatches (not splitting into rows).
+        TODO: Naming should make that clear.
         """
         return NeedsSplitValidationException()
 
@@ -668,31 +681,36 @@ class DilutionValidatorBase(object):
 
 class TransferValidationException(ValidationException):
     """Wraps a validation exception for Dilution transfer objects"""
-
-    # TODO: This is a convenient wrapper for the design right now, but it would
-    # be preferable to rather switch to a tuple of ValidationException and Transfer object when validating
-    # and handle the formatting in the code outputting the errors.
-    def __init__(self, transfer, msg, result_type=ValidationType.ERROR):
+    def __init__(self, transfer, msg, category, result_type=ValidationType.ERROR):
         super(TransferValidationException, self).__init__(msg, result_type)
         self.transfer = transfer
+        self.category = category
 
     def __repr__(self):
-        return "{}({}): {}".format(self._repr_type(), self.transfer, self.msg)
+        return "{}: {} transfer ({}@{} => {}@{}) - {}".format(
+            self._repr_type(),
+            self.transfer.transfer_batch.name,
+            self.transfer.source_location.position, self.transfer.source_location.container.id,
+            self.transfer.target_location.position, self.transfer.target_location.container.id,
+            self.msg)
 
 
 class TransferBatch(object):
     """
     Encapsulates a list of SingleTransfer objects. Used to generate robot driver files.
     """
-    def __init__(self, transfers, depth=0, is_temporary=False):
+    def __init__(self, transfers, depth=0, is_temporary=False, name=None):
         self.depth = depth
         self.is_temporary = is_temporary  # temp dilution, no plate will actually be saved.
         self.validation_results = list()
         self._set_transfers(transfers)
+        self.name = name
 
     def _set_transfers(self, transfers):
         self._transfers = transfers
         self._set_container_refs()
+        for transfer in transfers:
+            transfer.transfer_batch = self
 
     def _set_container_refs(self):
         """
@@ -714,13 +732,14 @@ class TransferBatch(object):
         (first output container => 1) etc
 
         The containers are sorted by (not is_temporary, id)
+
+        NOTE: This assumes that containers having the same ID point to the same domain object.
         """
 
         def indexed_containers(all_containers):
             """Returns a map from the containers to an index. The containers are sorted by id"""
             return [(container, ix + 1) for ix, container in enumerate(
                 sorted(all_containers, key=lambda x: (not x.is_temporary, x.id)))]
-
         container_to_container_ref = dict()
         container_to_container_ref.update(indexed_containers(
             set(transfer.source_location.container for transfer in self._transfers)))

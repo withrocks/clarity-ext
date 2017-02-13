@@ -28,8 +28,9 @@ class StepLoggerService:
     def step_log(self):
         try:
             mode = "ab" if self.append else "wb"
-            return self.file_service.local_shared_file(self.step_logger_name, extension=self.extension,
+            x = self.file_service.local_shared_file(self.step_logger_name, extension=self.extension,
                                                        mode=mode, modify_attached=True)
+            return x
         except SharedFileNotFound:
             if self.raise_if_not_found:
                 raise

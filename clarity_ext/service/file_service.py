@@ -5,7 +5,6 @@ import sys
 import shutil
 import logging
 from lxml import objectify
-from genologics.epp import attach_file
 import collections
 from clarity_ext import utils
 
@@ -64,22 +63,22 @@ class FileService:
                 "File name can only contain alphanumeric characters, underscores and spaces")
         local_file_name = ".".join([file_name.replace(" ", "_"), extension])
         local_path = os.path.abspath(local_file_name)
-        local_path = os.path.abspath(local_path)
         cache_directory = os.path.abspath(".cache")
         cache_path = os.path.join(cache_directory, local_file_name)
         artifact = None
 
         if self.should_cache and os.path.exists(cache_path):
             self.logger.info("Fetching cached artifact from '{}'".format(cache_path))
+            # TODO: Mockable, file system repo
             shutil.copy(cache_path, ".")
         else:
             if not os.path.exists(local_path):
                 artifact = self._artifact_by_name(file_name)
 
-                if len(artifact.api_resource.files) == 0:
+                if len(artifact.files) == 0:
                     # No file has been uploaded yet
                     if modify_attached:
-                        with open(local_path, "w+") as fs:
+                        with self.os_service(local_path, "w+") as fs:
                             pass
                 else:
                     file = artifact.api_resource.files[0]  # TODO: Hide this logic
@@ -105,7 +104,9 @@ class FileService:
             # After this, the caller will be able to modify the file with the prefix that ensures
             # that this will be uploaded afterwards. We don't want that in the case of files that are
             # not to be modified, since then they would be automatically uploaded afterwards.
-            attached_name = self.os_service.attach_file_for_epp(local_file_name, artifact.api_resource)
+            print(local_file_name)
+            attached_name = self.os_service.attach_file_for_epp(local_file_name, artifact)
+            print(attached_name)
             local_path = attached_name
 
         return self.file_repo.open_local_file(local_path, mode)
@@ -347,4 +348,9 @@ class OSService(object):
         shutil.copyfile(source, dest)
 
     def attach_file_for_epp(self, local_file, artifact):
-        return attach_file(local_file, artifact)
+        # TODO: Remove epp from the name
+        original_name = os.path.basename(local_file)
+        new_name = artifact.id + '_' + original_name
+        location = os.path.join(os.getcwd(), new_name)
+        shutil.copy(local_file, location)
+        return location

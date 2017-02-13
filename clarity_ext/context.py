@@ -93,7 +93,7 @@ class ExtensionContext(object):
                                 test_mode=test_mode, disable_commits=disable_commits)
 
     @staticmethod
-    def create_mocked(session, step_repo, os_service, test_mode=False, uploaded_to_stdout=False,
+    def create_mocked(session, step_repo, os_service, file_repository, test_mode=False, uploaded_to_stdout=False,
                       disable_commits=False, upload_files=True):
         """
         A convenience method for creating an ExtensionContext that mocks out repos only. Used in integration tests
@@ -108,8 +108,7 @@ class ExtensionContext(object):
         step_repo = step_repo
         artifact_service = ArtifactService(step_repo)
         current_user = step_repo.current_user()
-        file_repository = FileRepository(session)
-        file_service = FileService(artifact_service, file_repository, False, OSService())
+        file_service = FileService(artifact_service, file_repository, False, os_service)
         step_logger_service = StepLoggerService("Step log", file_service)
         validation_service = ValidationService(step_logger_service)
         clarity_service = ClarityService(ClarityRepository(), step_repo)

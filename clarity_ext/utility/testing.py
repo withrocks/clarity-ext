@@ -12,18 +12,16 @@ class DilutionTestDataHelper:
     as possible, even for end-users testing things in notebooks, but can also be used in tests.
     """
     def __init__(self, settings, create_well_order=Container.DOWN_FIRST):
-        self.input_container = Container(container_type=Container.CONTAINER_TYPE_96_WELLS_PLATE,
-                                         container_id="input", name="input")
-        self.output_container = Container(container_type=Container.CONTAINER_TYPE_96_WELLS_PLATE,
-                                          container_id="output", name="output")
+        # Default input/output containers used if the user doesn't provide them:
+        self.input_container = self.create_container("source")
+        self.output_container = self.create_container("target")
         self.concentration_unit = settings.concentration_ref
         self.well_enumerator = self.input_container.enumerate_wells(create_well_order)
         self.pairs = list()
-        #self.robots = robots
-        #self.settings = settings
-        #self.validator = validator
-        #dilution_service = DilutionService(validation_service=MagicMock())
-        #self.session = dilution_service.create_session(self.robots, self.settings, self.validator)
+
+    def create_container(self, container_id):
+        return Container(container_type=Container.CONTAINER_TYPE_96_WELLS_PLATE,
+                         container_id=container_id, name=container_id)
 
     def _create_analyte(self, is_input, partial_name):
         name = "{}-{}".format("in" if is_input else "out", partial_name)
@@ -31,7 +29,12 @@ class DilutionTestDataHelper:
                       id=name, name=name)
         return ret
 
-    def create_pair(self, pos_from=None, pos_to=None):
+    def create_pair(self, pos_from=None, pos_to=None, source_container=None, target_container=None):
+        if source_container is None:
+            source_container = self.input_container
+        if target_container is None:
+            target_container = self.output_container
+
         if pos_from is None:
             well = self.well_enumerator.next()
             pos_from = well.position
@@ -41,12 +44,13 @@ class DilutionTestDataHelper:
         name = "FROM:{}".format(pos_from)
         pair = ArtifactPair(self._create_analyte(True, name),
                             self._create_analyte(False, name))
-        self.input_container.set_well(pos_from, artifact=pair.input_artifact)
-        self.output_container.set_well(pos_to, artifact=pair.output_artifact)
+        source_container.set_well(pos_from, artifact=pair.input_artifact)
+        target_container.set_well(pos_to, artifact=pair.output_artifact)
         self.pairs.append(pair)
         return pair
 
-    def create_dilution_pair(self, conc1, vol1, conc2, vol2, pos_from=None, pos_to=None):
+    def create_dilution_pair(self, conc1, vol1, conc2, vol2, pos_from=None, pos_to=None,
+                             source_container=None, target_container=None):
         """Creates an analyte pair ready for dilution"""
         pair = self.create_pair(pos_from, pos_to)
         concentration_unit = DilutionSettings.concentration_unit_to_string(self.concentration_unit)
@@ -88,12 +92,13 @@ class TestExtensionContext(object):
         step_repo = MagicMock()
         step_repo.all_artifacts = self._all_artifacts
         os_service = MagicMock()
-        self.context = ExtensionContext.create_mocked(session, step_repo, os_service)
+        file_repository = MagicMock()
+        self.context = ExtensionContext.create_mocked(session, step_repo, os_service, file_repository)
         self._shared_files = list()
         self._analytes = list()
 
     def _all_artifacts(self):
-        return self._shared_files + self._analytes   # TODO: Append others
+        return self._shared_files + self._analytes
 
     def add_shared_result_file(self, f):
         assert f.name is not None, "You need to supply a name"
