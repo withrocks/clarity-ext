@@ -36,7 +36,6 @@ class DilutionExtension(GeneralExtension):
     """
     def execute(self):
         # Upload all robot files:
-        # TODO: Current task: get more than one file uploaded!!1
         for robot in self.get_robot_settings():
             self.logger.info("Creating robot file for {}".format(robot.name))
             # We might get more than one file, in the case of a split
@@ -54,39 +53,26 @@ class DilutionExtension(GeneralExtension):
                                                 metafile,
                                                 stdout_max_lines=3)
 
-        # TODO: Updating temp. UDFs temporarily disabled
         # Need to update from the correct transfer_batch if there is more than one (the temporary one)
         # Update the temporary UDFs. These will only be committed when the script should finish
-        transfer_batches = self.dilution_session.single_robot_transfer_batches_for_update()
+        for _, target, update_info in self.dilution_session.enumerate_update_infos():
+            # Set the volume on the target to be committed. Not strictly required but clearer and less error-prone
+            target.udf_dil_calc_target_vol = update_info.target_vol
+            target.udf_dil_calc_target_conc = update_info.target_conc
 
-        # We expect one transfer batch, or two in the case of splits
-        assert len(transfer_batches) <= 2
-
-        if len(transfer_batches) == 1:
-            transfer_batch = transfer_batches[0]
-            for transfer in transfer_batch.transfers:
-                if transfer.source_analyte.is_control:
-                    continue
-
-                # NOTE: The following three values are temporarily set on the target analyte and will be
-                # committed when the script dilution_commit runs.
-
-                # Set the volume on the target to be committed. Not strictly required but clearer and less error-prone
-                transfer.target_analyte.udf_dil_calc_target_vol = transfer.target_vol
-                transfer.target_analyte.udf_dil_calc_target_conc = transfer.target_conc
-
-                # Update the source vol:
-                transfer.target_analyte.udf_dil_calc_source_vol = transfer.updated_source_vol
-                self.context.update(transfer.target_analyte)
-        else:
-            # TODO: Looped, fix
-            raise NotImplementedError("Updating values for looped is not supported yet")
+            # Update the source vol on the target object. It will be moved to the source object later:
+            target.udf_dil_calc_source_vol = update_info.updated_source_vol
+            self.context.update(target)
         self.context.commit()
 
-    @property
-    def _first_robot(self):
-        # TODO: Not needed when we've gotten rid of the DilutionScheme per robot design
-        return list(self.get_robot_settings())[0]
+        # Ensure that errors and warnings are logged:
+        # TODO: Ensure that the usage errors are reported correctly and the step log is filled
+        # TODO: Handle errors
+        # Update the error state for the next script, update_fields. It will not run if there
+        #error_log_artifact = self.context.error_log_artifact
+        #error_log_artifact.udf_has_errors2 = self.dilution_session.has_errors
+        #self.context.update(error_log_artifact)
+        #self.context.commit()
 
     @lazyprop
     def dilution_session(self):
@@ -104,21 +90,6 @@ class DilutionExtension(GeneralExtension):
                                                                dilution_settings,
                                                                validator)
         session.evaluate(pairs)
-        # Ensure that errors and warnings are logged:
-        # TODO: Validation temp. off
-        """
-        if len(session.validation_results.errors) > 0:
-            self.usage_error("Driver files couldn't be created due to errors")
-        if len(session.validation_results.warnings) > 0:
-            self.usage_warning("Driver file has warnings")
-        """
-
-        # Update the error state for the next script, update_fields. It will not run if there
-        # TODO! stack
-        error_log_artifact = self.context.error_log_artifact
-        #error_log_artifact.udf_has_errors2 = self.dilution_session.has_errors
-        #self.context.update(error_log_artifact)
-        #self.context.commit()
 
         return session
 
@@ -153,7 +124,9 @@ class DilutionExtension(GeneralExtension):
         # NOTE: Using the dilution_scheme for hamilton when generating the metadata file, temporary
         # TODO: Rename scheme to batch
         from clarity_ext import utils
-        transfer_batch = utils.single(self.dilution_session.single_robot_transfer_batches_for_update())
+        # TODO: Change this to support more transfer batches!
+        transfer_batch = self.dilution_session.single_robot_transfer_batches_for_update()[0]
+
         metafile = self.dilution_session.create_general_driver_file(
             template,
             info=metadata_info,

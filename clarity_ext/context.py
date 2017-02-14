@@ -93,8 +93,8 @@ class ExtensionContext(object):
                                 test_mode=test_mode, disable_commits=disable_commits)
 
     @staticmethod
-    def create_mocked(session, step_repo, os_service, file_repository, test_mode=False, uploaded_to_stdout=False,
-                      disable_commits=False, upload_files=True):
+    def create_mocked(session, step_repo, os_service, file_repository, clarity_service,
+                      test_mode=False, uploaded_to_stdout=False, disable_commits=False, upload_files=True):
         """
         A convenience method for creating an ExtensionContext that mocks out repos only. Used in integration tests
         that mock external requirements only. Since external data is always fetched through repositories only, this
@@ -104,6 +104,8 @@ class ExtensionContext(object):
 
         NOTE: The os_service is called a "service" but it's one that directly interacts with external resources.
         """
+
+        # TODO: Clarity service does actual updates. Consider changing the name so we know it has side effects.
         # TODO: Reuse in create
         step_repo = step_repo
         artifact_service = ArtifactService(step_repo)
@@ -111,7 +113,6 @@ class ExtensionContext(object):
         file_service = FileService(artifact_service, file_repository, False, os_service)
         step_logger_service = StepLoggerService("Step log", file_service)
         validation_service = ValidationService(step_logger_service)
-        clarity_service = ClarityService(ClarityRepository(), step_repo)
         dilution_service = DilutionService(validation_service)
         process_service = ProcessService()
         upload_file_service = UploadFileService(os_service, artifact_service,

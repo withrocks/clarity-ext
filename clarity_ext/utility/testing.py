@@ -61,7 +61,10 @@ class DilutionTestDataHelper:
         pair.output_artifact.udf_map = UdfMapping({conc_source_udf: conc1,
                                                    "Current sample volume (ul)": vol1,
                                                    "Target vol. (ul)": vol2,
-                                                   conc_target_udf: conc2})
+                                                   conc_target_udf: conc2,
+                                                   "Dil. calc target vol": None,
+                                                   "Dil. calc target conc.": None,
+                                                   "Dil. calc source vol": None})
         return pair
 
 
@@ -93,8 +96,9 @@ class TestExtensionContext(object):
         step_repo.all_artifacts = self._all_artifacts
         os_service = MagicMock()
         file_repository = MagicMock()
+        clarity_service = MagicMock()
 
-        self.context = ExtensionContext.create_mocked(session, step_repo, os_service, file_repository)
+        self.context = ExtensionContext.create_mocked(session, step_repo, os_service, file_repository, clarity_service)
         # TODO: only mocking this one method of the validation_service for now (quick fix)
         self.context.validation_service.handle_single_validation = MagicMock()
 
