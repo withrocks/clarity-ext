@@ -44,7 +44,8 @@ class ClarityService(object):
         if sum(1 for value in map_artifact_to_resource.values()
                if value is not None) == 0:
             return 0
-        ret = self.step_repository.update_artifacts(map_artifact_to_resource.values())
+        ret = self.step_repository.update_artifacts([res for res in map_artifact_to_resource.values()
+                                                     if res is not None])
 
         # Now update all the artifacts so they have the latest version of the api resource.
         # This is a bit strange, it would be cleaner to create a new API resource from the domain
