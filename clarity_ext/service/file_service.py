@@ -157,7 +157,7 @@ class UploadFileService(object):
         artifacts = [shared_file for shared_file in self.artifact_service.shared_files()
                      if shared_file.name == file_handle]
         if len(files) > len(artifacts):
-            raise Exception("Trying to upload {} files to '{}', but only {} are supported".format(
+            raise SharedFileNotFound("Trying to upload {} files to '{}', but only {} are supported".format(
                             len(files), file_handle, len(artifacts)))
 
         for artifact, file_and_name in zip(artifacts, files):

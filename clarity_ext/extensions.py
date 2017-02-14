@@ -100,8 +100,10 @@ class ExtensionService(object):
     def run_test(self, config, run_arguments_list, module, artifacts_to_stdout, use_cache, validate_against_frozen):
         self.msg("To execute from Clarity:")
         self.msg("  clarity-ext extension --args '{}' {} {}".format(
-            "pid={processLuid}",
-            module, self.RUN_MODE_EXEC))
+            "pid={processLuid}", module, self.RUN_MODE_EXEC))
+        self.msg("To execute from Clarity in a sandbox:")
+        self.msg("  bash -c \"source activate clarity-USER && clarity-ext extension --args '{}' {} {}\"".format(
+            "pid={processLuid}", module, self.RUN_MODE_EXEC))
         self.msg("To run a fresh test (ignores the frozen test's cache)")
         self.msg("  clarity-ext extension '{}' test-fresh".format(module))
         self.msg("To freeze the latest test run (set as reference data for future validations):")
@@ -537,4 +539,5 @@ class ExtensionTestLogFilter(logging.Filter):
             if record.name.startswith("clarity_ext.extensions"):
                 return False
             return True
+
 

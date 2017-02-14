@@ -20,20 +20,24 @@
 
 from itertools import groupby
 
+
 class FixedVolumeCalc:
     """
     Implements sample volume calculations for transfer only dilutions.
     I.e. no calculations at all. The fixed transfer volume is specified in
     individual scripts
     """
-    def __init__(self, dilution_settings):
+    def __init__(self, dilution_settings, robot_settings):
         self.dilution_settings = dilution_settings
+        self.robot_settings = robot_settings
 
     def calculate_transfer_volumes(self, batch):
         """
-        Do nothing
+        Only updates the source volume
         """
-        pass
+        for transfer in batch.transfers:
+            transfer.updated_source_vol = round(transfer.source_vol - transfer.pipette_sample_volume - \
+                                                self.robot_settings.dilution_waste_volume, 1)
 
 
 class OneToOneConcentrationCalc:

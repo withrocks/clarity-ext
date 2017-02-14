@@ -1,7 +1,9 @@
 from clarity_ext.extensions import GeneralExtension
 from clarity_ext.utils import lazyprop
+from clarity_ext.service.file_service import SharedFileNotFound
 import abc
 import datetime
+from clarity_ext.domain import ConfigurationException
 
 
 class DilutionExtension(GeneralExtension):
@@ -36,7 +38,10 @@ class DilutionExtension(GeneralExtension):
     """
     def execute(self):
         # Upload all robot files:
+        uploaded = 0
         for robot in self.get_robot_settings():
+            # For flexibility, we upload only to the files that are actually defined on the step.
+            # However, if configured file is found, we throw an error:
             self.logger.info("Creating robot file for {}".format(robot.name))
             # We might get more than one file, in the case of a split
             robot_files = self.dilution_session.driver_files(robot.name)
@@ -44,23 +49,41 @@ class DilutionExtension(GeneralExtension):
             files = [(self._get_filename(robot.name, ext=robot.file_ext, seq=ix + 1),
                       f.to_string(include_header=False, new_line='\r\n'))
                       for ix, f in enumerate(robot_files)]
-            self.context.upload_file_service.upload_files(robot.file_handle, files)
+            try:
+                self.context.upload_file_service.upload_files(robot.file_handle, files)
+                uploaded += 1
+            except SharedFileNotFound:
+                pass
 
-        # Upload the metadata file:
-        metafile = self.generate_metadata_file()
-        self.context.upload_file_service.upload("Metadata",
-                                                self._get_filename("metadata", ".xml"),
-                                                metafile,
-                                                stdout_max_lines=3)
+        if uploaded == 0:
+            raise ConfigurationException(
+                "No robot files were uploaded. You need to add at least one of these file handles: {}.".format(
+                [robot_setting.file_handle for robot_setting in self.get_robot_settings()]))
+
+
+        metadata_file_handle = "Metadata"
+        # TODO: We should have an api for checking if a shared file exists:
+        if len([shared_file for shared_file in self.context.artifact_service.shared_files()
+                     if shared_file.name == metadata_file_handle]) > 0:
+            # Upload the metadata file:
+            metafile = self.generate_metadata_file()
+            self.context.upload_file_service.upload(metadata_file_handle,
+                                                    self._get_filename("metadata", ".xml"),
+                                                    metafile,
+                                                    stdout_max_lines=3)
 
         # Need to update from the correct transfer_batch if there is more than one (the temporary one)
         # Update the temporary UDFs. These will only be committed when the script should finish
         for _, target, update_info in self.dilution_session.enumerate_update_infos():
             # Set the volume on the target to be committed. Not strictly required but clearer and less error-prone
-            target.udf_dil_calc_target_vol = update_info.target_vol
-            target.udf_dil_calc_target_conc = update_info.target_conc
+            if update_info.target_vol:
+                target.udf_dil_calc_target_vol = update_info.target_vol
+
+            if update_info.target_conc:
+                target.udf_dil_calc_target_conc = update_info.target_conc
 
             # Update the source vol on the target object. It will be moved to the source object later:
+            assert update_info.updated_source_vol is not None
             target.udf_dil_calc_source_vol = update_info.updated_source_vol
             self.context.update(target)
         self.context.commit()
@@ -89,6 +112,8 @@ class DilutionExtension(GeneralExtension):
         session = self.context.dilution_service.create_session(robot_settings,
                                                                dilution_settings,
                                                                validator)
+
+        # TODO: This stuff with the static stuff will be refactored
         session.evaluate(pairs)
 
         return session

@@ -43,14 +43,25 @@ class DilutionService(object):
         # Now ret either has the original transfer_batch or a list of splits:
         return ret
 
+    def _create_fixed_transfer_from_pair(self, pair, dilution_settings):
+        transfer = SingleTransfer.create_from_analyte_pair_positions(pair)
+        # Only interested in the sample volume in this case:
+        transfer.source_vol = pair.input_artifact.udf_current_sample_volume_ul
+        transfer.pipette_sample_volume = 4.0
+        return transfer
+
+
     def create_batch(self, pairs, robot_settings, dilution_settings, validator, strategy):
         """
         Creates one batch (one-to-one relationship with a robot driver file) based on the input arguments.
-
         """
-        # Get a list of SingleTransfer objects
-        transfers = [SingleTransfer.create_from_analyte_pair(pair, dilution_settings.concentration_ref)
-                     for pair in pairs if self._include_pair(pair, dilution_settings)]
+        if dilution_settings.volume_calc_method == DilutionSettings.VOLUME_CALC_FIXED:
+            transfers = [self._create_fixed_transfer_from_pair(pair, dilution_settings.concentration_ref)
+                         for pair in pairs if self._include_pair(pair, dilution_settings)]
+        else:
+            # Get a list of SingleTransfer objects
+            transfers = [SingleTransfer.create_from_analyte_pair(pair, dilution_settings.concentration_ref)
+                         for pair in pairs if self._include_pair(pair, dilution_settings)]
 
         # Wrap the transfers in a TransferBatch object, it will do a basic validation on itself:
         # and raise a UsageError if it can't be used.
@@ -66,14 +77,14 @@ class DilutionService(object):
     @staticmethod
     def create_strategy(dilution_settings, robot_settings):
         if dilution_settings.volume_calc_method == DilutionSettings.VOLUME_CALC_FIXED:
-            return FixedVolumeCalc(dilution_settings)
+            return FixedVolumeCalc(dilution_settings, robot_settings)
         elif dilution_settings.volume_calc_method == DilutionSettings.VOLUME_CALC_BY_CONC and not dilution_settings.make_pools:
             return OneToOneConcentrationCalc(dilution_settings, robot_settings)
         elif dilution_settings.volume_calc_method == DilutionSettings.VOLUME_CALC_BY_CONC and dilution_settings.make_pools:
             return PoolConcentrationCalc(dilution_settings)
         else:
             raise ValueError("Volume calculation method is not implemented for these settings: '{}'".
-                             format(self))
+                             format(dilution_settings))
 
     def _try_resolve_transfer_batch_validation(self, transfer_batch, dilution_settings, strategy):
         """
@@ -522,36 +533,42 @@ class SingleTransfer(object):
                 concentration_ref))
 
     @classmethod
+    def create_from_analyte_pair_positions(self, pair):
+        """
+        Creates a transfer based on the analyte pair, but is only conserned with the positions, i.e.
+        ignores all UDFs etc.
+        """
+        source_location = TransferLocation.create_from_analyte(pair.input_artifact)
+        target_location = TransferLocation.create_from_analyte(pair.output_artifact)
+        transfer = SingleTransfer(
+            None, None, None, None, source_location, target_location, pair.input_artifact, pair.output_artifact)
+        return transfer
+
+
+    @classmethod
     def create_from_analyte_pair(cls, pair, concentration_ref):
+        single_transfer = cls.create_from_analyte_pair_positions(pair)
+
         def raise_target_measurements_missing(artifact_pair):
             raise UsageError("You need to provide target volume and concentration for all samples. "
                              "Missing for {}.".format(artifact_pair.output_artifact.id))
-
-        source_location = TransferLocation.create_from_analyte(pair.input_artifact)
-        target_location = TransferLocation.create_from_analyte(pair.output_artifact)
-
+        # Now fill in with the UDF measurements
         if pair.input_artifact.is_control:
             try:
-                vol2 = pair.output_artifact.udf_target_vol_ul
+                # The transfer for controls does only require target volume. Other values will be ignored.
+                single_transfer.target_vol = pair.output_artifact.udf_target_vol_ul
             except AttributeError:
                 raise_target_measurements_missing(pair)
-
-            # The transfer for controls does only require target volume. Other values will be ignored.
-            transfer = SingleTransfer(0, 0, 0, vol2, source_location, target_location,
-                                      pair.input_artifact, pair.output_artifact)
-            return transfer
+            return single_transfer
 
         try:
-            conc1 = cls._referenced_concentration(pair.input_artifact, concentration_ref)
-            vol1 = pair.input_artifact.udf_current_sample_volume_ul
-            conc2 = cls._referenced_requested_concentration(pair.output_artifact, concentration_ref)
-            vol2 = pair.output_artifact.udf_target_vol_ul
+            single_transfer.source_conc = cls._referenced_concentration(pair.input_artifact, concentration_ref)
+            single_transfer.source_vol = pair.input_artifact.udf_current_sample_volume_ul
+            single_transfer.target_conc = cls._referenced_requested_concentration(pair.output_artifact, concentration_ref)
+            single_transfer.target_vol = pair.output_artifact.udf_target_vol_ul
         except AttributeError:
             raise_target_measurements_missing(pair)
-
-        transfer = SingleTransfer(conc1, vol1, conc2, vol2, source_location, target_location,
-                                  pair.input_artifact, pair.output_artifact)
-        transfer.pair = pair
+        transfer.pair = pair  #TODO: Both setting the pair and source target!
         return transfer
 
     def identifier(self):
@@ -569,6 +586,10 @@ class SingleTransfer(object):
                                                               self.target_conc,
                                                               self.target_vol)
 
+from collections import namedtuple
+# Represents source conc/vol, target conc/vol as one unit. TODO: Better name
+DilutionMeasurements = namedtuple('DilutionMeasurements', ['source_conc', 'source_vol', 'target_conc', 'target_vol'])
+
 
 class DilutionSettings:
     """Defines the rules for how a dilution should be performed"""
@@ -583,22 +604,24 @@ class DilutionSettings:
     }
 
     def __init__(self, scale_up_low_volumes=False, concentration_ref=None, include_blanks=False,
-                 volume_calc_method=None, make_pools=False):
+                 volume_calc_method=None, make_pools=False, fixed_sample_volume=None):
         """
         :param dilution_waste_volume: Extra volume that should be subtracted from the sample volume
         to account for waste during dilution
         """
         self.scale_up_low_volumes = scale_up_low_volumes
         # TODO: Use py3 enums instead
-        concentration_ref = self._parse_conc_ref(concentration_ref)
-        if concentration_ref not in [self.CONCENTRATION_REF_NM, self.CONCENTRATION_REF_NGUL]:
-            raise ValueError("Unsupported concentration_ref '{}'".format(concentration_ref))
+        if concentration_ref is not None:
+            concentration_ref = self._parse_conc_ref(concentration_ref)
+            if concentration_ref not in [self.CONCENTRATION_REF_NM, self.CONCENTRATION_REF_NGUL]:
+                raise ValueError("Unsupported concentration_ref '{}'".format(concentration_ref))
         self.concentration_ref = concentration_ref
         # TODO: include_blanks, has that to do with output only? If so, it should perhaps be in RobotSettings
         self.include_blanks = include_blanks
         self.volume_calc_method = volume_calc_method
         self.make_pools = make_pools
         self.include_control = True
+        self.fixed_sample_volume = fixed_sample_volume
 
     def _parse_conc_ref(self, concentration_ref):
         if isinstance(concentration_ref, basestring):
@@ -857,7 +880,8 @@ class TransferBatch(object):
 
     def validate(self, validator, robot_settings, dilution_settings):
         # Run the validator on the object and save the results on the object.
-        self.validation_results.extend(validator.validate(self, robot_settings, dilution_settings))
+        if validator:
+            self.validation_results.extend(validator.validate(self, robot_settings, dilution_settings))
 
     def report(self, details=False):
         """

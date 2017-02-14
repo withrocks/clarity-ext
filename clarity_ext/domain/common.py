@@ -70,3 +70,8 @@ class AssignLogger(DomainObjectMixin):
         log_output = copy.copy(self.log)
         self.log = []
         return log_output
+
+
+class ConfigurationException(Exception):
+    """An exception occurred that has to do with the configuration of the LIMS system"""
+    pass
