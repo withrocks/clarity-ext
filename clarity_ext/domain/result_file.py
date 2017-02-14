@@ -19,6 +19,7 @@ class ResultFile(Aliquot):
         # TODO: Get rid of the api_resource
         super(self.__class__, self).__init__(api_resource, is_input=is_input, id=id,
                 samples=samples, name=name, well=well, udf_map=udf_map)
+        self.is_control = False
 
     @staticmethod
     def create_from_rest_resource(resource, is_input, container_repo, process_type):
