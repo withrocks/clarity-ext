@@ -56,6 +56,9 @@ class ExtensionContext(object):
         self.upload_file_service = upload_file_service
         self.test_mode = test_mode
         self.clarity_service = clarity_service
+        # Add the URL to the current_step
+        # TODO: Quick-fix. Turn this around and fetch the process from the process service
+        self.current_step.ui_link = self.process_service.ui_link_process(self.current_step.api_resource)
 
     @staticmethod
     def create(step_id, test_mode=False):
@@ -216,3 +219,7 @@ class ExtensionContext(object):
         """Commits all objects that have been added via the update method, using batch processing if possible"""
         self.clarity_service.update(self._update_queue, self.disable_commits)
 
+    @lazyprop
+    def current_process_type(self):
+        # TODO: Hang this on the process object
+        return self.step_repo.get_process_type()
