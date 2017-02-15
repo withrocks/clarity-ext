@@ -1,3 +1,4 @@
+from __future__ import print_function
 import importlib
 import os
 import sys
@@ -19,6 +20,7 @@ from clarity_ext.service.validation_service import ValidationService
 from jinja2 import Template
 import time
 import random
+import logging.handlers
 
 
 # Defines all classes that are expected to be extended. These are
@@ -100,8 +102,10 @@ class ExtensionService(object):
     def run_test(self, config, run_arguments_list, module, artifacts_to_stdout, use_cache, validate_against_frozen):
         self.msg("To execute from Clarity:")
         self.msg("  clarity-ext extension --args '{}' {} {}".format(
-            "pid={processLuid}",
-            module, self.RUN_MODE_EXEC))
+            "pid={processLuid}", module, self.RUN_MODE_EXEC))
+        self.msg("To execute from Clarity in a sandbox:")
+        self.msg("  bash -c \"source activate clarity-USER && clarity-ext extension --args '{}' {} {}\"".format(
+            "pid={processLuid}", module, self.RUN_MODE_EXEC))
         self.msg("To run a fresh test (ignores the frozen test's cache)")
         self.msg("  clarity-ext extension '{}' test-fresh".format(module))
         self.msg("To freeze the latest test run (set as reference data for future validations):")
@@ -262,6 +266,9 @@ class ExtensionService(object):
             raise NotImplementedError("Unknown extension type")
         context.cleanup()
         os.chdir(old_dir)
+        # Print notifications. Newlines will cause only the last notification to be shown, so
+        # using slash instead:
+        print("/".join(instance.notifications))
 
     def _validate_against_frozen(self, path, frozen_path):
         if os.path.exists(frozen_path):
@@ -373,6 +380,27 @@ class GeneralExtension(object):
             context=context, logger=self.logger)
         # Expose the IntegrationTest type like this so it doesn't need to be imported
         self.test = IntegrationTest
+        self.notifications = list()
+
+    def usage_warning(self, msg):
+        """
+        Notify the user of an error or warning
+        """
+        self.notify("{}. See {} for details".format(msg, self.context.step_log_name))
+
+    def usage_error(self, msg):
+        """
+        Raise an error which the user can possibly fix by changing input parameters. Will log to the
+        Step log by default.
+        """
+        raise UsageError("{}. See {} for details".format(msg, self.context.step_log_name))
+
+    def notify(self, msg):
+        """
+        Adds text to the notification box in the UI, that's shown when
+        the extension has finished running.
+        """
+        self.notifications.append(msg)
 
     @lazyprop
     def random(self):
@@ -516,3 +544,4 @@ class ExtensionTestLogFilter(logging.Filter):
             if record.name.startswith("clarity_ext.extensions"):
                 return False
             return True
+
