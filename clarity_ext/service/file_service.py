@@ -78,7 +78,7 @@ class FileService:
                 if len(artifact.files) == 0:
                     # No file has been uploaded yet
                     if modify_attached:
-                        with self.os_service(local_path, "w+") as fs:
+                        with self.os_service.open_file(local_path, "w+") as fs:
                             pass
                 else:
                     file = artifact.api_resource.files[0]  # TODO: Hide this logic
@@ -152,8 +152,8 @@ class UploadFileService(object):
         :param file_handle: The name that this should be attached to in Clarity, e.g. "Step Log"
         :param files: A list of tuples, (file_name, file-like-object)
         """
-        artifacts = [shared_file for shared_file in self.artifact_service.shared_files()
-                     if shared_file.name == file_handle]
+        artifacts = sorted([shared_file for shared_file in self.artifact_service.shared_files()
+                            if shared_file.name == file_handle], key=lambda f: f.id)
         if len(files) > len(artifacts):
             raise SharedFileNotFound("Trying to upload {} files to '{}', but only {} are supported".format(
                             len(files), file_handle, len(artifacts)))

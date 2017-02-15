@@ -1,6 +1,7 @@
 import abc
 import copy
 import codecs
+from collections import namedtuple
 from clarity_ext.utils import lazyprop
 from clarity_ext.service.dilution.strategies import *
 from jinja2 import Template
@@ -13,7 +14,7 @@ class DilutionService(object):
     def __init__(self, validation_service):
         self.validation_service = validation_service
 
-    def create_session(self, robots, dilution_settings, validator):
+    def create_session(self, robots, dilution_settings, transfer_batch_handler, transfer_handler, transfer_validator):
         """
         Creates a DilutionSession based on the settings. Call evaluate to validate the entire session
         with a particular batch of objects.
@@ -21,42 +22,56 @@ class DilutionService(object):
         A DilutionSession contains several TransferBatch objects that need to be evaluated together
         """
         # TODO: Makes sense that the dilution_settings can return a strategy
-        session = DilutionSession(self, robots, dilution_settings, validator)
+        session = DilutionSession(self, robots, dilution_settings, transfer_batch_handler, transfer_handler,
+                                  transfer_validator)
         # Push the validation results to the validation_service, which logs accordingly etc.
         # TODO: It should throw a UsageError if there are any errors left.
         # TODO: validation not on
         # self.validation_service.handle_validation(session.validation_results)
         return session
 
-    def create_batches(self, pairs, robot_settings, dilution_settings, validator):
+    def create_batches(self, pairs, dilution_settings, robot_settings, transfer_batch_handler, transfer_handler,
+                       transfer_validator):
         """
         Creates a batch and breaks it up if required by the validator
         """
         strategy = DilutionService.create_strategy(dilution_settings, robot_settings)
-        transfer_batch = self.create_batch(pairs, robot_settings, dilution_settings, validator, strategy)
-        # print("Initial transfer batch"); print(transfer_batch.report(True))
 
-        # This will try to resolve validation errors with the transfer once, in particular the split validation
-        # error, in which case it will split the batch into two:
-        ret = self._try_resolve_transfer_batch_validation(transfer_batch, dilution_settings, strategy)
+        # Create the "original transfer batch". This batch may be split up into other batches
+        original_transfer_batch = self.create_batch(pairs, robot_settings,
+                                                    dilution_settings, strategy)
+        if transfer_batch_handler:
+            transfer_batches = transfer_batch_handler.execute(original_transfer_batch, dilution_settings,
+                                                              robot_settings, strategy)
+        else:
+            transfer_batches = [original_transfer_batch]
 
-        # Now ret either has the original transfer_batch or a list of splits:
-        return ret
+        for transfer_batch in transfer_batches:
+            if transfer_handler:
+                transfer_handler.execute(transfer_batch, dilution_settings, robot_settings)
+
+            # Finally, run the validator on the transfer batch:
+            if transfer_validator:
+                results = transfer_validator.validate(transfer_batch, robot_settings, dilution_settings)
+                self.validation_service.handle_validation(results)
+
+        return transfer_batches
 
     def _create_fixed_transfer_from_pair(self, pair, dilution_settings):
         transfer = SingleTransfer.create_from_analyte_pair_positions(pair)
         # Only interested in the sample volume in this case:
         transfer.source_vol = pair.input_artifact.udf_current_sample_volume_ul
-        transfer.pipette_sample_volume = 4.0
+        transfer.pipette_sample_volume = dilution_settings.fixed_sample_volume
         return transfer
 
-
-    def create_batch(self, pairs, robot_settings, dilution_settings, validator, strategy):
+    def create_batch(self, pairs, robot_settings, dilution_settings, strategy):
         """
         Creates one batch (one-to-one relationship with a robot driver file) based on the input arguments.
+
+        NOTE: The batch has not been validated in this call. Caller should validate.
         """
         if dilution_settings.volume_calc_method == DilutionSettings.VOLUME_CALC_FIXED:
-            transfers = [self._create_fixed_transfer_from_pair(pair, dilution_settings.concentration_ref)
+            transfers = [self._create_fixed_transfer_from_pair(pair, dilution_settings)
                          for pair in pairs if self._include_pair(pair, dilution_settings)]
         else:
             # Get a list of SingleTransfer objects
@@ -69,9 +84,6 @@ class DilutionService(object):
 
         # Based on the volume calculation strategy, calculate the volumes
         strategy.calculate_transfer_volumes(batch)
-
-        # Finished calculating volumes so we can safely validate the batch:
-        batch.validate(validator, robot_settings, dilution_settings)
         return batch
 
     @staticmethod
@@ -86,123 +98,6 @@ class DilutionService(object):
             raise ValueError("Volume calculation method is not implemented for these settings: '{}'".
                              format(dilution_settings))
 
-    def _try_resolve_transfer_batch_validation(self, transfer_batch, dilution_settings, strategy):
-        """
-        Validates a single TransferBatch, trying to resolve errors that can be resolved.
-
-        Currently, the only error we can live through is transfers requiring splitting.
-        If we see those, we'll split the transfers and return two dilution_schemes instead.
-        """
-        split = list()
-        no_split = list()
-
-        # TODO: If this gets more complex (i.e. we want to handle more validation errors in this way)
-        # consider doing it through handlers.
-        for validation_result in transfer_batch.validation_results:
-            if isinstance(validation_result, NeedsBatchSplit):
-                split.append(validation_result.transfer)
-
-        # Now push all validation errors over to the validation service. Also those we handled ourselves.
-        # It will take care of logging:
-        self.validation_service.handle_validation(transfer_batch.validation_results)
-
-        for transfer in transfer_batch.transfers:
-            if transfer not in split:
-                no_split.append(transfer)
-
-        if len(split) > 0:
-            # One or more pairs require a split. We need to take out these pairs and create two new
-            # dilution schemes for these
-            if transfer_batch.depth > 0:
-                raise UsageError(
-                    "The dilution can not be performed. Splits of transfer batches of depth {} are not supported".format(
-                        dilution_scheme.depth))
-            return self._split_transfer_batch(split, no_split, dilution_settings, strategy)
-        else:
-            # No validation errors, we can go ahead with the single transfer_batch
-            return [transfer_batch]
-
-    def _split_transfer_batch(self, split, no_split, dilution_settings, strategy):
-        # Now, TB1 should map from source to target in a temporary plate
-        # The target location should be the same as the actual target location
-
-        # Create two new transfer batches:
-        # The first transfer batch should map to the same location as before but with constant values:
-
-        # TODO: Locations are missing, should be same locations and DNA1 -> END1
-        first_transfers = list(self._calculate_split_transfers(split))
-        temp_transfer_batch = TransferBatch(first_transfers, depth=1, is_temporary=True)
-
-        strategy.calculate_transfer_volumes(temp_transfer_batch)
-
-        # print ("TB1"); print temp_transfer_batch.report(True)
-
-        second_transfers = list()
-
-        # We need to create a new transfers list with:
-        #  - target_location should be the original target location
-        #  - source_location should also bet the original source location
-        for temp_transfer in temp_transfer_batch.transfers:
-            # NOTE: It's correct that the source_location is being set to the target_location here:
-            from clarity_ext.domain import Analyte
-            # TODO: api_resource should not be required
-            # source_analyte = Analyte(None, is_input=True, name="temp-{}".format(temp_transfer.source_analyte.id))
-            new_transfer = SingleTransfer(temp_transfer.target_conc, temp_transfer.target_vol,
-                                          temp_transfer.original.target_conc, temp_transfer.original.target_vol,
-                                          source_location=temp_transfer.target_location,
-                                          target_location=temp_transfer.original.target_location,
-                                          source_analyte=temp_transfer.source_analyte,
-                                          target_analyte=temp_transfer.target_analyte)
-            second_transfers.append(new_transfer)
-
-        # Add other transfers just as they were:
-        second_transfers.extend(no_split)
-
-        final_transfer_batch = TransferBatch(second_transfers, depth=1)
-        strategy.calculate_transfer_volumes(final_transfer_batch)
-
-        # print("TB2"); print final_transfer_batch.report(True)
-
-        # For the analytes requiring splits
-        return [temp_transfer_batch, final_transfer_batch]
-
-    def _calculate_split_transfers(self, original_transfers):
-        # For each target well, we need to push this to a temporary plate:
-        from clarity_ext.domain import Container
-
-        # First we need a map from the actual target plates to temp plates:
-        map_target_container_to_temp = dict()
-        for transfer in original_transfers:
-            target_container = transfer.target_location.container
-            if target_container not in map_target_container_to_temp:
-                temp_container = Container.create_from_container(target_container)
-                temp_container.id = "temp{}".format(len(map_target_container_to_temp) + 1)
-                temp_container.name = temp_container.id
-                map_target_container_to_temp[target_container] = temp_container
-
-        for transfer in original_transfers:
-            temp_target_container = map_target_container_to_temp[transfer.target_location.container]
-            temp_target_location = TransferLocation(temp_target_container, transfer.target_location.position,
-                                                    transfer.target_location.well)
-
-            # TODO: This should be defined by a rule provided by the end user
-            static_sample_volume = 4
-            static_buffer_volume = 36
-            copy = SingleTransfer(transfer.source_conc,
-                                  transfer.source_vol,
-                                  transfer.source_conc / 10.0,
-                                  static_buffer_volume + static_sample_volume,
-                                  transfer.source_location,
-                                  temp_target_location,
-                                  transfer.source_analyte,
-                                  transfer.target_analyte)
-
-            # In this case, we'll hardcode the values according to the lab's specs:
-            copy.pipette_sample_volume = static_sample_volume
-            copy.pipette_buffer_volume = static_buffer_volume
-            copy.original = transfer
-            yield copy
-
     def _include_pair(self, pair, dilution_settings):
         # TODO: Rename the dilution_setting rule to include_control
         return not pair.input_artifact.is_control or dilution_settings.include_control
@@ -216,7 +111,8 @@ class DilutionSession(object):
     NOTE: This class might be merged with DilutionScheme later on.
     """
 
-    def __init__(self, dilution_service, robots, dilution_settings, validator):
+    def __init__(self, dilution_service, robots, dilution_settings, transfer_batch_handler, transfer_handler,
+                 transfer_validator):
         """
         Creates a DilutionSession object for the robots. Use the DilutionSession object to create
         robot driver files and update values.
@@ -226,16 +122,25 @@ class DilutionSession(object):
         :param robots: A list of RobotSettings objects
         :param dilution_settings: The list of settings to apply for the dilution
         :param pairs: A list of ArtifactPair items. Can be retrieved through ArtifactService.all_aliquot_pairs()
+        :param original_batch_validator: A validator that runs on the first transfer batch generated. The exceptions
+         it runs into may cause other batches to be created (1-n). The other validator runs on each of those.
+        :param transfer_batches_validator: A validator that's executed on each transfer batch generated. None of these
+         validation exceptions can have side effects that generate more transfer batches.
         """
+        # TODO: The validators are actually rule engines that have side effects, one side effect being
+        # Would make sense to do a bit of renaming
         # TODO: Consider sending in the analytes instead of the artifact_service
         # For now, we're creating one DilutionScheme per robot. It might not be required later, i.e. if
         # the validation etc. doesn't differ between them
         self.dilution_service = dilution_service
         self.robot_settings_by_name = {robot.name: robot for robot in robots}
         self.dilution_settings = dilution_settings
+        self.robot_settings = robots
         self._driver_files = dict()  # A dictionary of generated driver files
         self.validation_results = None
-        self.validator = validator
+        self.transfer_batch_handler = transfer_batch_handler
+        self.transfer_handler = transfer_handler
+        self.transfer_validator = transfer_validator
 
         # The transfer_batches created by this session. There may be several of these, but at the minimum
         # one per robot. Evaluated when you call evaluate()
@@ -254,7 +159,8 @@ class DilutionSession(object):
         #    NOTE: There may be more than one transfer batches, if a split is required.
         for robot_settings in self.robot_settings_by_name.values():
             self.transfer_batches_by_robot[robot_settings.name] = self.dilution_service.create_batches(
-                self.pairs, robot_settings, self.dilution_settings, self.validator)
+                self.pairs, self.dilution_settings, robot_settings, self.transfer_batch_handler,
+                self.transfer_handler, self.transfer_validator)
 
     @lazyprop
     def container_mappings(self):
@@ -304,8 +210,7 @@ class DilutionSession(object):
         sorted_transfers = sorted(transfer_batch.transfers, key=robot_settings.transfer_sort_key)
 
         for transfer in sorted_transfers:
-            for split in robot_settings.row_split(transfer):
-                csv.append(robot_settings.map_transfer_to_row(split), split)
+            csv.append(robot_settings.map_transfer_to_row(transfer), transfer)
         return csv
 
     def create_general_driver_file(self, template_path, **kwargs):
@@ -410,8 +315,11 @@ class DilutionSession(object):
                 if len(candidate_batch.transfers) != len(current_batch.transfers):
                     raise Exception("Number of transfers differ between {} and {}".format(candidate_name, current_name))
                 for candidate_transfer in candidate_batch.transfers:
+                    if candidate_transfer.updated_source_vol == 0:
+                        continue
                     current_transfer = utils.single([t for t in current_batch.transfers
-                                                     if t.source_analyte == candidate_transfer.source_analyte])
+                                                     if t.source_analyte == candidate_transfer.source_analyte and
+                                                     t.updated_source_vol != 0])
                     # Now, we require only that the updated source volume must be the same between the two, other
                     # values may differ. If there is a difference, the caller will have to have the
                     # user select which driver file was actually used before updating based on this session object
@@ -544,7 +452,6 @@ class SingleTransfer(object):
             None, None, None, None, source_location, target_location, pair.input_artifact, pair.output_artifact)
         return transfer
 
-
     @classmethod
     def create_from_analyte_pair(cls, pair, concentration_ref):
         single_transfer = cls.create_from_analyte_pair_positions(pair)
@@ -552,6 +459,7 @@ class SingleTransfer(object):
         def raise_target_measurements_missing(artifact_pair):
             raise UsageError("You need to provide target volume and concentration for all samples. "
                              "Missing for {}.".format(artifact_pair.output_artifact.id))
+
         # Now fill in with the UDF measurements
         if pair.input_artifact.is_control:
             try:
@@ -564,12 +472,13 @@ class SingleTransfer(object):
         try:
             single_transfer.source_conc = cls._referenced_concentration(pair.input_artifact, concentration_ref)
             single_transfer.source_vol = pair.input_artifact.udf_current_sample_volume_ul
-            single_transfer.target_conc = cls._referenced_requested_concentration(pair.output_artifact, concentration_ref)
+            single_transfer.target_conc = cls._referenced_requested_concentration(pair.output_artifact,
+                                                                                  concentration_ref)
             single_transfer.target_vol = pair.output_artifact.udf_target_vol_ul
         except AttributeError:
             raise_target_measurements_missing(pair)
-        transfer.pair = pair  #TODO: Both setting the pair and source target!
-        return transfer
+        single_transfer.pair = pair  # TODO: Both setting the pair and source target!
+        return single_transfer
 
     def identifier(self):
         source = "source({}, conc={})".format(
@@ -586,7 +495,8 @@ class SingleTransfer(object):
                                                               self.target_conc,
                                                               self.target_vol)
 
-from collections import namedtuple
+
+
 # Represents source conc/vol, target conc/vol as one unit. TODO: Better name
 DilutionMeasurements = namedtuple('DilutionMeasurements', ['source_conc', 'source_vol', 'target_conc', 'target_vol'])
 
@@ -623,10 +533,11 @@ class DilutionSettings:
         self.include_control = True
         self.fixed_sample_volume = fixed_sample_volume
 
-    def _parse_conc_ref(self, concentration_ref):
+    @staticmethod
+    def _parse_conc_ref(concentration_ref):
         if isinstance(concentration_ref, basestring):
             for key, value in DilutionSettings.CONCENTRATION_REF_TO_STR.items():
-                if value == concentration_ref:
+                if value.lower() == concentration_ref.lower():
                     return key
         else:
             return concentration_ref
@@ -647,16 +558,6 @@ class RobotSettings(object):
         self.file_handle = file_handle
         self.file_ext = file_ext
         self.max_pipette_vol_for_row_split = None
-
-    @abc.abstractproperty
-    def row_split(self, transfer):
-        """
-        Defines at which level the transfer requires a split. If a split is required, return the new splits.
-
-        Input should be a single transfer, while the output should always be a list, possibly containing only
-        the same transfer, but possibly several, depending on the business rule.
-        """
-        pass
 
     @abc.abstractmethod
     def map_transfer_to_row(self, transfer):
@@ -692,13 +593,13 @@ class RobotSettings(object):
         Sort the transfers based on:
             - source position (container_pos)
             - well index (down first)
-            - pipette volume
+            - pipette volume (descending)
         """
         assert transfer.source_location.container_pos is not None
         assert transfer.source_location.well is not None
         return (transfer.source_location.container_pos,
                 transfer.source_location.well.index_down_first,
-                transfer.pipette_total_volume)
+                -transfer.pipette_total_volume)
 
     def __repr__(self):
         return "<RobotSettings {}>".format(self.name)
@@ -709,6 +610,128 @@ class RobotSettings(object):
             file_handle=self.file_handle,
             file_ext=self.file_ext)
 
+
+class TransferBatchHandlerBase(object):
+    __metaclass__ = abc.ABCMeta
+
+    def __init__(self, validation_service):
+        self.validation_service = validation_service
+
+    @abc.abstractmethod
+    def needs_split(self, transfer, dilution_settings, robot_settings):
+        pass
+
+    def execute(self, transfer_batch, dilution_settings, robot_settings, strategy):
+        """
+        Returns one or two transfer_batches, based on rules. Can be used to split a transfer_batch into original and
+        temporary transfer_batches
+        """
+        split = [t for t in transfer_batch.transfers if self.needs_split(t, dilution_settings, robot_settings)]
+        no_split = [t for t in transfer_batch.transfers if t not in split]
+
+        for transfer in split:
+            # This may look strange, but for now we want to handle this like a validation exception
+            val = NeedsBatchSplit(transfer)
+            self.validation_service.handle_single_validation(val)
+
+        if len(split) > 0:
+            return self.split_transfer_batch(split, no_split, strategy)
+        else:
+            # No split was required
+            return [transfer_batch]
+
+    def split_transfer_batch(self, split, no_split, strategy):
+        first_transfers = list(self.calculate_split_transfers(split))
+        temp_transfer_batch = TransferBatch(first_transfers, depth=1, is_temporary=True)
+        strategy.calculate_transfer_volumes(temp_transfer_batch)
+        second_transfers = list()
+
+        # We need to create a new transfers list with:
+        #  - target_location should be the original target location
+        #  - source_location should also bet the original source location
+        for temp_transfer in temp_transfer_batch.transfers:
+            # NOTE: It's correct that the source_location is being set to the target_location here:
+            new_transfer = SingleTransfer(temp_transfer.target_conc, temp_transfer.target_vol,
+                                          temp_transfer.original.target_conc, temp_transfer.original.target_vol,
+                                          source_location=temp_transfer.target_location,
+                                          target_location=temp_transfer.original.target_location,
+                                          source_analyte=temp_transfer.source_analyte,
+                                          target_analyte=temp_transfer.target_analyte)
+            second_transfers.append(new_transfer)
+
+        # Add other transfers just as they were:
+        second_transfers.extend(no_split)
+
+        final_transfer_batch = TransferBatch(second_transfers, depth=1)
+        strategy.calculate_transfer_volumes(final_transfer_batch)
+
+        # For the analytes requiring splits
+        return [temp_transfer_batch, final_transfer_batch]
+
+    def calculate_split_transfers(self, original_transfers):
+        # For each target well, we need to push this to a temporary plate:
+        from clarity_ext.domain import Container
+
+        # First we need a map from the actual target plates to temp plates:
+        map_target_container_to_temp = dict()
+        for transfer in original_transfers:
+            target_container = transfer.target_location.container
+            if target_container not in map_target_container_to_temp:
+                temp_container = Container.create_from_container(target_container)
+                temp_container.id = "temp{}".format(len(map_target_container_to_temp) + 1)
+                temp_container.name = temp_container.id
+                map_target_container_to_temp[target_container] = temp_container
+
+        for transfer in original_transfers:
+            temp_target_container = map_target_container_to_temp[transfer.target_location.container]
+            temp_target_location = TransferLocation(temp_target_container, transfer.target_location.position,
+                                                    transfer.target_location.well)
+
+            # TODO: This should be defined by a rule provided by the inheriting class
+            static_sample_volume = 4
+            static_buffer_volume = 36
+            transfer_copy = SingleTransfer(transfer.source_conc,
+                                           transfer.source_vol,
+                                           transfer.source_conc / 10.0,
+                                           static_buffer_volume + static_sample_volume,
+                                           transfer.source_location,
+                                           temp_target_location,
+                                           transfer.source_analyte,
+                                           transfer.target_analyte)
+
+            # In this case, we'll hardcode the values according to the lab's specs:
+            transfer_copy.pipette_sample_volume = static_sample_volume
+            transfer_copy.pipette_buffer_volume = static_buffer_volume
+            transfer_copy.original = transfer
+            yield transfer_copy
+
+
+class TransferHandlerBase(object):
+    __metaclass__ = abc.ABCMeta
+
+    def __init__(self, validation_service):
+        self.validation_service = validation_service
+
+    @abc.abstractmethod
+    def needs_row_split(self, transfer, dilution_settings, robot_settings):
+        pass
+
+    @abc.abstractmethod
+    def split_single_transfer(self, transfer, robot_settings):
+        pass
+
+    def execute(self, transfer_batch, dilution_settings, robot_settings):
+        require_row_split = [t for t in transfer_batch.transfers
+                             if self.needs_row_split(t, dilution_settings, robot_settings)]
+        for transfer in require_row_split:
+            # TODO: Looks weird to push the action to the validation handler like this, but fits right now.
+            val = NeedsRowSplit(transfer)
+            self.validation_service.handle_single_validation(val)
+
+        for transfer in require_row_split:
+            split_transfers = self.split_single_transfer(transfer, robot_settings)
+            transfer_batch.transfers.remove(transfer)
+            transfer_batch.transfers.extend(split_transfers)
 
 class DilutionValidatorBase(object):
     """
@@ -723,21 +746,6 @@ class DilutionValidatorBase(object):
     @staticmethod
     def warning(msg):
         return TransferValidationException(None, msg, ValidationType.WARNING)
-
-    def needs_batch_split(self):
-        """
-        Certain transfers may require a split to be successful in the current state
-
-        NOTE: This is for splitting into two TransferBatches (not splitting into rows).
-        TODO: Naming should make that clear.
-        """
-        return NeedsBatchSplit()
-
-    def needs_row_split(self):
-        return NeedsRowSplit()
-
-    def needs_evaporation(self):
-        return NeedsEvaporation()
 
     def rules(self, transfer, robot_settings, dilution_settings):
         """
@@ -896,15 +904,18 @@ class TransferBatch(object):
             if details:
                 report.append(transfer.report())
             else:
-                report.append("[{}({})/{}({}, {}) => {}({})/{}({}, {})]".format(
-                    transfer.source_location.container.name,
-                    transfer.source_location.container_pos,
-                    transfer.source_location.position,
-                    transfer.source_conc, transfer.source_vol,
-                    transfer.target_location.container.name,
-                    transfer.target_location.container_pos,
-                    transfer.target_location.position,
-                    transfer.target_conc, transfer.target_vol))
+                report.append("[{sname}({cont1})/{pos1}({conc1}, {vol1} ({xvol})) "
+                              "=({sample}, {buffer})=> {tname}({cont2})/{pos2}({conc2}, {vol2})]".format(
+                    sname=transfer.source_location.container.name,
+                    cont1=transfer.source_location.container_pos,
+                    pos1=transfer.source_location.position,
+                    conc1=transfer.source_conc, vol1=transfer.source_vol,
+                    tname=transfer.target_location.container.name,
+                    cont2=transfer.target_location.container_pos,
+                    pos2=transfer.target_location.position,
+                    conc2=transfer.target_conc, vol2=transfer.target_vol,
+                    sample=transfer.pipette_sample_volume, buffer=transfer.pipette_buffer_volume,
+                    xvol=transfer.updated_source_vol))
         return "\n".join(report)
 
 
@@ -1004,16 +1015,17 @@ class UpdateInfo(object):
 
 
 class NeedsBatchSplit(TransferValidationException):
-    def __init__(self):
-        super(NeedsBatchSplit, self).__init__(None, "The transfer requires a split into another batch",
+    def __init__(self, transfer):
+        super(NeedsBatchSplit, self).__init__(transfer, "The transfer requires a split into another batch",
                                               ValidationType.WARNING)
 
 
 class NeedsRowSplit(TransferValidationException):
-    def __init__(self):
-        super(NeedsRowSplit, self).__init__(None, "The transfer requires a row split", ValidationType.WARNING)
+    def __init__(self, transfer):
+        super(NeedsRowSplit, self).__init__(transfer, "The transfer requires a row split", ValidationType.WARNING)
 
 
+# TODO: Use NeedsBatchSplit with "reason"?
 class NeedsEvaporation(TransferValidationException):
     def __init__(self):
         super(NeedsEvaporation, self).__init__(None, "The transfer requires evaporation", ValidationType.WARNING)

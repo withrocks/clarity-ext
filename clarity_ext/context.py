@@ -3,7 +3,8 @@ from clarity_ext import UnitConversion
 from clarity_ext.repository import ClarityRepository, FileRepository
 from clarity_ext.utils import lazyprop
 from clarity_ext import ClaritySession
-from clarity_ext.service import ArtifactService, FileService, StepLoggerService, ClarityService
+from clarity_ext.service import (ArtifactService, FileService, StepLoggerService, ClarityService,
+                                 ProcessService, UploadFileService, ValidationService)
 from clarity_ext.repository import StepRepository
 from clarity_ext import utils
 from clarity_ext.service.file_service import OSService
@@ -56,12 +57,16 @@ class ExtensionContext(object):
         self.upload_file_service = upload_file_service
         self.test_mode = test_mode
         self.clarity_service = clarity_service
+        self.process_service = process_service
+        self.validation_service = validation_service
+
         # Add the URL to the current_step
         # TODO: Quick-fix. Turn this around and fetch the process from the process service
         self.current_step.ui_link = self.process_service.ui_link_process(self.current_step.api_resource)
+        self.disable_commits = disable_commits
 
     @staticmethod
-    def create(step_id, test_mode=False):
+    def create(step_id, test_mode=False, uploaded_to_stdout=False, disable_commits=False, upload_files=True):
         """
         Creates a context with all required services set up. This is the way
         a context is meant to be created in production and integration tests,
@@ -77,9 +82,15 @@ class ExtensionContext(object):
         validation_service = ValidationService(step_logger_service)
         clarity_service = ClarityService(ClarityRepository(), step_repo)
         dilution_service = DilutionService(validation_service)
+        process_service = ProcessService()
+        upload_file_service = UploadFileService(OSService(), artifact_service,
+                                                uploaded_to_stdout=uploaded_to_stdout,
+                                                disable_commits=not upload_files)
         return ExtensionContext(session, artifact_service, file_service, current_user,
                                 step_logger_service, step_repo, clarity_service,
-                                dilution_service, test_mode=test_mode)
+                                dilution_service, process_service, upload_file_service,
+                                validation_service,
+                                test_mode=test_mode, disable_commits=disable_commits)
 
     @staticmethod
     def create_mocked(session, step_repo, os_service, file_repository, clarity_service,
@@ -104,7 +115,7 @@ class ExtensionContext(object):
         validation_service = ValidationService(step_logger_service)
         dilution_service = DilutionService(validation_service)
         process_service = ProcessService()
-        upload_file_service = UploadFileService(OSService(), artifact_service,
+        upload_file_service = UploadFileService(os_service, artifact_service,
                                                 uploaded_to_stdout=uploaded_to_stdout,
                                                 disable_commits=not upload_files)
         return ExtensionContext(session, artifact_service, file_service, current_user,
@@ -112,7 +123,6 @@ class ExtensionContext(object):
                                 dilution_service, process_service, upload_file_service,
                                 validation_service,
                                 test_mode=test_mode, disable_commits=disable_commits)
-
 
     @lazyprop
     def error_log_artifact(self):

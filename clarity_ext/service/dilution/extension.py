@@ -107,11 +107,12 @@ class DilutionExtension(GeneralExtension):
         """
         robot_settings = list(self.get_robot_settings())
         dilution_settings = self.get_dilution_settings()
-        validator = self.get_validator()
         pairs = self.context.artifact_service.all_aliquot_pairs()
         session = self.context.dilution_service.create_session(robot_settings,
                                                                dilution_settings,
-                                                               validator)
+                                                               self.get_transfer_batch_handler(),
+                                                               self.get_transfer_handler(),
+                                                               self.get_transfer_validator())
 
         # TODO: This stuff with the static stuff will be refactored
         session.evaluate(pairs)
@@ -126,7 +127,15 @@ class DilutionExtension(GeneralExtension):
             robot_name, initials=initials, today=today, pid=context.pid, ext=extension)
 
     @abc.abstractmethod
-    def get_validator(self):
+    def get_transfer_batch_handler(self):
+        pass
+
+    @abc.abstractmethod
+    def get_transfer_handler(self):
+        pass
+
+    @abc.abstractmethod
+    def get_transfer_validator(self):
         pass
 
     @abc.abstractmethod
