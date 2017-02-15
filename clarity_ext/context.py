@@ -1,4 +1,4 @@
-from clarity_ext.service.dilution_service import DilutionService
+from clarity_ext.service.dilution.service import DilutionService
 from clarity_ext import UnitConversion
 from clarity_ext.repository import ClarityRepository, FileRepository
 from clarity_ext.utils import lazyprop
@@ -66,8 +66,9 @@ class ExtensionContext(object):
         file_repository = FileRepository(session)
         file_service = FileService(artifact_service, file_repository, False, OSService())
         step_logger_service = StepLoggerService("Step log", file_service)
+        validation_service = ValidationService(step_logger_service)
         clarity_service = ClarityService(ClarityRepository(), step_repo)
-        dilution_service = DilutionService(artifact_service)
+        dilution_service = DilutionService(validation_service)
         return ExtensionContext(session, artifact_service, file_service, current_user,
                                 step_logger_service, step_repo, clarity_service,
                                 dilution_service, test_mode=test_mode)
