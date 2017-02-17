@@ -13,6 +13,7 @@ class DilutionTestDataHelper:
 
 
     """
+
     def __init__(self, concentration_ref, create_well_order=Container.DOWN_FIRST):
         self.default_source = "source"
         self.default_target = "target"
@@ -33,7 +34,7 @@ class DilutionTestDataHelper:
 
     def create_container(self, container_id):
         container = Container(container_type=Container.CONTAINER_TYPE_96_WELLS_PLATE,
-                         container_id=container_id, name=container_id)
+                              container_id=container_id, name=container_id)
         self.containers[container_id] = container
         return container
 
@@ -46,7 +47,7 @@ class DilutionTestDataHelper:
     def _create_analyte(self, is_input, partial_name, analyte_type=Analyte):
         name = "{}-{}".format("in" if is_input else "out", partial_name)
         ret = analyte_type(api_resource=None, is_input=is_input,
-                      id=name, name=name)
+                           id=name, name=name)
         return ret
 
     def create_pair(self, pos_from=None, pos_to=None, source_container_name=None, target_container_name=None,
@@ -117,6 +118,7 @@ class TestExtensionContext(object):
 
     The idea is that this should be usable by users that have little knowledge about how the framework works.
     """
+
     def __init__(self):
         from clarity_ext.context import ExtensionContext
         session = MagicMock()
@@ -161,7 +163,7 @@ class TestExtensionContext(object):
 
 class TestExtensionWrapper(object):
     """Similar to TestExtensionContext, but wraps an entire extension"""
+
     def __init__(self, extension_type):
         self.context_wrapper = TestExtensionContext()
         self.extension = extension_type(self.context_wrapper.context)
-

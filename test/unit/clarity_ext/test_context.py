@@ -1,7 +1,6 @@
 import unittest
-from clarity_ext.context import ExtensionContext
-from mock import MagicMock
-from test.unit.clarity_ext import helpers
+from clarity_ext.utility.testing import mock_context
+from test.unit.clarity_ext.helpers import mock_two_containers_artifact_service
 
 
 class TestContext(unittest.TestCase):
@@ -27,4 +26,4 @@ class TestContext(unittest.TestCase):
         self.assertRaises(ValueError, output_should_raise)
 
     def _mock_context(self):
-        return helpers.mock_context(artifact_service=helpers.mock_two_containers_artifact_service())
+        return mock_context(artifact_service=mock_two_containers_artifact_service())
