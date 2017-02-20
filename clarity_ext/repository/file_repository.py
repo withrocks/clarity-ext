@@ -1,6 +1,8 @@
 class FileRepository:
     """
     Handles remote and local file access.
+
+    TODO: Merge with "OSService"
     """
 
     def __init__(self, session):

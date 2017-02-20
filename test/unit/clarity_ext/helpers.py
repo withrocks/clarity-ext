@@ -168,18 +168,25 @@ def mock_step_repository(analyte_set):
 
 
 def mock_context(artifact_service=None, step_repo=None):
+    # NOTE: Will be replaced with a simpler to use mock_context function in
+    # another commit
     session = MagicMock()
     file_service = MagicMock()
     current_user = MagicMock()
     step_logger_service = MagicMock()
+    artifact_service = artifact_service or MagicMock()
+    step_repo = step_repo or MagicMock()
     return ExtensionContext(session=session,
                             artifact_service=artifact_service,
                             file_service=file_service,
                             current_user=current_user,
                             step_logger_service=step_logger_service,
+                            step_repo=step_repo,
                             clarity_service=MagicMock(),
                             dilution_service=MagicMock(),
-                            step_repo=step_repo)
+                            process_service=MagicMock(),
+                            upload_file_service=MagicMock(),
+                            validation_service=MagicMock())
 
 
 def mock_clarity_service(artifact_set):
