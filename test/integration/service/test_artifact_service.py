@@ -4,6 +4,7 @@ from clarity_ext.service import ArtifactService
 from clarity_ext.repository import StepRepository
 from clarity_ext import ClaritySession
 from test.integration import config
+from clarity_ext.context import ExtensionContext
 
 
 class TestArtifactService(unittest.TestCase):
@@ -19,10 +20,8 @@ class TestArtifactService(unittest.TestCase):
         Condition: The step must have only one output container, which is a Patterned Flow Cell
         """
         item = config.get_by_name("has_one_output_of_type_patterned_flow_cell")
-        main_step = ClaritySession.create(item.pid)
-        step_repo = StepRepository(main_step)
-        artifact_svc = ArtifactService(step_repo)
-        containers = artifact_svc.all_output_containers()
+        context = ExtensionContext.create(item.pid)
+        containers = context.artifact_service.all_output_containers()
         self.assertEqual(1, len(containers))
         container = containers[0]
         count = 0
@@ -39,17 +38,16 @@ class TestArtifactService(unittest.TestCase):
         The test ensures that if we enumerate those, we can get to the parent input artifacts and
         look at information hanging on them.
         """
-        test_data = config.get_by_name("has_one_output_of_type_patterned_flow_cell")
-        main_step = ClaritySession.create(test_data.pid)
-        step_repo = StepRepository(main_step)
-        artifact_svc = ArtifactService(step_repo)
+        item = config.get_by_name("has_one_output_of_type_patterned_flow_cell")
+        context = ExtensionContext.create(item.pid)
         all_samples = list()
-        for output_container in artifact_svc.all_output_containers():
+        for output_container in context.artifact_service.all_output_containers():
             for lane in output_container.enumerate_wells():
                 for sample in lane.artifact.samples:
                     all_samples.append(sample)
-        unique_samples = list(utils.unique(all_samples, lambda sample: sample.id))
+        unique_samples = list(utils.unique(
+            all_samples, lambda sample: sample.id))
         self.assertTrue(len(unique_samples) >= 2)
         for sample in unique_samples:
-            parent = artifact_svc.get_parent_input_artifact(sample)
+            parent = context.artifact_service.get_parent_input_artifact(sample)
             self.assertEqual(sample.name, parent.name)

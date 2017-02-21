@@ -8,7 +8,7 @@ steps:
     description: >
         The output container has one patterned flow cell and there should be >= 2 samples
         which have related input artifacts in the parent process which have the same name.
-    pid: 24-9186
+    pid: 24-9935
     containers:
       - type: "Patterned Flow Cell"
 

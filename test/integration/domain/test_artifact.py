@@ -1,7 +1,6 @@
 import unittest
-from clarity_ext.repository import StepRepository
-from clarity_ext.clarity import ClaritySession
 from clarity_ext.domain import Analyte
+from clarity_ext.context import ExtensionContext
 import itertools
 
 
@@ -24,10 +23,9 @@ class TestIntegrationAnalyteRepository(unittest.TestCase):
             - Plate1: B5, D6
             - Plate2: A3, E9
         """
-        session = ClaritySession.create("24-3643")
-        repo = StepRepository(session)
+        context = ExtensionContext.create("24-3643")
         pairs = filter(lambda pair: isinstance(pair[0], Analyte) and
-                       isinstance(pair[1], Analyte), repo.all_artifacts())
+                       isinstance(pair[1], Analyte), context.step_repo.all_artifacts())
         # Of all the artifacts, we're only going to examine those that map from analytes
         # to analytes:
 

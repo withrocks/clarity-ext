@@ -8,6 +8,7 @@ from clarity_ext.service import (ArtifactService, FileService, StepLoggerService
 from clarity_ext.repository import StepRepository
 from clarity_ext import utils
 from clarity_ext.service.file_service import OSService
+from clarity_ext.mappers.clarity_mapper import ClarityMapper
 
 
 class ExtensionContext(object):
@@ -73,16 +74,19 @@ class ExtensionContext(object):
         use the constructor for custom use and unit tests.
         """
         session = ClaritySession.create(step_id)
-        step_repo = StepRepository(session)
+        clarity_mapper = ClarityMapper()
+        step_repo = StepRepository(session, clarity_mapper)
         artifact_service = ArtifactService(step_repo)
         current_user = step_repo.current_user()
         file_repository = FileRepository(session)
-        file_service = FileService(artifact_service, file_repository, False, OSService())
+        file_service = FileService(
+            artifact_service, file_repository, False, OSService())
         step_logger_service = StepLoggerService("Step log", file_service)
         validation_service = ValidationService(step_logger_service)
-        clarity_service = ClarityService(ClarityRepository(), step_repo)
-        dilution_service = DilutionService(validation_service)
+        clarity_service = ClarityService(
+            ClarityRepository(), step_repo, clarity_mapper)
         process_service = ProcessService()
+        dilution_service = DilutionService(validation_service)
         upload_file_service = UploadFileService(OSService(), artifact_service,
                                                 uploaded_to_stdout=uploaded_to_stdout,
                                                 disable_commits=not upload_files)

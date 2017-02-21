@@ -45,7 +45,7 @@ class TestArtifactService(unittest.TestCase):
         _, outp = artifact_svc.all_artifacts()[0]
         self.assertIsNotNone(outp.udf_target_conc_ngul, "Unexpected test setup")
 
-        clarity_svc = ClarityService(MagicMock(), MagicMock())
+        clarity_svc = ClarityService(MagicMock(), MagicMock(), MagicMock())
         clarity_svc.update([outp])
         clarity_svc.step_repository.update_artifacts.assert_not_called()
 
@@ -62,6 +62,6 @@ class TestArtifactService(unittest.TestCase):
         # Update through the ClarityService, since all objects uses the same update method:
         outp.udf_target_conc_ngul += 1
 
-        clarity_svc = ClarityService(MagicMock(), MagicMock())
+        clarity_svc = ClarityService(MagicMock(), MagicMock(), MagicMock())
         clarity_svc.update([outp])
         clarity_svc.step_repository.update_artifacts.assert_called_once()

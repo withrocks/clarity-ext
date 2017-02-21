@@ -1,5 +1,5 @@
 import logging
-from clarity_ext.domain import Container, Artifact, DomainObjectMixin
+from clarity_ext.domain import Container, Artifact, Sample
 
 
 class ClarityService(object):
@@ -9,10 +9,11 @@ class ClarityService(object):
     Note that artifacts (e.g. Analytes) are still handled in the ArtifactService
     """
 
-    def __init__(self, clarity_repo, step_repo, logger=None):
+    def __init__(self, clarity_repo, step_repo, clarity_mapper, logger=None):
         self.logger = logger or logging.getLogger(__name__)
         self.clarity_repository = clarity_repo
         self.step_repository = step_repo
+        self.clarity_mapper = clarity_mapper
 
     def update(self, domain_objects, ignore_commit=False):
         """Updates the domain object"""
@@ -21,7 +22,9 @@ class ClarityService(object):
         for item in domain_objects:
             if isinstance(item, Artifact):
                 artifacts.append(item)
-            elif isinstance(item, Container):
+            elif isinstance(item, Container) or isinstance(item, Sample):
+                # TODO: This is temporarily limited to Sample and Container.
+                # LIMS-1057
                 other_domain_objects.append(item)
             else:
                 raise NotImplementedError("No update method available for {}".format(type(item)))
@@ -61,10 +64,14 @@ class ClarityService(object):
             api_resource = domain_object.api_resource
             if api_resource.name != domain_object.name:
                 self.logger.info("Updating name of {} from {} to {}".format(domain_object,
-                                                api_resource.name, domain_object.name))
+                                                                            api_resource.name, domain_object.name))
                 api_resource.name = domain_object.name
                 if not ignore_commit:
                     self.clarity_repository.update(api_resource)
+        elif isinstance(domain_object, Sample):
+            # TODO: Update in a consistent way. LIMS-1057
+            api_resource = self.clarity_mapper.create_resource(domain_object)
+            if not ignore_commit:
+                self.clarity_repository.update(api_resource)
         else:
             raise NotImplementedError("The type '{}' isn't implemented".format(type(domain_object)))
-
