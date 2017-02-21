@@ -238,7 +238,7 @@ class SharedFileNotFound(Exception):
 
 class Csv:
     """A simple wrapper for csv files"""
-    def __init__(self, file_stream=None, delim=",", file_name=None):
+    def __init__(self, file_stream=None, delim=",", file_name=None, newline="\n"):
         self.header = list()
         self.data = list()
         if file_stream:
@@ -249,6 +249,7 @@ class Csv:
                 self._init_from_file_stream(file_stream, delim)
         self.file_name = file_name
         self.delim = delim
+        self.newline = newline
 
     def _init_from_file_stream(self, file_stream, delim):
         lines = list()
@@ -271,13 +272,13 @@ class Csv:
     def __iter__(self):
         return iter(self.data)
 
-    def to_string(self, include_header=True, new_line='\n'):
+    def to_string(self, include_header=True):
         ret = []
         if include_header:
             ret.append(self.delim.join(map(str, self.header)))
         for line in self.data:
             ret.append(self.delim.join(map(str, line)))
-        return new_line.join(ret)
+        return self.newline.join(ret)
 
 
 class CsvLine:

@@ -175,7 +175,7 @@ class DilutionSession(object):
         """
         Maps a transfer_batch to a robot file of type Csv. The transfer_batch is sorted and grouped as required.
         """
-        csv = Csv(delim=robot_settings.delimiter)
+        csv = Csv(delim=robot_settings.delimiter, newline=robot_settings.newline)
         csv.set_header(robot_settings.header)
         sorted_transfers = sorted(transfer_batch.transfers, key=robot_settings.transfer_sort_key)
 
@@ -494,13 +494,18 @@ class DilutionSettings:
 class RobotSettings(object):
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, name, file_handle, file_ext):
+    def __init__(self):
         """
         Inherit from this file to supply new settings for a robot
         """
-        self.name = name
-        self.file_handle = file_handle
-        self.file_ext = file_ext
+        self.name = None
+        self.file_handle = None
+        self.newline = None
+        self.file_ext = None
+        self.delimiter = None
+        self.dilution_waste_volume = None
+        self.pipette_min_volume = None
+        self.pipette_max_volume = None
         self.max_pipette_vol_for_row_split = None
 
     @abc.abstractmethod
@@ -510,13 +515,6 @@ class RobotSettings(object):
         :return:
         """
         pass
-
-    @property
-    def delimiter(self):
-        """
-        :return: The delimiter used in the generated CSV file.
-        """
-        return "\t"
 
     @abc.abstractmethod
     def get_index_from_well(self, well):
