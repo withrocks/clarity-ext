@@ -1,6 +1,5 @@
 from clarity_ext.domain.artifact import Artifact
-from clarity_ext.domain.udf import DomainObjectMixin, DomainObjectWithUdfMixin
-from clarity_ext.domain.container import ContainerPosition
+from clarity_ext.domain.udf import DomainObjectWithUdfMixin
 
 
 class Aliquot(Artifact):
@@ -17,49 +16,23 @@ class Aliquot(Artifact):
             self.container = None
         self.is_from_original = False
 
-    @staticmethod
-    def create_well_from_rest(resource, container_repo):
-        # TODO: Batch call
-        try:
-            container = container_repo.get_container(resource.location[0])
-        except AttributeError:
-            pass
-            container = None
-        try:
-            pos = ContainerPosition.create(resource.location[1])
-        except (AttributeError, ValueError):
-            pass
-            pos = None
-
-        well = None
-        if container and pos:
-            well = container.wells[pos]
-
-        return well
-
 
 class Sample(DomainObjectWithUdfMixin):
 
-    def __init__(self, sample_id, name, project, udfs=None):
+    def __init__(self, sample_id, name, project, udf_map=None):
         """
         :param sample_id: The ID of the sample
         :param name: The name of the sample
         :param project: The project domain object
-        :param udfs: A dictionary of udfs
+        :param udf_map: An UdfMapping
         """
-        super(Sample, self).__init__(udfs)
+        super(Sample, self).__init__(udf_map=udf_map)
         self.id = sample_id
         self.name = name
         self.project = project
 
     def __repr__(self):
         return "<Sample id={}>".format(self.id)
-
-    @staticmethod
-    def create_from_rest_resource(resource):
-        project = Project(resource.project.name) if resource.project else None
-        sample = Sample(resource.id, resource.name, project, resource.udf)
-        return sample
 
 
 class Project(DomainObjectWithUdfMixin):

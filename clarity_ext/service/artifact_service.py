@@ -139,7 +139,8 @@ class ArtifactService:
         for process in parent_processes:
             # This might seem roundabout, but for simplicity, we create another artifact service for
             # fetching the parent items:
-            parent_step_repo = StepRepository(ClaritySession.create(process.id))
+            parent_step_repo = StepRepository(ClaritySession.create(process.id),
+                                              self.step_repository.clarity_mapper)
             parent_artifact_service = ArtifactService(parent_step_repo)
             for input in parent_artifact_service.all_input_artifacts():
                 yield input

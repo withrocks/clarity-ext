@@ -1,5 +1,5 @@
 import unittest
-from clarity_ext.domain import Container
+from clarity_ext.domain import Container, ResultFile
 from clarity_ext.context import ExtensionContext
 import os
 
@@ -44,17 +44,16 @@ class TestIntegrationAnalyteRepository(unittest.TestCase):
     def test_can_fetch_all_output_files(self):
         """Can fetch all output files in a step"""
         context = ExtensionContext.create("24-3144")
+        # This will return output result files per input, not those per all inputs
         actual = set(f.id for f in context.output_result_files)
-        expected = set(['92-5244', '92-5245', '92-5246',
-                        '92-5241', '92-5242', '92-5243'])
+        expected = set(['92-5241', '92-5242'])
         self.assertEqual(expected, actual)
 
     def test_can_fetch_single_output_file(self):
         context = ExtensionContext.create("24-3144")
-        result = context.output_result_file_by_id("92-5244")
+        result = context.output_result_file_by_id("92-5242")
         self.assertIsNotNone(result)
-        # TODO: Assert fails, needs cleanup (ticket created)
-        #self.assertIsInstance(result, ResultFile)
+        self.assertIsInstance(result, ResultFile)
 
     @unittest.skip("Step removed")
     def test_can_read_xml(self):

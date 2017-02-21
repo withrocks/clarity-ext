@@ -8,6 +8,7 @@ from clarity_ext.repository import StepRepository
 from clarity_ext import utils
 from clarity_ext.driverfile import OSService
 from clarity_ext.service.validation_service import ERRORS_AND_WARNING_ENTRY_NAME
+from clarity_ext.mappers.clarity_mapper import ClarityMapper
 
 
 class ExtensionContext(object):
@@ -60,13 +61,14 @@ class ExtensionContext(object):
         use the constructor for custom use and unit tests.
         """
         session = ClaritySession.create(step_id)
-        step_repo = StepRepository(session)
+        clarity_mapper = ClarityMapper()
+        step_repo = StepRepository(session, clarity_mapper)
         artifact_service = ArtifactService(step_repo)
         current_user = step_repo.current_user()
         file_repository = FileRepository(session)
         file_service = FileService(artifact_service, file_repository, False, OSService())
         step_logger_service = StepLoggerService("Step log", file_service)
-        clarity_service = ClarityService(ClarityRepository(), step_repo)
+        clarity_service = ClarityService(ClarityRepository(), step_repo, clarity_mapper)
         dilution_service = DilutionService(artifact_service)
         return ExtensionContext(session, artifact_service, file_service, current_user,
                                 step_logger_service, step_repo, clarity_service,

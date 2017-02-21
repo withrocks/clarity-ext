@@ -5,11 +5,11 @@ from test.unit.clarity_ext.helpers import fake_container
 from mock import MagicMock
 from clarity_ext.unit_conversion import UnitConversion
 from clarity_ext.domain import Artifact
-from clarity_ext.domain.analyte import Analyte
 from clarity_ext.domain.result_file import ResultFile
 from clarity_ext.domain.shared_result_file import SharedResultFile
 from test.unit.clarity_ext.helpers import mock_artifact_resource
 from test.unit.clarity_ext.helpers import mock_container_repo
+from clarity_ext.mappers.clarity_mapper import ClarityMapper
 
 
 class TestArtifact(unittest.TestCase):
@@ -79,9 +79,9 @@ class TestArtifact(unittest.TestCase):
         container = fake_container("cont1")
         container_repo.get_container.return_value = container
 
-        analyte = Analyte.create_from_rest_resource(
-            api_resource, is_input=True,
-            container_repo=container_repo, process_type=MagicMock())
+        clarity_mapper = ClarityMapper()
+        analyte = clarity_mapper.analyte_create_object(
+            api_resource, is_input=True, container_repo=container_repo, process_type=MagicMock())
 
         expected_analyte = fake_analyte(container_id="cont1", artifact_id="art1", sample_ids=["sample1"],
                                         analyte_name="sample1", well_key="B:2", is_input=True,
@@ -113,7 +113,8 @@ class TestArtifact(unittest.TestCase):
         api_resource.udf = {}
         container_repo = mock_container_repo(container_id="cont1")
 
-        result_file = ResultFile.create_from_rest_resource(
+        clarity_mapper = ClarityMapper()
+        result_file = clarity_mapper.result_file_create_object(
             api_resource, is_input=False, container_repo=container_repo,
             process_type=self._create_process_type_mock(field_definitions=[]))
 
@@ -135,7 +136,8 @@ class TestArtifact(unittest.TestCase):
         api_resource.udf = udfs
         container_repo = mock_container_repo(container_id=None)
 
-        result_file = ResultFile.create_from_rest_resource(
+        clarity_mapper = ClarityMapper()
+        result_file = clarity_mapper.result_file_create_object(
             api_resource, is_input=False,
             container_repo=container_repo, process_type=self._create_process_type_mock(field_definitions=["UDF1"]))
 
