@@ -160,8 +160,7 @@ class UploadFileService(object):
 
         for artifact, file_and_name in zip(artifacts, files):
             instance_name, content = file_and_name
-            self._upload_single(artifact, file_handle, instance_name, content, newline=None,
-                                stdout_max_lines=stdout_max_lines)
+            self._upload_single(artifact, file_handle, instance_name, content, stdout_max_lines=stdout_max_lines)
 
     def upload(self, file_handle, instance_name, content, stdout_max_lines=50):
         """
@@ -240,30 +239,25 @@ class SharedFileNotFound(Exception):
 class Csv:
     """A simple wrapper for csv files"""
     def __init__(self, file_stream=None, delim=",", file_name=None):
+        self.header = list()
+        self.data = list()
         if file_stream:
             if isinstance(file_stream, basestring):
                 with open(file_stream, "r") as fs:
                     self._init_from_file_stream(fs, delim)
             else:
                 self._init_from_file_stream(file_stream, delim)
-        else:
-            self.header = list()
-            self.data = list()
         self.file_name = file_name
         self.delim = delim
 
     def _init_from_file_stream(self, file_stream, delim):
         lines = list()
-        for line in file_stream:
+        for ix, line in enumerate(file_stream):
             values = line.strip().split(delim)
-            csv_line = CsvLine(values, self)
-            lines.append(csv_line)
-            self.append(values)
-            if len(lines) == 1:
-                self.key_to_index = {key: ix for ix, key in enumerate(values)}
-
-        self.header = lines[0]
-        self.data = lines[1:]
+            if ix == 0:
+                self.set_header(values)
+            else:
+                self.append(values)
 
     def set_header(self, header):
         self.key_to_index = {key: ix for ix, key in enumerate(header)}
