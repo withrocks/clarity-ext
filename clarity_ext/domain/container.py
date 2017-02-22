@@ -36,6 +36,11 @@ class Well(DomainObjectMixin):
         # The position is 1-indexed
         return (self.position.col - 1) * self.container.size.height + self.position.row
 
+    @property
+    def index_right_first(self):
+        # The position is 1-indexed
+        return (self.position.row - 1) * self.container.size.width + self.position.col
+
 
 class ContainerPosition(namedtuple("ContainerPosition", ["row", "col"])):
     """
@@ -52,7 +57,8 @@ class ContainerPosition(namedtuple("ContainerPosition", ["row", "col"])):
         Creates a ContainerPosition from different representations. Supported formats:
             "<row as A-Z>:<col as int>"
             "<row as int>:<col as int>"
-            (<row>, <col>)
+            (<row>, <col>) where both are integers
+            (<row>, <col>) where column is a string (e.g. A)
         """
         if isinstance(repr, basestring):
             row, col = repr.split(":")
@@ -63,12 +69,22 @@ class ContainerPosition(namedtuple("ContainerPosition", ["row", "col"])):
             col = int(col)
         else:
             row, col = repr
+            if isinstance(row, basestring):
+                row = ContainerPosition.letter_to_index(row)
         return ContainerPosition(row=row, col=col)
 
     @property
     def row_letter(self):
         """Returns the letter representation for the row index, e.g. 3 => C"""
-        return chr(65 + self.row - 1)
+        return self.index_to_letter(self.row)
+
+    @staticmethod
+    def index_to_letter(index):
+        return chr(65 + index - 1)
+
+    @staticmethod
+    def letter_to_index(letter):
+        return ord(letter.upper()) - 64
 
 
 class PlateSize(namedtuple("PlateSize", ["height", "width"])):
@@ -87,7 +103,8 @@ class Container(DomainObjectMixin):
     CONTAINER_TYPE_TUBE = 300
     CONTAINER_TYPE_PATTERNED_FLOW_CELL = 400
 
-    def __init__(self, mapping=None, container_type=None, size=None):
+    def __init__(self, mapping=None, container_type=None, size=None, container_type_name=None,
+                 container_id=None, name=None):
         """
         :param mapping: A dictionary-like object containing mapping from well
         position to content. It can be non-complete.
@@ -96,9 +113,14 @@ class Container(DomainObjectMixin):
         :return:
         """
         self.mapping = mapping
+        # TODO: using both container_type and container_type_name is temporary
         self.container_type = container_type
-        self.id = None
-        self.name = None
+        self.container_type_name = container_type_name
+        self.id = container_id
+        self.name = name
+
+        # Set to True if the plate represents no actual plate in Clarity
+        self.is_temporary = False
 
         if size:
             self.size = size
@@ -113,8 +135,24 @@ class Container(DomainObjectMixin):
             else:
                 raise ValueError("Unknown plate type '{}'".format(self.container_type))
 
-    def __repr__(self):
-        return "<Container id={}>".format(self.id)
+    @property
+    def rows(self):
+        # Enumerates the row indexes, returning e.g. (A,B,...,H) for a 96 well plate
+        for index in xrange(1, self.size.height + 1):
+            yield ContainerPosition.index_to_letter(index)
+
+    @property
+    def columns(self):
+        # Enumerates the column indexes, returning e.g. (1,2,...12) for a 96 well plate
+        for index in xrange(1, self.size.width + 1):
+            yield index
+
+    @staticmethod
+    def create_from_container(container):
+        """Creates a container with the same dimensions as the other container"""
+        return Container(container_type=container.container_type,
+                         container_type_name=container.container_type_name,
+                         size=container.size)
 
     @classmethod
     def create_from_rest_resource(cls, resource, api_artifacts=[]):
@@ -135,7 +173,7 @@ class Container(DomainObjectMixin):
         else:
             raise NotImplementedError(
                 "Resource type '{}' is not supported".format(resource.type.name))
-        ret = Container(container_type=container_type, size=size)
+        ret = Container(container_type=container_type, size=size, container_type_name=resource.type.name)
         ret.id = resource.id
         ret.name = resource.name
         ret.size = size
@@ -175,7 +213,7 @@ class Container(DomainObjectMixin):
     def list_wells(self, order=DOWN_FIRST):
         return list(self.enumerate_wells(order))
 
-    def set_well(self, well_pos, artifact_name=None, artifact_id=None, artifact=None):
+    def set_well(self, well_pos, artifact=None):
         # We should support any position that ContainerPosition can handle:
         if not isinstance(well_pos, ContainerPosition):
             well_pos = ContainerPosition.create(well_pos)
@@ -184,10 +222,12 @@ class Container(DomainObjectMixin):
             raise KeyError(
                 "Well id {} is not available in this container (type={})".format(well_pos, self))
 
-        self.wells[well_pos].artifact_name = artifact_name
-        self.wells[well_pos].artifact_id = artifact_id
-        # TODO: Accept only an artifact
         self.wells[well_pos].artifact = artifact
+        if artifact and not artifact.container:
+            artifact.container = self
+
+        if not artifact.well:
+            artifact.well = self.wells[well_pos]
 
     def __iter__(self):
         return self.enumerate_wells(order=self.DOWN_FIRST)

@@ -4,6 +4,12 @@ from clarity_ext.domain.container import ContainerPosition
 
 
 class Aliquot(Artifact):
+    """
+    NOTE: This class currently acts as a base class for both Analyte and ResultFile. It will be
+    merged with Analyte, since the name can cause some confusion as Analytes
+    and ResultFiles strictly don't need to be Aliquots, i.e. they can be non-divided copies
+    of the original for example. Or, in the case of ResultFile, only a measurement of the original.
+    """
 
     def __init__(self, api_resource, is_input, id=None, samples=None, name=None, well=None, udf_map=None):
         super(Aliquot, self).__init__(api_resource=api_resource, id=id, name=name, udf_map=udf_map)

@@ -1,13 +1,13 @@
-from clarity_ext.service.dilution_service import DilutionService
+from clarity_ext.service.dilution.service import DilutionService
 from clarity_ext import UnitConversion
 from clarity_ext.repository import ClarityRepository, FileRepository
 from clarity_ext.utils import lazyprop
 from clarity_ext import ClaritySession
-from clarity_ext.service import ArtifactService, FileService, StepLoggerService, ClarityService
+from clarity_ext.service import (ArtifactService, FileService, StepLoggerService, ClarityService,
+                                 ProcessService, UploadFileService, ValidationService)
 from clarity_ext.repository import StepRepository
 from clarity_ext import utils
-from clarity_ext.driverfile import OSService
-from clarity_ext.service.validation_service import ERRORS_AND_WARNING_ENTRY_NAME
+from clarity_ext.service.file_service import OSService
 
 
 class ExtensionContext(object):
@@ -22,7 +22,9 @@ class ExtensionContext(object):
     """
 
     def __init__(self, session, artifact_service, file_service, current_user,
-                 step_logger_service, step_repo, clarity_service, dilution_service, test_mode=False):
+                 step_logger_service, step_repo, clarity_service, dilution_service, process_service,
+                 upload_file_service, validation_service, test_mode=False,
+                 disable_commits=False):
         """
         Initializes the context.
 
@@ -34,8 +36,11 @@ class ExtensionContext(object):
         :param step_repo: The repository for the current step
         :param clarity_service: General service for working with domain objects
         :param dilution_service: A service for handling dilutions
+        :param upload_file_service: A service for uploading files to the server
         :param test_mode: If set to True, extensions may behave slightly differently when testing, in particular
                           returning a constant time.
+        :param disable_commits: True if commits should be ignored, e.g. when uploading files or updating UDFs.
+        Useful when testing.
         """
         self.session = session
         self.logger = step_logger_service
@@ -49,11 +54,19 @@ class ExtensionContext(object):
         self.dilution_scheme = None
         self.disable_commits = False
         self.dilution_service = dilution_service
+        self.upload_file_service = upload_file_service
         self.test_mode = test_mode
         self.clarity_service = clarity_service
+        self.process_service = process_service
+        self.validation_service = validation_service
+
+        # Add the URL to the current_step
+        # TODO: Quick-fix. Turn this around and fetch the process from the process service
+        self.current_step.ui_link = self.process_service.ui_link_process(self.current_step.api_resource)
+        self.disable_commits = disable_commits
 
     @staticmethod
-    def create(step_id, test_mode=False):
+    def create(step_id, test_mode=False, uploaded_to_stdout=False, disable_commits=False, upload_files=True):
         """
         Creates a context with all required services set up. This is the way
         a context is meant to be created in production and integration tests,
@@ -66,11 +79,50 @@ class ExtensionContext(object):
         file_repository = FileRepository(session)
         file_service = FileService(artifact_service, file_repository, False, OSService())
         step_logger_service = StepLoggerService("Step log", file_service)
+        validation_service = ValidationService(step_logger_service)
         clarity_service = ClarityService(ClarityRepository(), step_repo)
-        dilution_service = DilutionService(artifact_service)
+        dilution_service = DilutionService(validation_service)
+        process_service = ProcessService()
+        upload_file_service = UploadFileService(OSService(), artifact_service,
+                                                uploaded_to_stdout=uploaded_to_stdout,
+                                                disable_commits=not upload_files)
         return ExtensionContext(session, artifact_service, file_service, current_user,
                                 step_logger_service, step_repo, clarity_service,
-                                dilution_service, test_mode=test_mode)
+                                dilution_service, process_service, upload_file_service,
+                                validation_service,
+                                test_mode=test_mode, disable_commits=disable_commits)
+
+    @staticmethod
+    def create_mocked(session, step_repo, os_service, file_repository, clarity_service,
+                      test_mode=False, uploaded_to_stdout=False, disable_commits=False, upload_files=True):
+        """
+        A convenience method for creating an ExtensionContext that mocks out repos only. Used in integration tests
+        that mock external requirements only. Since external data is always fetched through repositories only, this
+        is ensured to limit calls to in-memory calls only, which under the developer's control.
+
+        The session object, although not a repository, is also sent in.
+
+        NOTE: The os_service is called a "service" but it's one that directly interacts with external resources.
+        """
+
+        # TODO: Clarity service does actual updates. Consider changing the name so we know it has side effects.
+        # TODO: Reuse in create
+        step_repo = step_repo
+        artifact_service = ArtifactService(step_repo)
+        current_user = step_repo.current_user()
+        file_service = FileService(artifact_service, file_repository, False, os_service)
+        step_logger_service = StepLoggerService("Step log", file_service)
+        validation_service = ValidationService(step_logger_service)
+        dilution_service = DilutionService(validation_service)
+        process_service = ProcessService()
+        upload_file_service = UploadFileService(os_service, artifact_service,
+                                                uploaded_to_stdout=uploaded_to_stdout,
+                                                disable_commits=not upload_files)
+        return ExtensionContext(session, artifact_service, file_service, current_user,
+                                step_logger_service, step_repo, clarity_service,
+                                dilution_service, process_service, upload_file_service,
+                                validation_service,
+                                test_mode=test_mode, disable_commits=disable_commits)
 
     @lazyprop
     def error_log_artifact(self):
@@ -79,13 +131,17 @@ class ExtensionContext(object):
         without having a visible UDF on the step.
         """
         file_list = [file for file in self.shared_files if file.name ==
-                     ERRORS_AND_WARNING_ENTRY_NAME]
+                     self.step_log_name]
         if not len(file_list) == 1:
             raise ValueError("This step is not configured with the shared file entry for {}".format(
-                ERRORS_AND_WARNING_ENTRY_NAME))
+                self.step_log_name))
         return file_list[0]
 
-    @lazyprop
+    @property
+    def step_log_name(self):
+        return self.validation_service.step_logger_service.step_logger_name
+
+    @property
     def shared_files(self):
         """
         Fetches all share files for the current step
@@ -173,3 +229,7 @@ class ExtensionContext(object):
         """Commits all objects that have been added via the update method, using batch processing if possible"""
         self.clarity_service.update(self._update_queue, self.disable_commits)
 
+    @lazyprop
+    def current_process_type(self):
+        # TODO: Hang this on the process object
+        return self.step_repo.get_process_type()

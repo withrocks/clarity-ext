@@ -20,16 +20,17 @@ class ProcessType(object):
     # We currently need only a few of these, but it would make sense to update
     # it there instead.
 
-    def __init__(self, process_outputs, process_type_id):
+    def __init__(self, process_outputs, process_type_id, name):
         self.id = process_type_id
         self.process_outputs = process_outputs
+        self.name = name
 
     @staticmethod
-    def create_from_resource(process_type):
-        outputs = process_type.root.findall("process-output")
+    def create_from_resource(resource):
+        outputs = resource.root.findall("process-output")
         process_outputs = [ProcessOutput.create_from_element(
             output) for output in outputs]
-        return ProcessType(process_outputs, process_type.id)
+        return ProcessType(process_outputs, resource.id, resource.name)
 
 
 class ProcessOutput(object):
