@@ -163,21 +163,19 @@ class UploadFileService(object):
             self._upload_single(artifact, file_handle, instance_name, content, newline=None,
                                 stdout_max_lines=stdout_max_lines)
 
-    def upload(self, file_handle, instance_name, content, newline=None,
-               stdout_max_lines=50):
+    def upload(self, file_handle, instance_name, content, stdout_max_lines=50):
         """
         :param file_handle: The handle of the file in the Clarity UI
         :param instance_name: The name of this particular file
-        :param content: The content of the file. Can be an enumeration of lines or a string
+        :param content: The content of the file. Should be a string.
         """
         artifact = utils.single([shared_file for shared_file in self.artifact_service.shared_files()
                                  if shared_file.name == file_handle])
-        self._upload_single(artifact, file_handle, instance_name, content, newline, stdout_max_lines)
+        self._upload_single(artifact, file_handle, instance_name, content, stdout_max_lines)
 
-    def _upload_single(self, artifact, file_handle, instance_name, content, newline=None,
+    def _upload_single(self, artifact, file_handle, instance_name, content,
                        stdout_max_lines=50):
-        # TODO: The content should only be string. Handle that newline trick at the caller's
-        local_path = self.save_locally(content, instance_name, newline)
+        local_path = self.save_locally(content, instance_name)
         self.logger.info("Uploading local file '{}' to the LIMS placeholder at {}".format(
             local_path, file_handle))
 
@@ -210,10 +208,9 @@ class UploadFileService(object):
                 sys.stdout.write("<{} more lines>\n".format(extra))
             print("---")
 
-    def save_locally(self, content, filename, newline=None):
+    def save_locally(self, content, filename):
         """
-        Saves a file locally before uploading it to the server. Content can be either a string
-        or an enumerator returning the lines of the file, in which case newline will be used as a separator.
+        Saves a file locally before uploading it to the server. Content should be a string.
         """
         if not self.os_service.exists(self.upload_dir):
             self.logger.debug(
@@ -231,12 +228,6 @@ class UploadFileService(object):
                     f.write(content)
                 except UnicodeEncodeError:
                     f.write(content.encode("utf-8"))
-            elif isinstance(content, collections.Iterable):
-                if not newline:
-                    raise ValueError(
-                        "Newline must be supplied when writing the file as an iterator")
-                for line in content:
-                    f.write(line + newline)
             else:
                 raise NotImplementedError("Type not supported")
         return full_path
