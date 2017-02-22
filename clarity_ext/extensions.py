@@ -14,7 +14,6 @@ from clarity_ext import ClaritySession
 from clarity_ext.repository import StepRepository
 from clarity_ext.service import ArtifactService
 from test.integration.integration_test_service import IntegrationTest
-from clarity_ext.domain.validation import ValidationException, ValidationType
 from jinja2 import Template
 import time
 import random
@@ -255,8 +254,7 @@ class ExtensionService(object):
                                           uploaded_to_stdout=artifacts_to_stdout)
         instance = extension(context)
         if issubclass(extension, DriverFileExtension):
-            context.upload_file_service.upload(instance.shared_file(), instance.filename(),
-                                               instance.content(), newline=instance.newline())
+            context.upload_file_service.upload(instance.shared_file(), instance.filename(), instance.to_string())
         elif issubclass(extension, GeneralExtension):
             instance.execute()
         else:
@@ -441,6 +439,18 @@ class DriverFileExtension(GeneralExtension):
         """Yields the output lines of the file, or the response at updates"""
         pass
 
+    def newline(self):
+        return "\n"
+
+    def to_string(self):
+        content = self.content()
+        # Support that the content can be a list of strings. This supports an older version of the DriverFileExtension
+        # which was not template based. Consider removing this usage of the DriverFileExtension.
+        if isinstance(content, basestring):
+            return content
+        else:
+            return self.newline().join(content)
+
 
 class SampleSheetExtension(DriverFileExtension):
     """
@@ -512,7 +522,9 @@ class TemplateExtension(DriverFileExtension):
         with open(self.template_path, 'r') as fs:
             text = fs.read()
             text = codecs.decode(text, "utf-8")
-            template = Template(text)
+            windows_eol = '\r\n'
+            newline_sequence = windows_eol if windows_eol in text else '\n'
+            template = Template(text, newline_sequence=newline_sequence)
             rendered = template.render(ext=self)
             return rendered
 
