@@ -36,6 +36,7 @@ class DilutionExtension(GeneralExtension):
 
     Commit the dilution by running dilution/commit_dilution.py
     """
+
     def execute(self):
         # Upload all robot files:
         uploaded = 0
@@ -47,8 +48,8 @@ class DilutionExtension(GeneralExtension):
             robot_files = self.dilution_session.driver_files(robot.name)
 
             files = [(self._get_filename(robot.name, ext=robot.file_ext, seq=ix + 1),
-                      f.to_string(include_header=False, new_line='\r\n'))
-                      for ix, f in enumerate(robot_files)]
+                      f.to_string(include_header=False))
+                     for ix, f in enumerate(robot_files)]
             try:
                 self.context.upload_file_service.upload_files(robot.file_handle, files)
                 uploaded += 1
@@ -58,13 +59,12 @@ class DilutionExtension(GeneralExtension):
         if uploaded == 0:
             raise ConfigurationException(
                 "No robot files were uploaded. You need to add at least one of these file handles: {}.".format(
-                [robot_setting.file_handle for robot_setting in self.get_robot_settings()]))
-
+                    [robot_setting.file_handle for robot_setting in self.get_robot_settings()]))
 
         metadata_file_handle = "Metadata"
         # TODO: We should have an api for checking if a shared file exists:
         if len([shared_file for shared_file in self.context.artifact_service.shared_files()
-                     if shared_file.name == metadata_file_handle]) > 0:
+                if shared_file.name == metadata_file_handle]) > 0:
             # Upload the metadata file:
             metafile = self.generate_metadata_file()
             self.context.upload_file_service.upload(metadata_file_handle,
@@ -92,10 +92,10 @@ class DilutionExtension(GeneralExtension):
         # TODO: Ensure that the usage errors are reported correctly and the step log is filled
         # TODO: Handle errors
         # Update the error state for the next script, update_fields. It will not run if there
-        #error_log_artifact = self.context.error_log_artifact
-        #error_log_artifact.udf_has_errors2 = self.dilution_session.has_errors
-        #self.context.update(error_log_artifact)
-        #self.context.commit()
+        # error_log_artifact = self.context.error_log_artifact
+        # error_log_artifact.udf_has_errors2 = self.dilution_session.has_errors
+        # self.context.update(error_log_artifact)
+        # self.context.commit()
 
     @lazyprop
     def dilution_session(self):
@@ -150,7 +150,7 @@ class DilutionExtension(GeneralExtension):
         from clarity_ext.utils import get_jinja_template_from_package
         from clarity_ext_scripts.dilution.settings import MetadataInfo
         import clarity_ext_scripts.dilution.resources as templates_module
-        #from clarity_ext_scripts.dilution.settings import
+        # from clarity_ext_scripts.dilution.settings import
         template = get_jinja_template_from_package(templates_module, "metadata.xml.j2")
         metadata_info = MetadataInfo(self.dilution_session,
                                      "somefile_TODO", self.context.current_user, self.context)
@@ -175,5 +175,3 @@ class DilutionExtension(GeneralExtension):
         pid = self.context.pid
         return "{prefix}{seq}_{today}_{initials}_{pid}{ext}".format(
             prefix=prefix, seq=seq, initials=initials, today=today, pid=pid, ext=ext)
-
-
