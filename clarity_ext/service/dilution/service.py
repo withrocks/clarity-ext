@@ -1,5 +1,4 @@
 import abc
-import copy
 import codecs
 from collections import namedtuple
 from clarity_ext.utils import lazyprop
@@ -8,6 +7,7 @@ from jinja2 import Template
 from clarity_ext.service.file_service import Csv
 from clarity_ext.domain.validation import ValidationException, ValidationType, ValidationResults, UsageError
 from clarity_ext import utils
+from clarity_ext.domain import Container
 
 
 class DilutionService(object):
@@ -36,7 +36,6 @@ class DilutionService(object):
         else:
             raise ValueError("Volume calculation method is not implemented for these settings: '{}'".
                              format(dilution_settings))
-
 
 
 class DilutionSession(object):
@@ -194,7 +193,7 @@ class DilutionSession(object):
             rendered = template.render(session=self, **kwargs)
             return rendered
 
-    def enumerate_update_infos(self):
+    def update_infos_by_source_analyte(self, transfer_batches=None):
         """
         Returns the information that should be updated in the backend
 
@@ -203,50 +202,32 @@ class DilutionSession(object):
          - Target vol. should be updated on the target analyte
          - Source vol. should be updated on the source analyte
         """
-        for target_analyte, transfers in self.enumerate_transfers_by_target_analyte():
-            # TODO: Yield a pair instead of source/target analyte
+        ret = dict()
+        if not transfer_batches:
+            transfer_batches = self.single_robot_transfer_batches_for_update()
+
+        # TODO: Encapsulate transfer_batches in an object?
+        for target_analyte, transfers in self.group_transfers_by_target_analyte(transfer_batches).items():
             if target_analyte.is_control:
+                # TODO: Rather set "should_update_source_vol" on every transfer for a control to simplify this
                 continue
-            assert len(transfers) <= 2
-            if len(transfers) == 1:
-                transfer = transfers[0]
-                yield (transfer.source_analyte, transfer.target_analyte,
-                       UpdateInfo(transfer.target_conc, transfer.target_vol, transfer.updated_source_vol))
-            else:
-                temp_transfer = utils.single([t for t in transfers if t.transfer_batch.is_temporary])
-                transfer = utils.single([t for t in transfers if not t.transfer_batch.is_temporary])
-                yield (transfer.source_analyte, transfer.target_analyte,
-                       UpdateInfo(transfer.target_conc, transfer.target_vol, temp_transfer.updated_source_vol))
 
-    def enumerate_transfers_by_target_analyte(self):
-        """
-        Returns the transfers (for only one of the robots), including the information needed
-        to update the analyte after dilution.
+            primary_transfer = utils.single([t for t in transfers if t.is_primary])
+            updated_source_vol = utils.single([t.updated_source_vol for t in transfers
+                                               if t.should_update_source_vol])
+            ret[primary_transfer.source_analyte] = ((primary_transfer.source_analyte, primary_transfer.target_analyte),
+                UpdateInfo(primary_transfer.target_conc, primary_transfer.target_vol, updated_source_vol))
+        return ret
 
-        Returns (source, target, [list of associated transfers])
-
-        This information differs based on if the TransferBatches were split or not
-        """
-        transfer_batches = self.single_robot_transfer_batches_for_update()
-        assert len(transfer_batches) <= 2, "Expecting max 2 transfer batches"
-
-        if len(transfer_batches) == 1:
-            for transfer in transfer_batches[0].transfers:
-                yield transfer.target_analyte, [transfer]
-        else:
-            temp_transfer_batch = utils.single([batch for batch in transfer_batches if batch.is_temporary])
-            non_temp_transfer_batch = utils.single([batch for batch in transfer_batches if not batch.is_temporary])
-
-            ret = dict()
-            for transfer in temp_transfer_batch.transfers:
+    def group_transfers_by_target_analyte(self, transfer_batches):
+        """Returns transfers grouped by target analyte, selecting one transfer batch if there are several"""
+        ret = dict()
+        for transfer_batch in transfer_batches:
+            for transfer in transfer_batch.transfers:
                 ret.setdefault(transfer.target_analyte, list())
                 ret[transfer.target_analyte].append(transfer)
-            for transfer in non_temp_transfer_batch.transfers:
-                ret.setdefault(transfer.target_analyte, list())
-                ret[transfer.target_analyte].append(transfer)
+        return ret
 
-            for key, value in ret.items():
-                yield key, value
 
     def single_robot_transfer_batches_for_update(self):
         """
@@ -256,35 +237,23 @@ class DilutionSession(object):
         """
         all_robots = self.transfer_batches_by_robot.items()
         candidate_name, candidate_batches = all_robots[0]
+        candidate_update_infos = self.update_infos_by_source_analyte(candidate_batches)
 
+        # Validate that selecting this robot will have the same effect as selecting any other robot
         for current_name, current_batches in all_robots[1:]:
-            # Validate that the requirement holds:
-
             # Both need to have the same number of transfer batches:
             if len(candidate_batches) != len(current_batches):
                 raise Exception("Can't select a single robot for update. Different number of batches between {} and {}".
                                 format(candidate_name, current_name))
-
             # For each transfer in the candidate, we must have a corresponding transfer in
             # the current having the same update_source_vol. Other values can be different (e.g.
             # sort order, plate names on robots etc.)
-            # TODO: This assumes that the transfer batches are always in the same order, which they should,
-            # but it would make sense to enforce the order before this.
-            for candidate_batch, current_batch in zip(candidate_batches, current_batches):
-                if len(candidate_batch.transfers) != len(current_batch.transfers):
-                    raise Exception("Number of transfers differ between {} and {}".format(candidate_name, current_name))
-                for candidate_transfer in candidate_batch.transfers:
-                    if candidate_transfer.updated_source_vol == 0:
-                        continue
-                    current_transfer = utils.single([t for t in current_batch.transfers
-                                                     if t.source_analyte == candidate_transfer.source_analyte and
-                                                     t.updated_source_vol != 0])
-                    # Now, we require only that the updated source volume must be the same between the two, other
-                    # values may differ. If there is a difference, the caller will have to have the
-                    # user select which driver file was actually used before updating based on this session object
-                    if candidate_transfer.updated_source_vol != current_transfer.updated_source_vol:
-                        raise Exception("Inconsistent updated_source_vol between two transfers. It's not possible to "
-                                        "infer the source volume without explicitly selecting the robot that was used.")
+            current_update_infos = self.update_infos_by_source_analyte(current_batches)
+            for analyte, candidate_update_info in candidate_update_infos.items():
+                current_update_info = current_update_infos[analyte][1]
+                if candidate_update_info[1] != current_update_info:
+                    raise Exception("There is a difference between the update infos between {} and {}. You need "
+                                    "to explicitly select a robot".format(candidate__name, current_name))
         return candidate_batches
 
     def enumerate_transfers_for_update(self):
@@ -296,7 +265,17 @@ class DilutionSession(object):
         transfer_batches = self.single_robot_transfer_batches_for_update()
         for transfer_batch in transfer_batches:
             for transfer in transfer_batch.transfers:
-                yield transfer  # TODO!
+                yield transfer
+
+    def report(self):
+        report = list()
+        report.append("Dilution Session:")
+        report.append("")
+        for robot, transfer_batches in self.transfer_batches_by_robot.items():
+            report.append("Robot: {}".format(robot))
+            for transfer_batch in transfer_batches:
+                report.append(transfer_batch.report())
+        return "\n".join(report)
 
 
 class TransferLocation(object):
@@ -359,6 +338,16 @@ class SingleTransfer(object):
 
         # The TransferBatch takes care of marking the transfer as being a part of it
         self.transfer_batch = None
+
+        # Regular transfers are "primary", but if they are split into others, either into rows or other transfer,
+        # the resulting transfers are "secondary"
+        self.is_primary = True
+
+        # Set to False if source vol should not be updated based on this transfer.
+        # NOTE: This solves a use case where transfer objects shouldn't be used to update source volume. It would
+        # make sense to just set updated_source_vol to zero in that case, but this is currently simpler as it
+        # solves the case with TransferBatches. Look into changing back to the other approach later
+        self.should_update_source_vol = True
 
     @property
     def pipette_total_volume(self):
@@ -432,12 +421,17 @@ class SingleTransfer(object):
         return "{} => {}".format(source, target)
 
     def __repr__(self):
-        return "<SingleTransfer {}({},{})=>{}({},{})>".format(self.source_location,
-                                                              self.source_conc,
-                                                              self.source_vol,
-                                                              self.target_location,
-                                                              self.target_conc,
-                                                              self.target_vol)
+        return "<SingleTransfer {}({},{}=>[{}]) =({},{})=> {}({},{}) {}>".format(
+            self.source_location,
+            self.source_conc,
+            self.source_vol,
+            self.updated_source_vol if self.should_update_source_vol else "",
+            self.pipette_sample_volume,
+            self.pipette_buffer_volume,
+            self.target_location,
+            self.target_conc,
+            self.target_vol,
+            "primary" if self.is_primary else "secondary")
 
 
 # Represents source conc/vol, target conc/vol as one unit. TODO: Better name
@@ -599,6 +593,9 @@ class TransferBatchHandlerBase(object):
                                           target_location=temp_transfer.original.target_location,
                                           source_analyte=temp_transfer.source_analyte,
                                           target_analyte=temp_transfer.target_analyte)
+
+            # In the case of a split TransferBatch, only the secondary transfer should update source volume:
+            new_transfer.should_update_source_vol = False
             second_transfers.append(new_transfer)
 
         # Add other transfers just as they were:
@@ -607,12 +604,12 @@ class TransferBatchHandlerBase(object):
         final_transfer_batch = TransferBatch(second_transfers, depth=1)
         strategy.calculate_transfer_volumes(final_transfer_batch)
 
+
         # For the analytes requiring splits
         return [temp_transfer_batch, final_transfer_batch]
 
     def calculate_split_transfers(self, original_transfers):
         # For each target well, we need to push this to a temporary plate:
-        from clarity_ext.domain import Container
 
         # First we need a map from the actual target plates to temp plates:
         map_target_container_to_temp = dict()
@@ -640,11 +637,13 @@ class TransferBatchHandlerBase(object):
                                            temp_target_location,
                                            transfer.source_analyte,
                                            transfer.target_analyte)
+            transfer_copy.is_primary = False
 
             # In this case, we'll hardcode the values according to the lab's specs:
             transfer_copy.pipette_sample_volume = static_sample_volume
             transfer_copy.pipette_buffer_volume = static_buffer_volume
             transfer_copy.original = transfer
+
             yield transfer_copy
 
 
