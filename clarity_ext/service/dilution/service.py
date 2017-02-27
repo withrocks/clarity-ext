@@ -125,7 +125,7 @@ class DilutionSession(object):
 
         # Wrap the transfers in a TransferBatch object, it will do a basic validation on itself:
         # and raise a UsageError if it can't be used.
-        batch = TransferBatch(transfers, name=robot_settings.name)
+        batch = TransferBatch(transfers, robot_settings, name=robot_settings.name)
 
         # Based on the volume calculation strategy, calculate the volumes
         strategy.calculate_transfer_volumes(batch)
@@ -541,9 +541,9 @@ class RobotSettings(object):
             - well index (down first)
             - pipette volume (descending)
         """
-        assert transfer.source_location.container_pos is not None
+        assert transfer.source_location.container_ref is not None
         assert transfer.source_location.well is not None
-        return (transfer.source_location.container_pos,
+        return (transfer.source_location.container_ref.position,
                 transfer.source_location.well.index_down_first,
                 -transfer.pipette_total_volume)
 
@@ -581,14 +581,14 @@ class TransferBatchHandlerBase(object):
             self.validation_service.handle_single_validation(val)
 
         if len(split) > 0:
-            return self.split_transfer_batch(split, no_split, strategy)
+            return self.split_transfer_batch(split, no_split, strategy, robot_settings)
         else:
             # No split was required
             return [transfer_batch]
 
-    def split_transfer_batch(self, split, no_split, strategy):
+    def split_transfer_batch(self, split, no_split, strategy, robot_settings):
         first_transfers = list(self.calculate_split_transfers(split))
-        temp_transfer_batch = TransferBatch(first_transfers, depth=1, is_temporary=True)
+        temp_transfer_batch = TransferBatch(first_transfers, robot_settings, depth=1, is_temporary=True)
         strategy.calculate_transfer_volumes(temp_transfer_batch)
         second_transfers = list()
 
@@ -611,7 +611,7 @@ class TransferBatchHandlerBase(object):
         # Add other transfers just as they were:
         second_transfers.extend(no_split)
 
-        final_transfer_batch = TransferBatch(second_transfers, depth=1)
+        final_transfer_batch = TransferBatch(second_transfers, robot_settings, depth=1)
         strategy.calculate_transfer_volumes(final_transfer_batch)
 
 
@@ -755,39 +755,36 @@ class TransferBatch(object):
     Encapsulates a list of SingleTransfer objects. Used to generate robot driver files.
     """
 
-    def __init__(self, transfers, depth=0, is_temporary=False, name=None):
+    def __init__(self, transfers, robot_settings, depth=0, is_temporary=False, name=None):
         self.depth = depth
         self.is_temporary = is_temporary  # temp dilution, no plate will actually be saved.
         self.validation_results = list()
-        self._set_transfers(transfers)
+        self._set_transfers(transfers, robot_settings)
         self.name = name
 
-    def _set_transfers(self, transfers):
+    def _set_transfers(self, transfers, robot_settings):
         self._transfers = transfers
-        self._set_container_refs()
+        self._set_container_refs(robot_settings)
         for transfer in transfers:
             transfer.transfer_batch = self
 
-    def _set_container_refs(self):
+    def _set_container_refs(self, robot_settings):
         """
         Updates the container refs (DNA1, END1 etc) for each container in the transfer.
         These depend on the state of the entire batch, so they need to be updated
         if the transfers are updated.
         """
-        self._container_to_container_ref = self._evaluate_container_refs()
-
+        container_to_container_ref = self._evaluate_container_refs(robot_settings)
         for transfer in self._transfers:
             # First get the index being used
-            transfer.source_location.container_pos = self._container_to_container_ref[
-                transfer.source_location.container]
-            transfer.target_location.container_pos = self._container_to_container_ref[
-                transfer.target_location.container]
+            transfer.source_location.container_ref = container_to_container_ref[transfer.source_location.container]
+            transfer.target_location.container_ref = container_to_container_ref[transfer.target_location.container]
 
-    def _evaluate_container_refs(self):
+    def _evaluate_container_refs(self, robot_settings):
         """
         Figures out the mapping from container to container refs
-        (first input container => 1)
-        (first output container => 1) etc
+        (first input container => robot_settings.get_source_container_ref(1))
+        (first output container => robot_settings.get_target_container_ref(1)) etc
 
         The containers are sorted by (not is_temporary, id)
 
@@ -799,12 +796,22 @@ class TransferBatch(object):
             return [(container, ix + 1) for ix, container in enumerate(
                 sorted(all_containers, key=lambda x: (not x.is_temporary, x.id)))]
 
-        container_to_container_ref = dict()
-        container_to_container_ref.update(indexed_containers(
-            set(transfer.source_location.container for transfer in self._transfers)))
-        container_to_container_ref.update(indexed_containers(
-            set(transfer.target_location.container for transfer in self._transfers)))
-        return container_to_container_ref
+        # TODO: is_source should be available on the container
+        source_containers = indexed_containers(set(transfer.source_location.container for transfer in self._transfers))
+        target_containers = indexed_containers(set(transfer.target_location.container for transfer in self._transfers))
+
+        def get_container_ref(is_source, container, pos):
+            name = robot_settings.get_container_handle_name(is_source, pos)
+            return ContainerRef(name, pos, container)
+
+        container_ref_by_source_container = {container: get_container_ref(True, container, ix)
+                                             for container, ix in source_containers}
+        container_ref_by_target_container = {container: get_container_ref(False, container, ix)
+                                             for container, ix in target_containers}
+        ret = dict()
+        ret.update(container_ref_by_source_container)
+        ret.update(container_ref_by_target_container)
+        return ret
 
     @property
     def transfers(self):
@@ -830,6 +837,29 @@ class TransferBatch(object):
         for transfer in self._transfers:
             report.append("{}".format(transfer))
         return "\n".join(report)
+
+
+class ContainerRef(object):
+    """
+    A handle to a Container, unique for a particular TransferBatch. Necessary as containers
+    may need to be represented with different handles during a dilution (e.g. both DNA1 and END1)
+    """
+    def __init__(self, name, position, container):
+        """
+        :param name: The name of the handle
+        :param position: The position of the handle
+        :param container: The container being pointed to
+        """
+        self.name = name
+        self.position = position
+        self.container = container
+
+    @staticmethod
+    def create_from_robot_settings(self, robot_settings):
+        pass
+
+    def __repr__(self):
+        return self.name
 
 
 class NeedsBatchSplit(TransferValidationException):
