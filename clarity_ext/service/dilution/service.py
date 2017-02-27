@@ -162,13 +162,6 @@ class DilutionSession(object):
             self._driver_files[robot_name] = list(self._create_robot_driver_files(robot_name))
         return self._driver_files[robot_name]
 
-    def driver_files_with_names(self, robot_name):
-        """Returns all the files for this robot along with the file name"""
-        robot_settings = self.robot_settings_by_name[robot_name]
-        files = self.driver_files(robot_name)
-        return [(robot_settings.get_filename(csv, self.context, ix), csv)
-                for ix, csv in enumerate(files)]
-
     def all_driver_files(self):
         """Returns all robot driver files in tuples (robot, robot_file)"""
         for robot_name in self.robot_settings_by_name:
@@ -177,8 +170,11 @@ class DilutionSession(object):
     def _create_robot_driver_files(self, robot_name):
         """Creates a csv for the robot"""
         robot_settings = self.robot_settings_by_name[robot_name]
-        for transfer_batch in self.transfer_batches_by_robot[robot_name]:
-            yield self._transfer_batch_to_robot_file(transfer_batch, robot_settings)
+        for ix, transfer_batch in enumerate(self.transfer_batches_by_robot[robot_name]):
+            csv = self._transfer_batch_to_robot_file(transfer_batch, robot_settings)
+            # Add the file name:
+            csv.file_name = robot_settings.get_filename(csv, self.context, ix)
+            yield csv
 
     def _transfer_batch_to_robot_file(self, transfer_batch, robot_settings):
         """
