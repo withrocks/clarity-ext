@@ -5,7 +5,6 @@ from clarity_ext.domain.shared_result_file import SharedResultFile
 from clarity_ext.repository.container_repository import ContainerRepository
 from clarity_ext.domain.user import User
 from clarity_ext.domain import ProcessType
-import copy
 
 
 class StepRepository(object):
@@ -18,13 +17,15 @@ class StepRepository(object):
     to do that.
     """
 
-    def __init__(self, session):
+    def __init__(self, session, clarity_mapper):
         """
         Creates a new StepRepository
 
         :param session: A session object for connecting to Clarity
         """
         self.session = session
+        self.clarity_mapper = clarity_mapper
+
 
     def all_artifacts(self):
         """
@@ -114,9 +115,11 @@ class StepRepository(object):
         convenient methods for working with the domain object in extensions.
         """
         if artifact.type == "Analyte":
-            wrapped = Analyte.create_from_rest_resource(artifact, is_input, container_repo, process_type)
+            wrapped = self.clarity_mapper.analyte_create_object(
+                artifact, is_input, container_repo, process_type)
         elif artifact.type == "ResultFile" and gen_type == "PerInput":
-            wrapped = ResultFile.create_from_rest_resource(artifact, is_input, container_repo, process_type)
+            wrapped = self.clarity_mapper.result_file_create_object(
+                artifact, is_input, container_repo, process_type)
         elif artifact.type == "ResultFile" and gen_type == "PerAllInputs":
             wrapped = SharedResultFile.create_from_rest_resource(artifact, process_type)
         else:

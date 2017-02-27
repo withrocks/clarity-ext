@@ -21,31 +21,6 @@ class ResultFile(Aliquot):
                 samples=samples, name=name, well=well, udf_map=udf_map)
         self.is_control = False
 
-    @staticmethod
-    def create_from_rest_resource(resource, is_input, container_repo, process_type):
-        """
-        Creates a `ResultFile` from the REST resource object.
-        The container is fetched from the container_repo.
-        """
-        if not is_input:
-            # We expect the process_type to define one PerInput ResultFile
-            process_output = utils.single([process_output for process_output in process_type.process_outputs
-                                           if process_output.output_generation_type == "PerInput" and
-                                           process_output.artifact_type == "ResultFile"])
-        udfs = UdfMapping.expand_udfs(resource, process_output)
-        udf_map = UdfMapping(udfs)
-
-        well = Aliquot.create_well_from_rest(
-            resource=resource, container_repo=container_repo)
-
-        # TODO: sample should be put in a lazy property, and all samples in a step should be
-        # loaded in one batch
-        samples = [Sample.create_from_rest_resource(sample) for sample in resource.samples]
-        ret = ResultFile(api_resource=resource, is_input=is_input,
-                         id=resource.id, samples=samples, name=resource.name, well=well,
-                         udf_map=udf_map)
-        return ret
-
     @property
     def sample(self):
         """Convenience property for fetching a single sample when only one is expected"""

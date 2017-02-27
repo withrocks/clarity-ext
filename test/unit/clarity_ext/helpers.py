@@ -162,7 +162,7 @@ def mock_step_repository(analyte_set):
     """
     session = MagicMock()
     session.api = MagicMock()
-    step_repo = StepRepository(session=session)
+    step_repo = StepRepository(session=session, clarity_mapper=MagicMock())
     step_repo.all_artifacts = analyte_set
     return step_repo
 
