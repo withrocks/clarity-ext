@@ -162,7 +162,8 @@ class Container(DomainObjectMixin):
         """Creates a container with the same dimensions as the other container"""
         return Container(container_type=container.container_type,
                          container_type_name=container.container_type_name,
-                         size=container.size)
+                         size=container.size,
+                         is_source=container.is_source)
 
     @classmethod
     def create_from_rest_resource(cls, resource, api_artifacts=[], is_input=None):

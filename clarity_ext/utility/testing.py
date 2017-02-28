@@ -39,10 +39,10 @@ class DilutionTestDataHelper:
         self.containers[container_id] = container
         return container
 
-    def get_container_by_name(self, container_name):
+    def get_container_by_name(self, container_name, is_source):
         """Returns a container by name, creating it if it doesn't exist yet"""
         if container_name not in self.containers:
-            self.containers[container_name] = self.create_container(container_name)
+            self.containers[container_name] = self.create_container(container_name, is_source)
         return self.containers[container_name]
 
     def _create_analyte(self, is_input, partial_name, analyte_type=Analyte):
@@ -58,8 +58,8 @@ class DilutionTestDataHelper:
         if target_container_name is None:
             target_container = self.default_target
 
-        source_container = self.get_container_by_name(source_container)
-        target_container = self.get_container_by_name(target_container)
+        source_container = self.get_container_by_name(source_container, True)
+        target_container = self.get_container_by_name(target_container, False)
 
         if pos_from is None:
             well = self.well_enumerator.next()
@@ -155,6 +155,11 @@ class TestExtensionContext(object):
         assert f.name is not None, "You need to supply a name"
         f.id = "92-{}".format(len(self._shared_files))
         self._shared_files.append((None, f))
+
+    def add_udf_to_step(self, key, value):
+        if self.context.current_step.udf_map is None:
+            self.context.current_step.udf_map = UdfMapping()
+        self.context.current_step.udf_map.add(key, value)
 
     def set_user(self, user_name):
         pass
