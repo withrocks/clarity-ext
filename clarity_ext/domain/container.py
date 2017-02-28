@@ -104,7 +104,7 @@ class Container(DomainObjectMixin):
     CONTAINER_TYPE_PATTERNED_FLOW_CELL = 400
 
     def __init__(self, mapping=None, container_type=None, size=None, container_type_name=None,
-                 container_id=None, name=None):
+                 container_id=None, name=None, is_source=None):
         """
         :param mapping: A dictionary-like object containing mapping from well
         position to content. It can be non-complete.
@@ -121,6 +121,16 @@ class Container(DomainObjectMixin):
 
         # Set to True if the plate represents no actual plate in Clarity
         self.is_temporary = False
+
+        # Set to True if this is a source container in the current context, False if it's the target
+        self.is_source = is_source
+
+        # Another (temporary) name of the plate, e.g. when diluting, the name used in the robot files is a short
+        # identifier that only makes sense in that case.
+        self.temp_name = None
+
+        # The index of the container in some context, e.g. the 1st plate being diluted from. Context-specific
+        self.index = None
 
         if size:
             self.size = size
@@ -155,7 +165,7 @@ class Container(DomainObjectMixin):
                          size=container.size)
 
     @classmethod
-    def create_from_rest_resource(cls, resource, api_artifacts=[]):
+    def create_from_rest_resource(cls, resource, api_artifacts=[], is_input=None):
         """
         Creates a container based on a resource from the REST API.
         """
@@ -173,7 +183,8 @@ class Container(DomainObjectMixin):
         else:
             raise NotImplementedError(
                 "Resource type '{}' is not supported".format(resource.type.name))
-        ret = Container(container_type=container_type, size=size, container_type_name=resource.type.name)
+        ret = Container(container_type=container_type, size=size, container_type_name=resource.type.name,
+                        is_input=is_input)
         ret.id = resource.id
         ret.name = resource.name
         ret.size = size

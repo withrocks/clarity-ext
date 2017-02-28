@@ -21,8 +21,8 @@ class DilutionTestDataHelper:
         self.containers = dict()
         # Default input/output containers used if the user doesn't provide them:
 
-        self.create_container(self.default_source)
-        self.create_container(self.default_target)
+        self.create_container(self.default_source, True)
+        self.create_container(self.default_target, False)
         self.concentration_unit = DilutionSettings._parse_conc_ref(concentration_ref)
         assert self.concentration_unit is not None
         # TODO: Change the Container domain object so that it can add analytes to the next available position
@@ -33,9 +33,9 @@ class DilutionTestDataHelper:
         self.default_source = "source{}".format(source_postfix)
         self.default_target = "target{}".format(target_postfix)
 
-    def create_container(self, container_id):
+    def create_container(self, container_id, is_source):
         container = Container(container_type=Container.CONTAINER_TYPE_96_WELLS_PLATE,
-                              container_id=container_id, name=container_id)
+                              container_id=container_id, name=container_id, is_source=is_source)
         self.containers[container_id] = container
         return container
 

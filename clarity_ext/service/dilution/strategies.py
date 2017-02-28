@@ -54,7 +54,7 @@ class OneToOneConcentrationCalc:
 
     def calculate_transfer_volumes(self, batch):
         for transfer in batch.transfers:  # TODO: change _transfers to something else?
-            if transfer.source_analyte.is_control:
+            if transfer.source_location.artifact.is_control:
                 transfer.pipette_buffer_volume = transfer.target_vol
                 continue
 

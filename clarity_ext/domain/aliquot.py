@@ -24,10 +24,10 @@ class Aliquot(Artifact):
         self.is_from_original = False
 
     @staticmethod
-    def create_well_from_rest(resource, container_repo):
+    def create_well_from_rest(resource, container_repo, is_input):
         # TODO: Batch call
         try:
-            container = container_repo.get_container(resource.location[0])
+            container = container_repo.get_container(resource.location[0], is_input)
         except AttributeError:
             pass
             container = None

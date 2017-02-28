@@ -55,7 +55,7 @@ class Analyte(Aliquot):
         udf_map = UdfMapping(udfs)
 
         well = Aliquot.create_well_from_rest(
-            resource=resource, container_repo=container_repo)
+            resource=resource, container_repo=container_repo, is_input=is_input)
 
         # TODO: sample should be put in a lazy property, and all samples in a step should be
         # loaded in one batch
