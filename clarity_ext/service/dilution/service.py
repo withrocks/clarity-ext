@@ -142,20 +142,6 @@ class DilutionSession(object):
         transfer.pipette_sample_volume = dilution_settings.fixed_sample_volume
         return transfer
 
-    @lazyprop
-    def container_mappings(self):
-        # Returns a mapping of all containers we're diluting to/from
-        container_pairs = set()
-        for pair in self.pairs:
-            container_pair = (pair.input_artifact.container, pair.output_artifact.container)
-            container_pairs.add(container_pair)
-        return list(container_pairs)
-
-    @lazyprop
-    def output_containers(self):
-        """Returns a unique list of output containers involved in the dilution"""
-        return list({output_container for _, output_container in self.container_mappings})
-
     def driver_files(self, robot_name):
         """Returns the driver file for the robot. Might be cached"""
         if robot_name not in self._driver_files:
@@ -187,17 +173,6 @@ class DilutionSession(object):
         for transfer in sorted_transfers:
             csv.append(robot_settings.map_transfer_to_row(transfer), transfer)
         return csv
-
-    def create_general_driver_file(self, template_path, **kwargs):
-        """
-        Creates a driver file that has access to the DilutionSession object through the name `session`.
-        """
-        with open(template_path, 'r') as fs:
-            text = fs.read()
-            text = codecs.decode(text, "utf-8")
-            template = Template(text)
-            rendered = template.render(session=self, **kwargs)
-            return rendered
 
     def update_infos_by_source_analyte(self, transfer_batches=None):
         """

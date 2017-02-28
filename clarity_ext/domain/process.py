@@ -4,14 +4,20 @@ from clarity_ext.domain.udf import DomainObjectWithUdfMixin, UdfMapping
 class Process(DomainObjectWithUdfMixin):
     """Represents a Process (step)"""
 
-    def __init__(self, api_resource, process_id, technician, udf_map):
+    def __init__(self, api_resource, process_id, technician, udf_map, ui_link):
         super(Process, self).__init__(api_resource, process_id, udf_map)
         self.technician = technician
+        self.ui_link = ui_link
 
     @staticmethod
     def create_from_rest_resource(resource):
         udf_map = UdfMapping(resource.udf)
-        ret = Process(resource, resource.id, resource.technician, udf_map)
+
+        # TODO: Move to mapper!
+        from clarity_ext.service.process_service import ProcessService
+        process_service = ProcessService()
+        ui_link = process_service.ui_link_process(resource)
+        ret = Process(resource, resource.id, resource.technician, udf_map, ui_link)
         return ret
 
 

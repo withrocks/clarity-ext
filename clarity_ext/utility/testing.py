@@ -4,6 +4,7 @@ Various helpers for mocking data quickly, in either unit tests or notebooks.
 from clarity_ext.domain import *
 from clarity_ext.service.dilution.service import *
 from mock import MagicMock
+from clarity_ext.context import ExtensionContext
 
 
 class DilutionTestDataHelper:
@@ -99,7 +100,6 @@ class DilutionTestDataHelper:
 
 def mock_context(**kwargs):
     """Creates a mock with the service provided as keyword arguments, filling the rest with MagicMock"""
-    from clarity_ext.context import ExtensionContext
     # TODO: Needs to be updated when the signature is updated. Fix that (or use a better approach)
     for arg in ["session", "artifact_service", "file_service", "current_user", "step_logger_service",
                 "step_repo", "clarity_service", "dilution_service", "process_service",
@@ -120,14 +120,17 @@ class TestExtensionContext(object):
     """
 
     def __init__(self):
-        from clarity_ext.context import ExtensionContext
         session = MagicMock()
         step_repo = MagicMock()
         step_repo.all_artifacts = self._all_artifacts
+        user = User("Integration", "Tester", "no-reply@medsci.uu.se", "IT")
+        step_repo.get_process = MagicMock(return_value=Process(None, "24-1234", user, None, "http://not-avail"))
         os_service = MagicMock()
         file_repository = MagicMock()
         clarity_service = MagicMock()
-
+        process_type = ProcessType(None, None, name="Some process")
+        step_repo.current_user = MagicMock(return_value=user)
+        step_repo.get_process_type = MagicMock(return_value=process_type)
         self.context = ExtensionContext.create_mocked(session, step_repo, os_service, file_repository, clarity_service)
         # TODO: only mocking this one method of the validation_service for now (quick fix)
         self.context.validation_service.handle_single_validation = MagicMock()
@@ -152,6 +155,9 @@ class TestExtensionContext(object):
         assert f.name is not None, "You need to supply a name"
         f.id = "92-{}".format(len(self._shared_files))
         self._shared_files.append((None, f))
+
+    def set_user(self, user_name):
+        pass
 
     def add_analyte_pair(self, input, output):
         # TODO: Set id and name if not provided
