@@ -4,6 +4,7 @@ Various helpers for mocking data quickly, in either unit tests or notebooks.
 from clarity_ext.domain import *
 from clarity_ext.service.dilution.service import *
 from mock import MagicMock
+from clarity_ext.context import ExtensionContext
 
 
 class DilutionTestDataHelper:
@@ -20,8 +21,8 @@ class DilutionTestDataHelper:
         self.containers = dict()
         # Default input/output containers used if the user doesn't provide them:
 
-        self.create_container(self.default_source)
-        self.create_container(self.default_target)
+        self.create_container(self.default_source, True)
+        self.create_container(self.default_target, False)
         self.concentration_unit = DilutionSettings._parse_conc_ref(concentration_ref)
         assert self.concentration_unit is not None
         # TODO: Change the Container domain object so that it can add analytes to the next available position
@@ -32,16 +33,16 @@ class DilutionTestDataHelper:
         self.default_source = "source{}".format(source_postfix)
         self.default_target = "target{}".format(target_postfix)
 
-    def create_container(self, container_id):
+    def create_container(self, container_id, is_source):
         container = Container(container_type=Container.CONTAINER_TYPE_96_WELLS_PLATE,
-                              container_id=container_id, name=container_id)
+                              container_id=container_id, name=container_id, is_source=is_source)
         self.containers[container_id] = container
         return container
 
-    def get_container_by_name(self, container_name):
+    def get_container_by_name(self, container_name, is_source):
         """Returns a container by name, creating it if it doesn't exist yet"""
         if container_name not in self.containers:
-            self.containers[container_name] = self.create_container(container_name)
+            self.containers[container_name] = self.create_container(container_name, is_source)
         return self.containers[container_name]
 
     def _create_analyte(self, is_input, partial_name, analyte_type=Analyte):
@@ -57,8 +58,8 @@ class DilutionTestDataHelper:
         if target_container_name is None:
             target_container = self.default_target
 
-        source_container = self.get_container_by_name(source_container)
-        target_container = self.get_container_by_name(target_container)
+        source_container = self.get_container_by_name(source_container, True)
+        target_container = self.get_container_by_name(target_container, False)
 
         if pos_from is None:
             well = self.well_enumerator.next()
@@ -99,7 +100,6 @@ class DilutionTestDataHelper:
 
 def mock_context(**kwargs):
     """Creates a mock with the service provided as keyword arguments, filling the rest with MagicMock"""
-    from clarity_ext.context import ExtensionContext
     # TODO: Needs to be updated when the signature is updated. Fix that (or use a better approach)
     for arg in ["session", "artifact_service", "file_service", "current_user", "step_logger_service",
                 "step_repo", "clarity_service", "dilution_service", "process_service",
@@ -120,7 +120,6 @@ class TestExtensionContext(object):
     """
 
     def __init__(self):
-        from clarity_ext.context import ExtensionContext
         session = MagicMock()
         step_repo = MagicMock()
         step_repo.all_artifacts = self._all_artifacts

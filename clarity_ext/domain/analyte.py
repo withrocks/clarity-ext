@@ -28,7 +28,6 @@ class Analyte(Aliquot):
             typename = ("Input" if self.is_input else "Output") + typename
         return "{}<{} ({})>".format(typename, self.name, self.id)
 
-    @property
     def sample(self):
         """
         Returns a single sample for convenience. Throws an error if there isn't exactly one sample.
