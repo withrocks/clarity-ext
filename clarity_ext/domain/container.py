@@ -7,9 +7,12 @@ class Well(DomainObjectMixin):
     """
     Encapsulates a location in a container.
 
-    This could for example be a well in a plate, but could also be the single location in a tube.
+    This could for example be a well in a plate, but could also be the single "location" in a tube.
 
-    # TODO: Rename class to Location?
+    NOTE: Sometimes, instances of this class are called "location" as it's more generic than well.
+    Consider renaming this class to Location. The exact coordinates (e.g. A:1) are called "position".
+    A better name for that might have been "coordinates" or "index" to avoid a potential confusion, as
+    location and position can have the same meaning.
     """
 
     def __init__(self, position, container, artifact=None):

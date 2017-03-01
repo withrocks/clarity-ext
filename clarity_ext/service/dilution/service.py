@@ -166,7 +166,6 @@ class DilutionSession(object):
     def _should_include_pair(pair, dilution_settings):
         return not pair.input_artifact.is_control or dilution_settings.include_control
 
-
     def driver_files(self, robot_name):
         """Returns the driver file for the robot. Might be cached"""
         if robot_name not in self._driver_files:
@@ -217,6 +216,7 @@ class DilutionSession(object):
             if target_analyte.is_control:
                 # TODO: Rather set "should_update_source_vol" on every transfer for a control to simplify this
                 continue
+            print "HERE", target_analyte, transfers
 
             primary_transfer = utils.single([t for t in transfers if t.is_primary])
             updated_source_vol = utils.single([t.updated_source_vol for t in transfers
@@ -235,7 +235,6 @@ class DilutionSession(object):
                 ret.setdefault(artifact, list())
                 ret[artifact].append(transfer)
         return ret
-
 
     def single_robot_transfer_batches_for_update(self):
         """
@@ -261,7 +260,7 @@ class DilutionSession(object):
                 current_update_info = current_update_infos[analyte][1]
                 if candidate_update_info[1] != current_update_info:
                     raise Exception("There is a difference between the update infos between {} and {}. You need "
-                                    "to explicitly select a robot".format(candidate__name, current_name))
+                                    "to explicitly select a robot".format(candidate_name, current_name))
         return candidate_batches
 
     def enumerate_transfers_for_update(self):
@@ -575,7 +574,6 @@ class TransferBatchHandlerBase(object):
         final_transfer_batch = TransferBatch(second_transfers, robot_settings, depth=1)
         strategy.calculate_transfer_volumes(final_transfer_batch)
 
-
         # For the analytes requiring splits
         return [temp_transfer_batch, final_transfer_batch]
 
@@ -594,11 +592,17 @@ class TransferBatchHandlerBase(object):
 
         for transfer in original_transfers:
             temp_target_container = map_target_container_to_temp[transfer.target_location.container]
-            from clarity_ext.domain import Well
+            from clarity_ext.domain import Well, Artifact
+            import copy
             # TODO: Copy the source location rather than using the original?
+
+            # Create a temporary analyte representing the new one on the temp plate:
+            temp_analyte = copy.copy(transfer.source_location.artifact)
+            temp_analyte.id += "-temp"
+            temp_analyte.name += "-temp"
             temp_target_location = Well(transfer.target_location.position,
                                         temp_target_container,
-                                        transfer.target_location.artifact)
+                                        temp_analyte)
 
             # TODO: This should be defined by a rule provided by the inheriting class
             static_sample_volume = 4
