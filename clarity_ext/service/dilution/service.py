@@ -96,7 +96,7 @@ class DilutionSession(object):
             transfer_batches = transfer_batch_handler.execute(original_transfer_batch, dilution_settings,
                                                               robot_settings, strategy)
         else:
-            transfer_batches = [original_transfer_batch]
+            transfer_batches = TransferBatchCollection(original_transfer_batch)
 
         for transfer_batch in transfer_batches:
             if transfer_handler:
@@ -107,6 +107,7 @@ class DilutionSession(object):
                 results = transfer_validator.validate(transfer_batch, robot_settings, dilution_settings)
                 self.validation_service.handle_validation(results)
 
+        print "HERE!", transfer_batches
         return transfer_batches
 
     def create_batch(self, pairs, robot_settings, dilution_settings, strategy):
@@ -156,7 +157,7 @@ class DilutionSession(object):
     def initialize_transfer_from_settings(self, transfer, dilution_settings):
         # TODO: Handler
         if dilution_settings.volume_calc_method == DilutionSettings.VOLUME_CALC_FIXED:
-            transfer.source_vol = transfer.source_location.artifact.input_artifact.udf_current_sample_volume_ul
+            transfer.source_vol = transfer.source_location.artifact.udf_current_sample_volume_ul
             transfer.pipette_sample_volume = dilution_settings.fixed_sample_volume
         else:
             # Get a list of SingleTransfer objects
@@ -218,9 +219,12 @@ class DilutionSession(object):
                 continue
             print "HERE", target_analyte, transfers
 
-            primary_transfer = utils.single([t for t in transfers if t.is_primary])
-            updated_source_vol = utils.single([t.updated_source_vol for t in transfers
+            primary_transfer = utils.single_or_default([t for t in transfers if t.is_primary])
+            updated_source_vol = utils.single_or_default([t.updated_source_vol for t in transfers
                                                if t.should_update_source_vol])
+            if primary_transfer is None or updated_source_vol is None:
+                continue
+
             ret[primary_transfer.source_location.artifact] = (
                 (primary_transfer.source_location.artifact, primary_transfer.target_location.artifact),
                 UpdateInfo(primary_transfer.target_conc, primary_transfer.target_vol, updated_source_vol))
@@ -244,6 +248,10 @@ class DilutionSession(object):
         """
         all_robots = self.transfer_batches_by_robot.items()
         candidate_name, candidate_batches = all_robots[0]
+
+        # TODO: Checking if the batches look OK
+        print candidate_batches.report()
+
         candidate_update_infos = self.update_infos_by_source_analyte(candidate_batches)
 
         # Validate that selecting this robot will have the same effect as selecting any other robot
@@ -546,7 +554,7 @@ class TransferBatchHandlerBase(object):
             return self.split_transfer_batch(split, no_split, strategy, robot_settings)
         else:
             # No split was required
-            return [transfer_batch]
+            return TransferBatchCollection(transfer_batch)
 
     def split_transfer_batch(self, split, no_split, strategy, robot_settings):
         first_transfers = list(self.calculate_split_transfers(split))
@@ -575,7 +583,7 @@ class TransferBatchHandlerBase(object):
         strategy.calculate_transfer_volumes(final_transfer_batch)
 
         # For the analytes requiring splits
-        return [temp_transfer_batch, final_transfer_batch]
+        return TransferBatchCollection(temp_transfer_batch, final_transfer_batch)
 
     def calculate_split_transfers(self, original_transfers):
         # For each target well, we need to push this to a temporary plate:
@@ -592,7 +600,7 @@ class TransferBatchHandlerBase(object):
 
         for transfer in original_transfers:
             temp_target_container = map_target_container_to_temp[transfer.target_location.container]
-            from clarity_ext.domain import Well, Artifact
+            from clarity_ext.domain import Well
             import copy
             # TODO: Copy the source location rather than using the original?
 
@@ -638,6 +646,7 @@ class TransferHandlerBase(object):
         pass
 
     def execute(self, transfer_batch, dilution_settings, robot_settings):
+        print transfer_batch
         require_row_split = [t for t in transfer_batch.transfers
                              if self.needs_row_split(t, dilution_settings, robot_settings)]
         for transfer in require_row_split:
@@ -760,7 +769,8 @@ class TransferBatch(object):
 
         # Have the user update the temporary name:
         for container in self.containers:
-            container.temp_name = robot_settings.get_container_handle_name(container)
+            container.source_ref = robot_settings.get_container_handle_name(container, True)
+            container.target_ref = robot_settings.get_container_handle_name(container, False)
 
     @property
     def transfers(self):
@@ -790,9 +800,36 @@ class TransferBatch(object):
         report.append("TransferBatch:")
         report.append("-" * len(report[-1]))
         report.append(" - temporary: {}".format(self.is_temporary))
+        for source, target in self.container_mappings:
+            report.append(" - {} => {}".format(source, target))
         for transfer in self._transfers:
             report.append("{}".format(transfer))
         return "\n".join(report)
+
+
+class TransferBatchCollection(object):
+    """
+    Encapsulates the list of TransferBatch object that go together, i.e. as the result of splitting a
+    TransferBatch.
+    """
+    def __init__(self, *args):
+        self._batches = list()
+        self._batches.extend(args)
+
+    def __iter__(self):
+        return iter(self._batches)
+
+    def __len__(self):
+        return len(self._batches)
+
+    def __getitem__(self, item):
+        return self._batches[item]
+
+    def report(self):
+        ret = list()
+        for batch in self._batches:
+            ret.append(batch.report())
+        return "\n\n".join(ret)
 
 
 class NeedsBatchSplit(TransferValidationException):

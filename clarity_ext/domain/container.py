@@ -32,7 +32,10 @@ class Well(DomainObjectMixin):
             container_name = self.container.name
         else:
             container_name = '<no container>'
-        return "{}({}{})".format(container_name, self.position.row_letter, self.position.col)
+        return "{}({}{}: {})".format(container_name,
+                                     self.position.row_letter,
+                                     self.position.col,
+                                     self.artifact.id)
 
     @property
     def index_down_first(self):
@@ -128,9 +131,10 @@ class Container(DomainObjectMixin):
         # Set to True if this is a source container in the current context, False if it's the target
         self.is_source = is_source
 
-        # Another (temporary) name of the plate, e.g. when diluting, the name used in the robot files is a short
-        # identifier that only makes sense in that case.
-        self.temp_name = None
+        # The container may need to be referenced by a different name, in particular when diluting the container
+        # will need a shorter name.
+        self.source_ref = None
+        self.target_ref = None
 
         # The index of the container in some context, e.g. the 1st plate being diluted from. Context-specific
         self.index = None
