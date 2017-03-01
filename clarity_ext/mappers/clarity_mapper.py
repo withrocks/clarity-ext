@@ -97,7 +97,7 @@ class ClarityMapper(object):
 
         udf_map = UdfMapping(udfs)
 
-        well = self.well_create_object(resource, container_repo)
+        well = self.well_create_object(resource, container_repo, is_input)
 
         # TODO: sample should be put in a lazy property, and all samples in a step should be
         # loaded in one batch
@@ -124,17 +124,15 @@ class ClarityMapper(object):
     def analyte_create_resource(self, analyte):
         pass
 
-    def well_create_object(self, resource, container_repo):
+    def well_create_object(self, resource, container_repo, is_source):
         # TODO: Batch call
         try:
-            container = container_repo.get_container(resource.location[0])
+            container = container_repo.get_container(resource.location[0], is_source)
         except AttributeError:
-            pass
             container = None
         try:
             pos = ContainerPosition.create(resource.location[1])
         except (AttributeError, ValueError):
-            pass
             pos = None
 
         well = None
@@ -159,7 +157,7 @@ class ClarityMapper(object):
         udfs = UdfMapping.expand_udfs(resource, process_output)
         udf_map = UdfMapping(udfs)
 
-        well = self.well_create_object(resource, container_repo)
+        well = self.well_create_object(resource, container_repo, is_input)
 
         # TODO: sample should be put in a lazy property, and all samples in a step should be
         # loaded in one batch

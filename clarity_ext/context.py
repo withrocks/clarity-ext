@@ -47,7 +47,7 @@ class ExtensionContext(object):
         self.logger = step_logger_service
         self.units = UnitConversion()
         self._update_queue = []
-        self.current_step = session.current_step
+        self.current_step = step_repo.get_process()
         self.artifact_service = artifact_service
         self.file_service = file_service
         self.current_user = current_user
@@ -61,9 +61,6 @@ class ExtensionContext(object):
         self.process_service = process_service
         self.validation_service = validation_service
 
-        # Add the URL to the current_step
-        # TODO: Quick-fix. Turn this around and fetch the process from the process service
-        self.current_step.ui_link = self.process_service.ui_link_process(self.current_step.api_resource)
         self.disable_commits = disable_commits
 
     @staticmethod
@@ -223,7 +220,7 @@ class ExtensionContext(object):
 
     @property
     def pid(self):
-        return self.session.current_step_id
+        return self.current_step.id
 
     def update(self, obj):
         """Add an object that has a commit method to the list of objects to update"""

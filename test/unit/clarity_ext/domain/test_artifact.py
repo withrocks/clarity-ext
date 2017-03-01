@@ -125,7 +125,7 @@ class TestArtifact(unittest.TestCase):
         self.assertEqual(expected_result_file.id, result_file.id)
         self.assertEqual(expected_result_file.name, result_file.name)
         self.assertEqual(result_file.well.__repr__(),
-                         "cont1(B2)")
+                         "cont1(B2: art1)")
         self.assertEqual(result_file.well.artifact.name,
                          "sample1")
 
