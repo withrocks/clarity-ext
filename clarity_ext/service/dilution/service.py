@@ -93,7 +93,7 @@ class DilutionSession(object):
             transfer_batches = transfer_batch_handler.execute(original_transfer_batch, dilution_settings,
                                                               robot_settings, strategy)
         else:
-            transfer_batches = [original_transfer_batch]
+            transfer_batches = TransferBatchCollection(original_transfer_batch)
 
         for transfer_batch in transfer_batches:
             if transfer_handler:
@@ -574,7 +574,7 @@ class TransferBatchHandlerBase(object):
             return self.split_transfer_batch(split, no_split, strategy)
         else:
             # No split was required
-            return [transfer_batch]
+            return TransferBatchCollection(transfer_batch)
 
     def split_transfer_batch(self, split, no_split, strategy):
         first_transfers = list(self.calculate_split_transfers(split))
@@ -606,7 +606,7 @@ class TransferBatchHandlerBase(object):
 
 
         # For the analytes requiring splits
-        return [temp_transfer_batch, final_transfer_batch]
+        return TransferBatchCollection(temp_transfer_batch, final_transfer_batch)
 
     def calculate_split_transfers(self, original_transfers):
         # For each target well, we need to push this to a temporary plate:
@@ -804,6 +804,13 @@ class TransferBatch(object):
         """
         return self._transfers
 
+    @property
+    def container_mappings(self):
+        ret = set()
+        for transfer in self.transfers:
+            ret.add((transfer.source_location.container, transfer.target_location.container))
+        return ret
+
     def validate(self, validator, robot_settings, dilution_settings):
         # Run the validator on the object and save the results on the object.
         if validator:
@@ -817,9 +824,36 @@ class TransferBatch(object):
         report.append("TransferBatch:")
         report.append("-" * len(report[-1]))
         report.append(" - temporary: {}".format(self.is_temporary))
+        for source, target in self.container_mappings:
+            report.append(" - {} => {}".format(source, target))
         for transfer in self._transfers:
             report.append("{}".format(transfer))
         return "\n".join(report)
+
+
+class TransferBatchCollection(object):
+    """
+    Encapsulates the list of TransferBatch object that go together, i.e. as the result of splitting a
+    TransferBatch.
+    """
+    def __init__(self, *args):
+        self._batches = list()
+        self._batches.extend(args)
+
+    def __iter__(self):
+        return iter(self._batches)
+
+    def __len__(self):
+        return len(self._batches)
+
+    def __getitem__(self, item):
+        return self._batches[item]
+
+    def report(self):
+        ret = list()
+        for batch in self._batches:
+            ret.append(batch.report())
+        return "\n\n".join(ret)
 
 
 class NeedsBatchSplit(TransferValidationException):
