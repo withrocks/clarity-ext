@@ -1,4 +1,5 @@
 import abc
+import copy
 import codecs
 from collections import namedtuple
 from clarity_ext.utils import lazyprop
@@ -7,7 +8,7 @@ from jinja2 import Template
 from clarity_ext.service.file_service import Csv
 from clarity_ext.domain.validation import ValidationException, ValidationType, ValidationResults, UsageError
 from clarity_ext import utils
-from clarity_ext.domain import Container
+from clarity_ext.domain import Container, Well
 
 
 class DilutionService(object):
@@ -112,46 +113,53 @@ class DilutionSession(object):
 
         NOTE: The batch has not been validated in this call. Caller should validate.
         """
-        if dilution_settings.volume_calc_method == DilutionSettings.VOLUME_CALC_FIXED:
-            transfers = [self._create_fixed_transfer_from_pair(pair, dilution_settings)
-                         for pair in pairs if self._should_include_pair(pair, dilution_settings)]
-        else:
-            # Get a list of SingleTransfer objects
-            transfers = [SingleTransfer.create_from_analyte_pair(pair, dilution_settings.concentration_ref)
-                         for pair in pairs if self._should_include_pair(pair, dilution_settings)]
+        # NOTE: The original containers are copied, so the containers in the transfer batch can be modified at will
+        containers = dict()
+
+        # First ensure that we've taken copies of the original containers, since we want to be able to move
+        # the artifacts to different wells, it's cleaner to do that in a copied container:
+        original_containers = set()
+        original_containers.update([pair.input_artifact.container for pair in pairs])
+        original_containers.update([pair.output_artifact.container for pair in pairs])
+        for original_container in original_containers:
+            containers[original_container.id] = copy.copy(original_container)
+
+        def create_well(artifact):
+            return Well(artifact.well.position,
+                        containers[artifact.container.id],
+                        artifact)
+
+        transfers = list()
+
+        # First, get a list of SingleTransfer objects, pointing to Well objects in copies of the original
+        for pair in pairs:
+            source_well = create_well(pair.input_artifact)
+            target_well = create_well(pair.output_artifact)
+            transfers.append(SingleTransfer(None, None, None, None, source_well, target_well))
+
+        for transfer in transfers:
+            self.initialize_transfer_from_settings(transfer, dilution_settings)
 
         # Wrap the transfers in a TransferBatch object, it will do a basic validation on itself:
         # and raise a UsageError if it can't be used.
-        batch = TransferBatch(transfers, name=robot_settings.name)
+        batch = TransferBatch(transfers, robot_settings, name=robot_settings.name)
 
         # Based on the volume calculation strategy, calculate the volumes
         strategy.calculate_transfer_volumes(batch)
         return batch
 
+    def initialize_transfer_from_settings(self, transfer, dilution_settings):
+        # TODO: Handler
+        if dilution_settings.volume_calc_method == DilutionSettings.VOLUME_CALC_FIXED:
+            transfer.source_vol = transfer.source_location.artifact.udf_current_sample_volume_ul
+            transfer.pipette_sample_volume = dilution_settings.fixed_sample_volume
+        else:
+            # Get a list of SingleTransfer objects
+            SingleTransfer.initialize_transfer(transfer, dilution_settings.concentration_ref)
+
     @staticmethod
     def _should_include_pair(pair, dilution_settings):
         return not pair.input_artifact.is_control or dilution_settings.include_control
-
-    def _create_fixed_transfer_from_pair(self, pair, dilution_settings):
-        transfer = SingleTransfer.create_from_analyte_pair_positions(pair)
-        # Only interested in the sample volume in this case:
-        transfer.source_vol = pair.input_artifact.udf_current_sample_volume_ul
-        transfer.pipette_sample_volume = dilution_settings.fixed_sample_volume
-        return transfer
-
-    @lazyprop
-    def container_mappings(self):
-        # Returns a mapping of all containers we're diluting to/from
-        container_pairs = set()
-        for pair in self.pairs:
-            container_pair = (pair.input_artifact.container, pair.output_artifact.container)
-            container_pairs.add(container_pair)
-        return list(container_pairs)
-
-    @lazyprop
-    def output_containers(self):
-        """Returns a unique list of output containers involved in the dilution"""
-        return list({output_container for _, output_container in self.container_mappings})
 
     def driver_files(self, robot_name):
         """Returns the driver file for the robot. Might be cached"""
@@ -167,8 +175,11 @@ class DilutionSession(object):
     def _create_robot_driver_files(self, robot_name):
         """Creates a csv for the robot"""
         robot_settings = self.robot_settings_by_name[robot_name]
-        for transfer_batch in self.transfer_batches_by_robot[robot_name]:
-            yield self._transfer_batch_to_robot_file(transfer_batch, robot_settings)
+        for ix, transfer_batch in enumerate(self.transfer_batches_by_robot[robot_name]):
+            csv = self._transfer_batch_to_robot_file(transfer_batch, robot_settings)
+            # Add the file name:
+            csv.file_name = robot_settings.get_filename(csv, self.context, ix)
+            yield csv
 
     def _transfer_batch_to_robot_file(self, transfer_batch, robot_settings):
         """
@@ -212,10 +223,14 @@ class DilutionSession(object):
                 # TODO: Rather set "should_update_source_vol" on every transfer for a control to simplify this
                 continue
 
-            primary_transfer = utils.single([t for t in transfers if t.is_primary])
-            updated_source_vol = utils.single([t.updated_source_vol for t in transfers
+            primary_transfer = utils.single_or_default([t for t in transfers if t.is_primary])
+            updated_source_vol = utils.single_or_default([t.updated_source_vol for t in transfers
                                                if t.should_update_source_vol])
-            ret[primary_transfer.source_analyte] = ((primary_transfer.source_analyte, primary_transfer.target_analyte),
+            if primary_transfer is None or updated_source_vol is None:
+                continue
+
+            ret[primary_transfer.source_location.artifact] = (
+                (primary_transfer.source_location.artifact, primary_transfer.target_location.artifact),
                 UpdateInfo(primary_transfer.target_conc, primary_transfer.target_vol, updated_source_vol))
         return ret
 
@@ -224,8 +239,9 @@ class DilutionSession(object):
         ret = dict()
         for transfer_batch in transfer_batches:
             for transfer in transfer_batch.transfers:
-                ret.setdefault(transfer.target_analyte, list())
-                ret[transfer.target_analyte].append(transfer)
+                artifact = transfer.target_location.artifact
+                ret.setdefault(artifact, list())
+                ret[artifact].append(transfer)
         return ret
 
 
@@ -253,7 +269,7 @@ class DilutionSession(object):
                 current_update_info = current_update_infos[analyte][1]
                 if candidate_update_info[1] != current_update_info:
                     raise Exception("There is a difference between the update infos between {} and {}. You need "
-                                    "to explicitly select a robot".format(candidate__name, current_name))
+                                    "to explicitly select a robot".format(candidate_name, current_name))
         return candidate_batches
 
     def enumerate_transfers_for_update(self):
@@ -278,31 +294,6 @@ class DilutionSession(object):
         return "\n".join(report)
 
 
-class TransferLocation(object):
-    """
-    Represents either a source or a target of a transfer
-    """
-
-    def __init__(self, container, position, well):
-        """
-        :param container: A Container that holds the analyte to be transferred
-        :param position: The ContainerPosition pointing to a position within the container, e.g. A:1
-        """
-        self.container = container
-        self.position = position
-        self.well = well  # TODO: Use only well, not position
-
-        # This is not set by the user but by the TransferBatch when the user queries for the object.
-        self.container_pos = None
-
-    @staticmethod
-    def create_from_analyte(analyte):
-        return TransferLocation(analyte.container, analyte.well.position, analyte.well)
-
-    def __repr__(self):
-        return "{}({})@{}".format(self.container.name, self.container_pos, self.position)
-
-
 class SingleTransfer(object):
     """
     Encapsulates a single transfer between two positions:
@@ -312,8 +303,7 @@ class SingleTransfer(object):
       * Other metadata that will be used for warnings etc, e.g. has_to_evaporate/scaled_up etc.
     """
 
-    def __init__(self, source_conc, source_vol, target_conc, target_vol, source_location, target_location,
-                 source_analyte, target_analyte):
+    def __init__(self, source_conc, source_vol, target_conc, target_vol, source_location, target_location):
         self.source_conc = source_conc
         self.source_vol = source_vol
         self.target_conc = target_conc
@@ -332,8 +322,6 @@ class SingleTransfer(object):
 
         # In the case of temporary transfers, we keep a pointer to the original for easier calculations
         self.original = None
-        self.source_analyte = source_analyte
-        self.target_analyte = target_analyte
         self.updated_source_vol = None
 
         # The TransferBatch takes care of marking the transfer as being a part of it
@@ -373,44 +361,34 @@ class SingleTransfer(object):
             raise NotImplementedError("Concentration ref {} not implemented".format(
                 concentration_ref))
 
-    @staticmethod
-    def create_from_analyte_pair_positions(pair):
-        """
-        Creates a transfer based on the analyte pair, but is only conserned with the positions, i.e.
-        ignores all UDFs etc.
-        """
-        source_location = TransferLocation.create_from_analyte(pair.input_artifact)
-        target_location = TransferLocation.create_from_analyte(pair.output_artifact)
-        transfer = SingleTransfer(
-            None, None, None, None, source_location, target_location, pair.input_artifact, pair.output_artifact)
-        return transfer
-
     @classmethod
-    def create_from_analyte_pair(cls, pair, concentration_ref):
-        single_transfer = cls.create_from_analyte_pair_positions(pair)
+    def initialize_transfer(cls, single_transfer, concentration_ref):
+        input_artifact = single_transfer.source_location.artifact
+        output_artifact = single_transfer.target_location.artifact
 
-        def raise_target_measurements_missing(artifact_pair):
+        # TODO: Move this
+        def raise_target_measurements_missing():
             raise UsageError("You need to provide target volume and concentration for all samples. "
-                             "Missing for {}.".format(artifact_pair.output_artifact.id))
+                             "Missing for {}.".format(single_transfer.output_location.artifact.id))
 
         # Now fill in with the UDF measurements
-        if pair.input_artifact.is_control:
+        if single_transfer.source_location.artifact.is_control:
             try:
                 # The transfer for controls does only require target volume. Other values will be ignored.
-                single_transfer.target_vol = pair.output_artifact.udf_target_vol_ul
+                single_transfer.target_vol = single_transfer.target_location.artifact.udf_target_vol_ul
             except AttributeError:
-                raise_target_measurements_missing(pair)
+                raise_target_measurements_missing()
             return single_transfer
 
         try:
-            single_transfer.source_conc = cls._referenced_concentration(pair.input_artifact, concentration_ref)
-            single_transfer.source_vol = pair.input_artifact.udf_current_sample_volume_ul
-            single_transfer.target_conc = cls._referenced_requested_concentration(pair.output_artifact,
+            single_transfer.source_conc = cls._referenced_concentration(input_artifact, concentration_ref)
+            single_transfer.source_vol = input_artifact.udf_current_sample_volume_ul
+            single_transfer.target_conc = cls._referenced_requested_concentration(output_artifact,
                                                                                   concentration_ref)
-            single_transfer.target_vol = pair.output_artifact.udf_target_vol_ul
+            single_transfer.target_vol = output_artifact.udf_target_vol_ul
         except AttributeError:
-            raise_target_measurements_missing(pair)
-        single_transfer.pair = pair  # TODO: Both setting the pair and source target!
+            raise_target_measurements_missing()
+        # single_transfer.pair = pair  # TODO: Both setting the pair and source target!, if needed, set this earlier!
         return single_transfer
 
     def identifier(self):
@@ -527,14 +505,13 @@ class RobotSettings(object):
     def transfer_sort_key(transfer):
         """
         Sort the transfers based on:
-            - source position (container_pos)
+            - source position (container.index)
             - well index (down first)
             - pipette volume (descending)
         """
-        assert transfer.source_location.container_pos is not None
-        assert transfer.source_location.well is not None
-        return (transfer.source_location.container_pos,
-                transfer.source_location.well.index_down_first,
+        assert transfer.source_location.container.index is not None
+        return (transfer.source_location.container.index,
+                transfer.source_location.index_down_first,
                 -transfer.pipette_total_volume)
 
     def __repr__(self):
@@ -571,14 +548,14 @@ class TransferBatchHandlerBase(object):
             self.validation_service.handle_single_validation(val)
 
         if len(split) > 0:
-            return self.split_transfer_batch(split, no_split, strategy)
+            return self.split_transfer_batch(split, no_split, strategy, robot_settings)
         else:
             # No split was required
             return TransferBatchCollection(transfer_batch)
 
-    def split_transfer_batch(self, split, no_split, strategy):
+    def split_transfer_batch(self, split, no_split, strategy, robot_settings):
         first_transfers = list(self.calculate_split_transfers(split))
-        temp_transfer_batch = TransferBatch(first_transfers, depth=1, is_temporary=True)
+        temp_transfer_batch = TransferBatch(first_transfers, robot_settings, depth=1, is_temporary=True)
         strategy.calculate_transfer_volumes(temp_transfer_batch)
         second_transfers = list()
 
@@ -590,9 +567,7 @@ class TransferBatchHandlerBase(object):
             new_transfer = SingleTransfer(temp_transfer.target_conc, temp_transfer.target_vol,
                                           temp_transfer.original.target_conc, temp_transfer.original.target_vol,
                                           source_location=temp_transfer.target_location,
-                                          target_location=temp_transfer.original.target_location,
-                                          source_analyte=temp_transfer.source_analyte,
-                                          target_analyte=temp_transfer.target_analyte)
+                                          target_location=temp_transfer.original.target_location)
 
             # In the case of a split TransferBatch, only the secondary transfer should update source volume:
             new_transfer.should_update_source_vol = False
@@ -601,9 +576,8 @@ class TransferBatchHandlerBase(object):
         # Add other transfers just as they were:
         second_transfers.extend(no_split)
 
-        final_transfer_batch = TransferBatch(second_transfers, depth=1)
+        final_transfer_batch = TransferBatch(second_transfers, robot_settings, depth=1)
         strategy.calculate_transfer_volumes(final_transfer_batch)
-
 
         # For the analytes requiring splits
         return TransferBatchCollection(temp_transfer_batch, final_transfer_batch)
@@ -623,8 +597,15 @@ class TransferBatchHandlerBase(object):
 
         for transfer in original_transfers:
             temp_target_container = map_target_container_to_temp[transfer.target_location.container]
-            temp_target_location = TransferLocation(temp_target_container, transfer.target_location.position,
-                                                    transfer.target_location.well)
+            # TODO: Copy the source location rather than using the original?
+
+            # Create a temporary analyte representing the new one on the temp plate:
+            temp_analyte = copy.copy(transfer.source_location.artifact)
+            temp_analyte.id += "-temp"
+            temp_analyte.name += "-temp"
+            temp_target_location = Well(transfer.target_location.position,
+                                        temp_target_container,
+                                        temp_analyte)
 
             # TODO: This should be defined by a rule provided by the inheriting class
             static_sample_volume = 4
@@ -634,9 +615,7 @@ class TransferBatchHandlerBase(object):
                                            transfer.source_conc / 10.0,
                                            static_buffer_volume + static_sample_volume,
                                            transfer.source_location,
-                                           temp_target_location,
-                                           transfer.source_analyte,
-                                           transfer.target_analyte)
+                                           temp_target_location)
             transfer_copy.is_primary = False
 
             # In this case, we'll hardcode the values according to the lab's specs:
@@ -745,56 +724,47 @@ class TransferBatch(object):
     Encapsulates a list of SingleTransfer objects. Used to generate robot driver files.
     """
 
-    def __init__(self, transfers, depth=0, is_temporary=False, name=None):
+    def __init__(self, transfers, robot_settings, depth=0, is_temporary=False, name=None):
         self.depth = depth
         self.is_temporary = is_temporary  # temp dilution, no plate will actually be saved.
         self.validation_results = list()
-        self._set_transfers(transfers)
+        self._set_transfers(transfers, robot_settings)
         self.name = name
 
-    def _set_transfers(self, transfers):
+        # A list of containers used for this transfer. These are not the original containers, but copies of them
+        # so that they can be manipulated at will
+        self.containers = None
+
+    def _set_transfers(self, transfers, robot_settings):
+        self.containers = list()
         self._transfers = transfers
-        self._set_container_refs()
+        self._sort_and_name_containers(robot_settings)
         for transfer in transfers:
             transfer.transfer_batch = self
 
-    def _set_container_refs(self):
-        """
-        Updates the container refs (DNA1, END1 etc) for each container in the transfer.
-        These depend on the state of the entire batch, so they need to be updated
-        if the transfers are updated.
-        """
-        self._container_to_container_ref = self._evaluate_container_refs()
+    def _sort_and_name_containers(self, robot_settings):
+        """Updates the list of containers and assigns temporary names and positions to them"""
 
-        for transfer in self._transfers:
-            # First get the index being used
-            transfer.source_location.container_pos = self._container_to_container_ref[
-                transfer.source_location.container]
-            transfer.target_location.container_pos = self._container_to_container_ref[
-                transfer.target_location.container]
+        def sort_key(c):
+            return not c.is_temporary, c.id
 
-    def _evaluate_container_refs(self):
-        """
-        Figures out the mapping from container to container refs
-        (first input container => 1)
-        (first output container => 1) etc
+        source_containers = set(transfer.source_location.container for transfer in self._transfers)
+        target_containers = set(transfer.target_location.container for transfer in self._transfers)
 
-        The containers are sorted by (not is_temporary, id)
+        source_containers = list(sorted(source_containers, key=sort_key))
+        target_containers = list(sorted(target_containers, key=sort_key))
 
-        NOTE: This assumes that containers having the same ID point to the same domain object.
-        """
+        for ix, container in enumerate(source_containers):
+            container.index = ix
+        for ix, container in enumerate(target_containers):
+            container.index = ix
 
-        def indexed_containers(all_containers):
-            """Returns a map from the containers to an index. The containers are sorted by id"""
-            return [(container, ix + 1) for ix, container in enumerate(
-                sorted(all_containers, key=lambda x: (not x.is_temporary, x.id)))]
+        self.containers = source_containers + target_containers
 
-        container_to_container_ref = dict()
-        container_to_container_ref.update(indexed_containers(
-            set(transfer.source_location.container for transfer in self._transfers)))
-        container_to_container_ref.update(indexed_containers(
-            set(transfer.target_location.container for transfer in self._transfers)))
-        return container_to_container_ref
+        # Have the user update the temporary name:
+        for container in self.containers:
+            container.source_ref = robot_settings.get_container_handle_name(container, True)
+            container.target_ref = robot_settings.get_container_handle_name(container, False)
 
     @property
     def transfers(self):
