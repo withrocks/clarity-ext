@@ -151,3 +151,6 @@ class StepRepository(object):
         self.session.current_step.api_resource.type.get()
         return ProcessType.create_from_resource(self.session.current_step.api_resource.type)
 
+    def get_process(self):
+        """Returns the currently running process (step)"""
+        return self.session.current_step
