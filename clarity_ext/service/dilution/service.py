@@ -15,7 +15,8 @@ class DilutionService(object):
     def __init__(self, validation_service):
         self.validation_service = validation_service
 
-    def create_session(self, robots, dilution_settings, transfer_batch_handler, transfer_handler, transfer_validator):
+    def create_session(self, robots, dilution_settings, transfer_batch_handler, transfer_handler, transfer_validator,
+                       context):
         """
         Creates a DilutionSession based on the settings. Call evaluate to validate the entire session
         with a particular batch of objects.
@@ -23,7 +24,7 @@ class DilutionService(object):
         A DilutionSession contains several TransferBatch objects that need to be evaluated together
         """
         session = DilutionSession(self, robots, dilution_settings, transfer_batch_handler, transfer_handler,
-                                  transfer_validator, self.validation_service)
+                                  transfer_validator, self.validation_service, context)
         return session
 
     @staticmethod
@@ -46,7 +47,7 @@ class DilutionSession(object):
     """
 
     def __init__(self, dilution_service, robots, dilution_settings, transfer_batch_handler, transfer_handler,
-                 transfer_validator, validation_service):
+                 transfer_validator, validation_service, context):
         """
         Initializes a DilutionSession object for the robots.
 
@@ -57,6 +58,7 @@ class DilutionSession(object):
         :param transfer_handler: A handler that supports splitting SingleTransfer objects (row in a TransferBatch)
         :param transfer_validator: A validator that runs on an entire TransferBatch that has perhaps been split.
         :param validation_service: The service that handles the results of validation exceptions
+        :param context: The context the session is being created in
         """
         self.dilution_service = dilution_service
         self.robot_settings_by_name = {robot.name: robot for robot in robots}
@@ -70,6 +72,7 @@ class DilutionSession(object):
         self.transfer_batches_by_robot = None
         self.pairs = None  # These are set on evaluation
         self.validation_service = validation_service
+        self.context = context
 
     def evaluate(self, pairs):
         """Refreshes all calculations for all registered robots and runs registered handlers and validators."""
@@ -193,17 +196,6 @@ class DilutionSession(object):
             csv.append(robot_settings.map_transfer_to_row(transfer), transfer)
         return csv
 
-    def create_general_driver_file(self, template_path, **kwargs):
-        """
-        Creates a driver file that has access to the DilutionSession object through the name `session`.
-        """
-        with open(template_path, 'r') as fs:
-            text = fs.read()
-            text = codecs.decode(text, "utf-8")
-            template = Template(text)
-            rendered = template.render(session=self, **kwargs)
-            return rendered
-
     def update_infos_by_source_analyte(self, transfer_batches=None):
         """
         Returns the information that should be updated in the backend
@@ -243,7 +235,6 @@ class DilutionSession(object):
                 ret.setdefault(artifact, list())
                 ret[artifact].append(transfer)
         return ret
-
 
     def single_robot_transfer_batches_for_update(self):
         """
@@ -491,6 +482,10 @@ class RobotSettings(object):
     @abc.abstractmethod
     def get_index_from_well(self, well):
         """Returns the numerical index of the well"""
+        pass
+
+    @abc.abstractmethod
+    def get_filename(self, csv, context):
         pass
 
     @staticmethod
