@@ -103,10 +103,20 @@ class DilutionSession(object):
             if transfer_handler:
                 transfer_handler.execute(transfer_batch, dilution_settings, robot_settings)
 
-            # Finally, run the validator on the transfer batch:
+            # Run the validator on the transfer batch:
             if transfer_validator:
                 results = transfer_validator.validate(transfer_batch, robot_settings, dilution_settings)
                 self.validation_service.handle_validation(results)
+
+        for ix, transfer_batch in enumerate(transfer_batches):
+            # Evaluate CSVs:
+            csv = Csv(delim=robot_settings.delimiter, newline=robot_settings.newline)
+            csv.file_name = robot_settings.get_filename(csv, self.context, ix)
+            csv.set_header(robot_settings.header)
+            sorted_transfers = sorted(transfer_batch.transfers, key=robot_settings.transfer_sort_key)
+            for transfer in sorted_transfers:
+                csv.append(robot_settings.map_transfer_to_row(transfer), transfer)
+            transfer_batch.driver_file = csv
 
         return transfer_batches
 
@@ -164,37 +174,15 @@ class DilutionSession(object):
     def _should_include_pair(pair, dilution_settings):
         return not pair.input_artifact.is_control or dilution_settings.include_control
 
-    def driver_files(self, robot_name):
+    def transfer_batches(self, robot_name):
         """Returns the driver file for the robot. Might be cached"""
-        if robot_name not in self._driver_files:
-            self._driver_files[robot_name] = list(self._create_robot_driver_files(robot_name))
-        return self._driver_files[robot_name]
+        return self.transfer_batches_by_robot[robot_name]
 
     def all_driver_files(self):
         """Returns all robot driver files in tuples (robot, robot_file)"""
         for robot_name in self.robot_settings_by_name:
             yield robot_name, self.driver_files(robot_name)
 
-    def _create_robot_driver_files(self, robot_name):
-        """Creates a csv for the robot"""
-        robot_settings = self.robot_settings_by_name[robot_name]
-        for ix, transfer_batch in enumerate(self.transfer_batches_by_robot[robot_name]):
-            csv = self._transfer_batch_to_robot_file(transfer_batch, robot_settings)
-            # Add the file name:
-            csv.file_name = robot_settings.get_filename(csv, self.context, ix)
-            yield csv
-
-    def _transfer_batch_to_robot_file(self, transfer_batch, robot_settings):
-        """
-        Maps a transfer_batch to a robot file of type Csv. The transfer_batch is sorted and grouped as required.
-        """
-        csv = Csv(delim=robot_settings.delimiter, newline=robot_settings.newline)
-        csv.set_header(robot_settings.header)
-        sorted_transfers = sorted(transfer_batch.transfers, key=robot_settings.transfer_sort_key)
-
-        for transfer in sorted_transfers:
-            csv.append(robot_settings.map_transfer_to_row(transfer), transfer)
-        return csv
 
     def update_infos_by_source_analyte(self, transfer_batches=None):
         """
@@ -598,9 +586,9 @@ class TransferBatchHandlerBase(object):
             temp_analyte = copy.copy(transfer.source_location.artifact)
             temp_analyte.id += "-temp"
             temp_analyte.name += "-temp"
-            temp_target_location = Well(transfer.target_location.position,
-                                        temp_target_container,
-                                        temp_analyte)
+            temp_target_location = temp_target_container.set_well(
+                transfer.target_location.position,
+                temp_analyte)
 
             # TODO: This should be defined by a rule provided by the inheriting class
             static_sample_volume = 4
@@ -775,6 +763,11 @@ class TransferBatch(object):
         for transfer in self.transfers:
             ret.add((transfer.source_location.container, transfer.target_location.container))
         return ret
+
+    @property
+    def target_containers(self):
+        return sorted(set(target for source, target in self.container_mappings),
+                      key=lambda cont: cont.name)
 
     def validate(self, validator, robot_settings, dilution_settings):
         # Run the validator on the object and save the results on the object.
