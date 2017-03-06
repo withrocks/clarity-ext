@@ -35,7 +35,7 @@ class Well(DomainObjectMixin):
         return "{}({}{}: {})".format(container_name,
                                      self.position.row_letter,
                                      self.position.col,
-                                     self.artifact.id)
+                                     self.artifact.id if self.artifact is not None else "")
 
     @property
     def index_down_first(self):
@@ -104,24 +104,20 @@ class Container(DomainObjectMixin):
     DOWN_FIRST = 1
     RIGHT_FIRST = 2
 
-    CONTAINER_TYPE_96_WELLS_PLATE = 100
-    CONTAINER_TYPE_STRIP_TUBE = 200
-    CONTAINER_TYPE_TUBE = 300
-    CONTAINER_TYPE_PATTERNED_FLOW_CELL = 400
+    CONTAINER_TYPE_96_WELLS_PLATE = "96 well plate"
 
-    def __init__(self, mapping=None, container_type=None, size=None, container_type_name=None,
+    def __init__(self, mapping=None, size=None, container_type=None,
                  container_id=None, name=None, is_source=None):
         """
         :param mapping: A dictionary-like object containing mapping from well
         position to content. It can be non-complete.
-        :param container_type: One of the CONTAINER_TYPE_* constants
         :param size: The size of the container. Object should support height and width
+        :param container_type: The type of the container (string)
         :return:
         """
         self.mapping = mapping
         # TODO: using both container_type and container_type_name is temporary
         self.container_type = container_type
-        self.container_type_name = container_type_name
         self.id = container_id
         self.name = name
 
@@ -139,18 +135,16 @@ class Container(DomainObjectMixin):
         # The index of the container in some context, e.g. the 1st plate being diluted from. Context-specific
         self.index = None
 
-        if size:
-            self.size = size
+        if size is None:
+            size = self.size_from_container_type(container_type)
+        assert size is not None
+        self.size = size
+
+    def size_from_container_type(self, container_type):
+        if container_type == self.CONTAINER_TYPE_96_WELLS_PLATE:
+            return PlateSize(height=8, width=12)
         else:
-            # TODO: Require the size to be sent in instead
-            if self.container_type == self.CONTAINER_TYPE_96_WELLS_PLATE:
-                self.size = PlateSize(height=8, width=12)
-            elif self.container_type == self.CONTAINER_TYPE_STRIP_TUBE:
-                self.size = PlateSize(height=8, width=1)
-            elif self.container_type == self.CONTAINER_TYPE_TUBE:
-                self.size = PlateSize(height=1, width=1)
-            else:
-                raise ValueError("Unknown plate type '{}'".format(self.container_type))
+            raise ValueError("Can't initialize container size from plate name {}".format(container_type))
 
     @property
     def rows(self):
@@ -168,7 +162,6 @@ class Container(DomainObjectMixin):
     def create_from_container(container):
         """Creates a container with the same dimensions as the other container"""
         return Container(container_type=container.container_type,
-                         container_type_name=container.container_type_name,
                          size=container.size,
                          is_source=container.is_source)
 
@@ -180,19 +173,7 @@ class Container(DomainObjectMixin):
         size = PlateSize(width=resource.type.x_dimension[
                          "size"], height=resource.type.y_dimension["size"])
 
-        if resource.type.name.startswith("96 well plate"):
-            container_type = Container.CONTAINER_TYPE_96_WELLS_PLATE
-        elif resource.type.name.startswith("Tube"):
-            container_type = Container.CONTAINER_TYPE_TUBE
-        elif resource.type.name.startswith("Strip Tube"):
-            container_type = Container.CONTAINER_TYPE_STRIP_TUBE
-        elif resource.type.name.startswith("Patterned Flow Cell"):
-            container_type = Container.CONTAINER_TYPE_PATTERNED_FLOW_CELL
-        else:
-            raise NotImplementedError(
-                "Resource type '{}' is not supported".format(resource.type.name))
-        ret = Container(container_type=container_type, size=size, container_type_name=resource.type.name,
-                        is_source=is_source)
+        ret = Container(size=size, container_type=resource.type.name, is_source=is_source)
         ret.id = resource.id
         ret.name = resource.name
         ret.size = size
@@ -247,6 +228,7 @@ class Container(DomainObjectMixin):
 
         if not artifact.well:
             artifact.well = self.wells[well_pos]
+        return self.wells[well_pos]
 
     def __iter__(self):
         return self.enumerate_wells(order=self.DOWN_FIRST)
