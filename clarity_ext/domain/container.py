@@ -127,14 +127,6 @@ class Container(DomainObjectMixin):
         # Set to True if this is a source container in the current context, False if it's the target
         self.is_source = is_source
 
-        # The container may need to be referenced by a different name, in particular when diluting the container
-        # will need a shorter name.
-        self.source_ref = None
-        self.target_ref = None
-
-        # The index of the container in some context, e.g. the 1st plate being diluted from. Context-specific
-        self.index = None
-
         if size is None:
             size = self.size_from_container_type(container_type)
         assert size is not None

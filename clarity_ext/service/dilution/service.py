@@ -316,6 +316,22 @@ class SingleTransfer(object):
         # solves the case with TransferBatches. Look into changing back to the other approach later
         self.should_update_source_vol = True
 
+    def _container_slot(self, is_source):
+        if self.transfer_batch is None or self.source_location is None or self.target_location is None:
+            return None
+        container = self.source_location.container if is_source else self.target_location.container
+        return self.transfer_batch.get_container_slot(container)
+
+    @property
+    def source_slot(self):
+        """Provides the source slot of the transfer if it has been positioned yet"""
+        return self._container_slot(True)
+
+    @property
+    def target_slot(self):
+        """Provides the target slot of the transfer if it has been positioned yet"""
+        return self._container_slot(False)
+
     @property
     def pipette_total_volume(self):
         return self.pipette_buffer_volume + self.pipette_sample_volume
@@ -492,8 +508,10 @@ class RobotSettings(object):
             - well index (down first)
             - pipette volume (descending)
         """
-        assert transfer.source_location.container.index is not None
-        return (transfer.source_location.container.index,
+        assert transfer.transfer_batch is not None
+        assert transfer.source_slot is not None
+        assert transfer.source_slot.index is not None
+        return (transfer.source_slot.index,
                 transfer.source_location.index_down_first,
                 -transfer.pipette_total_volume)
 
@@ -714,12 +732,10 @@ class TransferBatch(object):
         self._set_transfers(transfers, robot_settings)
         self.name = name
 
-        # A list of containers used for this transfer. These are not the original containers, but copies of them
-        # so that they can be manipulated at will
-        self.containers = None
+    def get_container_slot(self, container):
+        return self.container_to_container_slot[container]
 
     def _set_transfers(self, transfers, robot_settings):
-        self.containers = list()
         self._transfers = transfers
         self._sort_and_name_containers(robot_settings)
         for transfer in transfers:
@@ -727,27 +743,29 @@ class TransferBatch(object):
 
     def _sort_and_name_containers(self, robot_settings):
         """Updates the list of containers and assigns temporary names and positions to them"""
-
         def sort_key(c):
             return not c.is_temporary, c.id
 
         source_containers = set(transfer.source_location.container for transfer in self._transfers)
         target_containers = set(transfer.target_location.container for transfer in self._transfers)
+        assert len(source_containers.intersection(target_containers)) == 0
 
         source_containers = list(sorted(source_containers, key=sort_key))
         target_containers = list(sorted(target_containers, key=sort_key))
 
+        self.container_to_container_slot = dict()
         for ix, container in enumerate(source_containers):
-            container.index = ix
+            self.container_to_container_slot[container] = \
+                self._container_to_slot(robot_settings, container, ix, True)
         for ix, container in enumerate(target_containers):
-            container.index = ix
+            self.container_to_container_slot[container] = \
+                self._container_to_slot(robot_settings, container, ix, False)
 
-        self.containers = source_containers + target_containers
-
-        # Have the user update the temporary name:
-        for container in self.containers:
-            container.source_ref = robot_settings.get_container_handle_name(container, True)
-            container.target_ref = robot_settings.get_container_handle_name(container, False)
+    @staticmethod
+    def _container_to_slot(robot_settings, container, ix, is_source):
+        slot = ContainerSlot(container, ix, None, is_source)
+        slot.name = robot_settings.get_container_handle_name(slot)
+        return slot
 
     @property
     def transfers(self):
@@ -761,13 +779,13 @@ class TransferBatch(object):
     def container_mappings(self):
         ret = set()
         for transfer in self.transfers:
-            ret.add((transfer.source_location.container, transfer.target_location.container))
+            ret.add((transfer.source_slot, transfer.target_slot))
         return ret
 
     @property
-    def target_containers(self):
+    def target_container_slots(self):
         return sorted(set(target for source, target in self.container_mappings),
-                      key=lambda cont: cont.name)
+                      key=lambda cont: cont.index)
 
     def validate(self, validator, robot_settings, dilution_settings):
         # Run the validator on the object and save the results on the object.
@@ -812,6 +830,20 @@ class TransferBatchCollection(object):
         for batch in self._batches:
             ret.append(batch.report())
         return "\n\n".join(ret)
+
+
+class ContainerSlot(object):
+    """
+    During a dilution, containers are positioned on a robot in a sequential order.
+    This is encapsulated by wrapping them in a 'ContainerSlot'.
+
+    The name is the name used by the robot to reference the container.
+    """
+    def __init__(self, container, index, name, is_source):
+        self.container = container
+        self.index = index
+        self.name = name
+        self.is_source = is_source
 
 
 class NeedsBatchSplit(TransferValidationException):
