@@ -61,13 +61,20 @@ class StepRepository(object):
         process_type = self.get_process_type()
 
         ret = []
-        # TODO: Ensure that the container repo fetches all containers in one
-        # batch call:
+        # TODO: Ensure that the container repo fetches all containers in one batch call:
+
+        # In the case of pools, we might have the same output artifact repeated more than once, ensure
+        # that we create only one artifact domain object in this case:
+        outputs_by_id = dict()
         container_repo = ContainerRepository()
         for input_res, output_res in input_output_maps:
             input, output = self._wrap_input_output(
                 input_res, output_res, container_repo, process_type)
+            # Check if we already have an output with this id, and use that instead in that case:
+            if output.id in outputs_by_id:
+                output = outputs_by_id[output.id]
             ret.append((input, output))
+            outputs_by_id[output.id] = output
         return ret
 
     def _wrap_input_output(self, input_info, output_info, container_repo, process_type):
