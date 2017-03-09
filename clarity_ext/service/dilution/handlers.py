@@ -3,10 +3,33 @@ from clarity_ext.service.dilution.service import *
 
 
 class TransferHandlerBase(object):
+    """Base class for all handlers"""
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, validation_service):
-        self.validation_service = validation_service
+    def __init__(self, dilution_session):
+        self.dilution_session = dilution_session
+        self.validation_exceptions = list()
+        self.logger = logging.getLogger(__name__)
+
+    def error(self, msg, transfers):
+        """
+        Adds a validation exception to the list of validation errors and warnings. Errors are logged after the handler
+        is done processing and then a UsageError is thrown.
+        """
+        self.validation_exceptions.extend(self._create_exceptions(msg, transfers, ValidationType.ERROR))
+
+    def warning(self, msg, transfers):
+        """
+        Adds a validation warning to the list of validation warnings. Validation warnings are only logged.
+
+        Transfers can be either a list of transfers or one transfer
+        """
+        self.validation_exceptions.extend(self._create_exceptions(msg, transfers, ValidationType.WARNING))
+
+
+class TransferSplitHandlerBase(TransferHandlerBase):
+    """Base class for handlers that can split one transfer into more"""
+    __metaclass__ = abc.ABCMeta
 
     @abc.abstractmethod
     def needs_row_split(self, transfer, dilution_settings, robot_settings):
@@ -16,13 +39,12 @@ class TransferHandlerBase(object):
     def split_single_transfer(self, transfer, robot_settings):
         pass
 
-    def execute(self, transfer_batch, dilution_settings, robot_settings):
+    def handle_batch(self, transfer_batch, dilution_settings, robot_settings):
         require_row_split = [t for t in transfer_batch.transfers
                              if self.needs_row_split(t, dilution_settings, robot_settings)]
         for transfer in require_row_split:
-            # TODO: Looks weird to push the action to the validation handler like this, but fits right now.
             val = NeedsRowSplit(transfer)
-            self.validation_service.handle_single_validation(val)
+            self.dilution_session.validation_service.handle_single_validation(val)
 
         for transfer in require_row_split:
             split_transfers = self.split_single_transfer(transfer, robot_settings)
@@ -30,17 +52,14 @@ class TransferHandlerBase(object):
             transfer_batch.transfers.extend(split_transfers)
 
 
-class TransferBatchHandlerBase(object):
+class TransferBatchHandlerBase(TransferHandlerBase):
     __metaclass__ = abc.ABCMeta
-
-    def __init__(self, validation_service):
-        self.validation_service = validation_service
 
     @abc.abstractmethod
     def needs_split(self, transfer, dilution_settings, robot_settings):
         pass
 
-    def execute(self, transfer_batch, dilution_settings, robot_settings, strategy):
+    def handle_batch(self, transfer_batch, dilution_settings, robot_settings):
         """
         Returns one or two transfer_batches, based on rules. Can be used to split a transfer_batch into original and
         temporary transfer_batches
@@ -49,20 +68,21 @@ class TransferBatchHandlerBase(object):
         no_split = [t for t in transfer_batch.transfers if t not in split]
 
         for transfer in split:
-            # This may look strange, but for now we want to handle this like a validation exception
             val = NeedsBatchSplit(transfer)
-            self.validation_service.handle_single_validation(val)
+            self.dilution_session.validation_service.handle_single_validation(val)
 
         if len(split) > 0:
-            return self.split_transfer_batch(split, no_split, strategy, robot_settings)
+            return self.split_transfer_batch(split, no_split, dilution_settings, robot_settings)
         else:
             # No split was required
             return TransferBatchCollection(transfer_batch)
 
-    def split_transfer_batch(self, split, no_split, strategy, robot_settings):
+    def split_transfer_batch(self, split, no_split, dilution_settings, robot_settings):
         first_transfers = list(self.calculate_split_transfers(split))
         temp_transfer_batch = TransferBatch(first_transfers, robot_settings, depth=1, is_temporary=True)
-        strategy.calculate_transfer_volumes(temp_transfer_batch)
+        self.dilution_session.dilution_service.execute_handlers(self.dilution_session.transfer_calc_handlers,
+                                                                temp_transfer_batch,
+                                                                dilution_settings, robot_settings)
         second_transfers = list()
 
         # We need to create a new transfers list with:
@@ -83,7 +103,8 @@ class TransferBatchHandlerBase(object):
         second_transfers.extend(no_split)
 
         final_transfer_batch = TransferBatch(second_transfers, robot_settings, depth=1)
-        strategy.calculate_transfer_volumes(final_transfer_batch)
+        self.dilution_session.dilution_service.execute_handlers(self.dilution_session.transfer_calc_handlers,
+                                                                final_transfer_batch, dilution_settings, robot_settings)
 
         # For the analytes requiring splits
         return TransferBatchCollection(temp_transfer_batch, final_transfer_batch)
@@ -132,26 +153,42 @@ class TransferBatchHandlerBase(object):
             yield transfer_copy
 
 
-class FixedVolumeCalc:
+class TransferCalcHandlerBase(TransferHandlerBase):
+    """
+    Base class for handlers that change the transfer in some way, in particular calculating values
+    """
+    __metaclass__ = abc.ABCMeta
+
+    def handle_batch(self, transfer_batch, dilution_settings, robot_settings):
+        """By default, run through the entire batch and call calc."""
+        # TODO: Shouldn't transfer_batch be an iterator?
+        for transfer in transfer_batch.transfers:
+            self.handle_transfer(transfer, dilution_settings, robot_settings)
+
+    def handle_transfer(self, transfer, dilution_settings, robot_settings):
+        pass
+
+    def _create_exceptions(self, msg, transfers, validation_type):
+        if isinstance(transfers, list):
+            for transfer in transfers:
+                yield TransferValidationException(transfer, msg, validation_type)
+        else:
+            yield TransferValidationException(transfers, msg, validation_type)
+
+
+class FixedVolumeCalcHandler(TransferCalcHandlerBase):
     """
     Implements sample volume calculations for transfer only dilutions.
     I.e. no calculations at all. The fixed transfer volume is specified in
     individual scripts
     """
-    def __init__(self, dilution_settings, robot_settings):
-        self.dilution_settings = dilution_settings
-        self.robot_settings = robot_settings
-
-    def calculate_transfer_volumes(self, batch):
-        """
-        Only updates the source volume
-        """
-        for transfer in batch.transfers:
-            transfer.updated_source_vol = round(transfer.source_vol - transfer.pipette_sample_volume - \
-                                                self.robot_settings.dilution_waste_volume, 1)
+    def handle_transfer(self, transfer, dilution_settings, robot_settings):
+        """Only updates the source volume"""
+        transfer.source_vol_delta = -round(transfer.pipette_sample_volume +
+                                           robot_settings.dilution_waste_volume, 1)
 
 
-class OneToOneConcentrationCalc:
+class OneToOneConcentrationCalcHandler(TransferCalcHandlerBase):
     """
     Implements sample volume calculations for a one to one dilution,
     referring that a single transfer has a single source well/tube
@@ -159,33 +196,60 @@ class OneToOneConcentrationCalc:
     Transfer volumes are calculated on basis of a requested target
     concentration and target volume by the user.
     """
-    def __init__(self, dilution_settings, robot_settings):
-        self.dilution_settings = dilution_settings
-        self.robot_settings = robot_settings
+    def handle_transfer(self, transfer, dilution_settings, robot_settings):
+        if transfer.source_location.artifact.is_control:
+            transfer.pipette_buffer_volume = transfer.target_vol
+            return
 
-    def calculate_transfer_volumes(self, batch):
-        for transfer in batch.transfers:  # TODO: change _transfers to something else?
-            if transfer.source_location.artifact.is_control:
-                transfer.pipette_buffer_volume = transfer.target_vol
-                continue
+        transfer.pipette_sample_volume = \
+            transfer.target_conc * transfer.target_vol / float(transfer.source_conc)
+        transfer.pipette_buffer_volume = \
+            max(transfer.target_vol - transfer.pipette_sample_volume, 0)
+        transfer.has_to_evaporate = \
+            (transfer.target_vol - transfer.pipette_sample_volume) < 0
 
-            transfer.pipette_sample_volume = \
-                transfer.target_conc * transfer.target_vol / float(transfer.source_conc)
-            transfer.pipette_buffer_volume = \
-                max(transfer.target_vol - transfer.pipette_sample_volume, 0)
-            transfer.has_to_evaporate = \
-                (transfer.target_vol - transfer.pipette_sample_volume) < 0
+        # In the case of looped dilutions, we scale up on the temporary plate only
+        # Scaling up is not needed on the regular case because it's covered by looping
+        # TODO: To support more complex calculations and reuse of code, move this into a separate rule,
+        # then apply rules in an order specified by the user (in the DilutionSettings).
+        if (transfer.transfer_batch.is_temporary and dilution_settings.scale_up_low_volumes and
+                    transfer.pipette_sample_volume < dilution_settings.robot_min_volume):
+            scale_factor = self.dilution_settings.robot_min_volume / float(transfer.pipette_sample_volume)
+            transfer.pipette_sample_volume *= scale_factor
+            transfer.pipette_buffer_volume *= scale_factor
+            transfer.scaled_up = True
+        transfer.source_vol_delta = -round(transfer.pipette_sample_volume +
+                                           robot_settings.dilution_waste_volume, 1)
+        transfer.pipette_sample_volume = round(transfer.pipette_sample_volume, 1)
+        transfer.pipette_buffer_volume = round(transfer.pipette_buffer_volume, 1)
 
-            # In the case of looped dilutions, we scale up on the temporary plate only
-            # Scaling up is not needed on the regular case because it's covered by looping
-            if (batch.is_temporary and self.dilution_settings.scale_up_low_volumes and
-                transfer.pipette_sample_volume < self.dilution_settings.robot_min_volume):
-                scale_factor = self.dilution_settings.robot_min_volume / float(transfer.pipette_sample_volume)
-                transfer.pipette_sample_volume *= scale_factor
-                transfer.pipette_buffer_volume *= scale_factor
-                transfer.scaled_up = True
-            transfer.updated_source_vol = round(transfer.source_vol - transfer.pipette_sample_volume - \
-                                                self.robot_settings.dilution_waste_volume, 1)
-            transfer.pipette_sample_volume = round(transfer.pipette_sample_volume, 1)
-            transfer.pipette_buffer_volume = round(transfer.pipette_buffer_volume, 1)
+
+class PoolTransferCalcHandler(TransferCalcHandlerBase):
+    def handle_batch(self, batch, dilution_settings, robot_settings):
+        # Since we need the average in this handler, we override handle_batch rather than handle_transfer
+        # TODO: Should validate that the concentration is equal on all outputs in a group
+        for target, transfers in batch.transfers_by_output.items():
+            self.logger.debug("Grouped target={}, transfers={}".format(target, transfers))
+            regular_transfers = [t for t in transfers if not t.source_location.artifact.is_control]
+            sample_size = len(regular_transfers)
+
+            # Validation:
+            concs = list(set(t.source_conc for t in regular_transfers))
+            if len(concs) > 1:
+                # NOTE: Validation is now mixed between the validators and the handlers. It's probably clearer
+                # to keep it all in the handlers and remove the validators.
+                self.warning("Different source concentrations ({}) in the pool's input: {}. "
+                             "Target concentration can't be set for the pool".format(concs, target), transfers)
+                target_conc = None
+            else:
+                target_conc = concs[0]
+
+            for transfer in regular_transfers:
+                self.logger.debug("Transfer before transform: {}".format(transfer))
+                transfer.pipette_sample_volume = float(transfer.target_vol) / sample_size
+                transfer.source_vol_delta = -round(transfer.pipette_sample_volume +
+                                                   robot_settings.dilution_waste_volume, 1)
+                if target_conc:
+                    transfer.target_conc = target_conc
+                self.logger.debug("Transfer after transform:  {}".format(transfer))
 

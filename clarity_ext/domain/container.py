@@ -131,6 +131,7 @@ class Container(DomainObjectMixin):
 
     def append(self, artifact):
         """Adds this artifact to the next free position"""
+        print "HERE"
         if self._append_iterator is None:
             self._append_iterator = self._traverse(order=self.append_order)
         well_pos = next(self._append_iterator)
@@ -146,15 +147,27 @@ class Container(DomainObjectMixin):
             table.append(row)
         return table
 
-    def to_string(self):
+    def to_string(self, compressed=False, short=False):
+        """
+        Returns a string representation of the container as a table
+
+        :param compressed: Shows only a list of non-empty wells, rather than a table
+        :param short: Indicates non-empty wells with X and empty with _. Ignored if compressed=True
+        """
         rows = list()
-        table = self.to_table()
-        longest = 0
-        for row in table:
-            rows.append(map(str, row))
-            longest = max(max(len(cell) for cell in rows[-1]), longest)
-        for i in range(len(rows)):
-            rows[i] = "|".join([cell.ljust(longest, " ") for cell in rows[i]])
+        if compressed:
+            rows = [str(well) for well in self if well.artifact is not None]
+            empty_count = sum(1 for well in self if well.artifact is None)
+            rows.append("... {} empty wells".format(empty_count))
+        else:
+            well_to_string = lambda w: "X" if w.artifact else "_" if short else str
+            table = self.to_table()
+            longest = 0
+            for row in table:
+                rows.append(map(well_to_string, row))
+                longest = max(max(len(cell) for cell in rows[-1]), longest)
+            for i in range(len(rows)):
+                rows[i] = "|".join([cell.ljust(longest, " ") for cell in rows[i]])
         return "\n".join(rows)
 
     def size_from_container_type(self, container_type):

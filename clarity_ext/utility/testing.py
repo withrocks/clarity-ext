@@ -45,11 +45,41 @@ class DilutionTestDataHelper:
             self.containers[container_name] = self.create_container(container_name, is_source)
         return self.containers[container_name]
 
-    def _create_analyte(self, is_input, partial_name, analyte_type=Analyte):
+    def _create_analyte(self, is_input, partial_name, analyte_type=Analyte, samples=None):
+        # TODO: This code is not specific to the Dilution test cases, move it to a more generic class.
         name = "{}-{}".format("in" if is_input else "out", partial_name)
-        ret = analyte_type(api_resource=None, is_input=is_input,
-                           id=name, name=name)
+        project = Project("IntegrationTest")
+        if not samples:
+            samples = [Sample("S_" + name, "S_" + name, project)]
+        ret = analyte_type(api_resource=None, is_input=is_input, id=name, name=name, samples=samples)
         return ret
+
+    def create_pooled_pairs(self, pool_size):
+        """
+        Creates n pairs that are pooled, i.e. there are n analytes that are mapped to m analytes, where m < n.
+
+        The wells in the source container are [A1, B2, ...]
+
+        NOTE: Currently we model the REST API interface when it comes to pools, but it would probably
+        be an improvement to introduce new domain objects, Pool and PoolInput that would
+        be used in this case to simplify the use of the API.
+        """
+        source_analytes = list()
+        for i in range(1, pool_size + 1):
+            source_container = self.get_container_by_name("source{}".format(i), True)
+            name = "analyte{}".format(i)
+            analyte = self._create_analyte(True, name, Analyte)
+            source_container.append(analyte)
+            source_analytes.append(analyte)
+
+        # Now create one analyte for the output, but containing all the input samples
+        samples = [analyte.sample() for analyte in source_analytes]
+        target_analyte = self._create_analyte(False, "analyte1", samples=samples)
+        target_container = self.get_container_by_name(self.default_target, False)
+        target_container.append(target_analyte)
+
+        for source_analyte in source_analytes:
+            yield ArtifactPair(source_analyte, target_analyte)
 
     def create_pair(self, pos_from=None, pos_to=None, source_container_name=None, target_container_name=None,
                     source_type=Analyte, target_type=Analyte):
@@ -97,6 +127,25 @@ class DilutionTestDataHelper:
                                                    "Dil. calc source vol": None})
         return pair
 
+    # TODO: MERGE WITH ABOVE!
+    def create_dilution_pair2(self, pair, conc1, vol1, conc2, vol2):
+        """
+        Given a pair (e.g. built with create_pair), expands it so that it looks like we expect pairs to look
+        if they take part in a dilution.
+        """
+        concentration_unit = DilutionSettings.concentration_unit_to_string(self.concentration_unit)
+        conc_source_udf = "Conc. Current ({})".format(concentration_unit)
+        conc_target_udf = "Target conc. ({})".format(concentration_unit)
+        pair.input_artifact.udf_map = UdfMapping({conc_source_udf: conc1,
+                                                  "Current sample volume (ul)": vol1})
+        pair.output_artifact.udf_map = UdfMapping({conc_source_udf: conc1,
+                                                   "Current sample volume (ul)": vol1,
+                                                   "Target vol. (ul)": vol2,
+                                                   conc_target_udf: conc2,
+                                                   "Dil. calc target vol": None,
+                                                   "Dil. calc target conc.": None,
+                                                   "Dil. calc source vol": None})
+        return pair
 
 def mock_context(**kwargs):
     """Creates a mock with the service provided as keyword arguments, filling the rest with MagicMock"""

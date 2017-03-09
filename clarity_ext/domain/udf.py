@@ -187,7 +187,7 @@ class UdfMapping(object):
         all_udfs.update(process_output.field_definitions)
         return {key: api_resource.udf.get(key, None) for key in all_udfs}
 
-    def __str__(self):
+    def __repr__(self):
         return str({key: self[key].value for key in self.py_names})
 
 

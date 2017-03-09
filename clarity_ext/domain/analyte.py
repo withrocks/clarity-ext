@@ -36,9 +36,3 @@ class Analyte(Aliquot):
         """
         return utils.single(self.samples)
 
-    @property
-    def is_pool(self):
-        if self.samples is None:
-            # TODO: Happens only in a test, fix that...
-            return False
-        return len(self.samples) > 1
