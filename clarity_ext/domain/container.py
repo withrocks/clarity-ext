@@ -28,14 +28,9 @@ class Well(DomainObjectMixin):
         return "{}:{}".format(self.position.row, self.position.col)
 
     def __repr__(self):
-        if self.container:
-            container_name = self.container.name
-        else:
-            container_name = '<no container>'
-        return "{}({}{}: {})".format(container_name,
-                                     self.position.row_letter,
-                                     self.position.col,
-                                     self.artifact.id if self.artifact is not None else "")
+        return "{}{}: {}".format(self.position.row_letter,
+                                 self.position.col,
+                                 self.artifact.id if self.artifact is not None else "None")
 
     @property
     def index_down_first(self):
@@ -107,7 +102,7 @@ class Container(DomainObjectMixin):
     CONTAINER_TYPE_96_WELLS_PLATE = "96 well plate"
 
     def __init__(self, mapping=None, size=None, container_type=None,
-                 container_id=None, name=None, is_source=None):
+                 container_id=None, name=None, is_source=None, append_order=DOWN_FIRST):
         """
         :param mapping: A dictionary-like object containing mapping from well
         position to content. It can be non-complete.
@@ -131,6 +126,36 @@ class Container(DomainObjectMixin):
             size = self.size_from_container_type(container_type)
         assert size is not None
         self.size = size
+        self._append_iterator = None
+        self.append_order = append_order
+
+    def append(self, artifact):
+        """Adds this artifact to the next free position"""
+        if self._append_iterator is None:
+            self._append_iterator = self._traverse(order=self.append_order)
+        well_pos = next(self._append_iterator)
+        self.set_well(well_pos, artifact)
+
+    def to_table(self):
+        """Returns the wells in a list of lists"""
+        table = list()
+        for i in range(self.size.height):
+            row = list()
+            for j in range(self.size.width):
+                row.append(self[(i+1, j+1)])
+            table.append(row)
+        return table
+
+    def to_string(self):
+        rows = list()
+        table = self.to_table()
+        longest = 0
+        for row in table:
+            rows.append(map(str, row))
+            longest = max(max(len(cell) for cell in rows[-1]), longest)
+        for i in range(len(rows)):
+            rows[i] = "|".join([cell.ljust(longest, " ") for cell in rows[i]])
+        return "\n".join(rows)
 
     def size_from_container_type(self, container_type):
         if container_type == self.CONTAINER_TYPE_96_WELLS_PLATE:
@@ -215,11 +240,10 @@ class Container(DomainObjectMixin):
                 "Well id {} is not available in this container (type={})".format(well_pos, self))
 
         self.wells[well_pos].artifact = artifact
-        if artifact and not artifact.container:
+        if artifact:
             artifact.container = self
 
-        if not artifact.well:
-            artifact.well = self.wells[well_pos]
+        artifact.well = self.wells[well_pos]
         return self.wells[well_pos]
 
     def __iter__(self):

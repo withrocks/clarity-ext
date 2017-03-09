@@ -35,3 +35,10 @@ class Analyte(Aliquot):
         NOTE: There can be more than one sample on an Analyte. That's the case with pools.
         """
         return utils.single(self.samples)
+
+    @property
+    def is_pool(self):
+        if self.samples is None:
+            # TODO: Happens only in a test, fix that...
+            return False
+        return len(self.samples) > 1
