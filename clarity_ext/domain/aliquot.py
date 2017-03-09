@@ -22,6 +22,13 @@ class Aliquot(Artifact):
             self.container = None
         self.is_from_original = False
 
+    @property
+    def is_pool(self):
+        if self.samples is None:
+            # TODO: Happens only in a test, fix that...
+            return False
+        return len(self.samples) > 1
+
 
 class Sample(DomainObjectWithUdfMixin):
 
