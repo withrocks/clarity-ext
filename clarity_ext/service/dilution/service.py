@@ -175,7 +175,9 @@ class DilutionSession(object):
         # Wrap the transfers in a TransferBatch object, it will do a basic validation on itself:
         # and raise a UsageError if it can't be used.
         batch = TransferBatch(transfers, robot_settings, name=robot_settings.name)
-
+        if self.transfer_validator:
+            pre_results = self.transfer_validator.pre_validate(batch, dilution_settings, robot_settings)
+            self.validation_service.handle_validation(pre_results)
         self.dilution_service.execute_handlers(transfer_calc_handlers, batch, dilution_settings, robot_settings)
         return batch
 
@@ -386,12 +388,24 @@ class SingleTransfer(object):
 
         try:
             single_transfer.source_conc = cls._referenced_concentration(input_artifact, concentration_ref)
+        except AttributeError:
+            pass
+
+        try:
             single_transfer.source_vol = input_artifact.udf_current_sample_volume_ul
-            single_transfer.target_conc = cls._referenced_requested_concentration(output_artifact,
-                                                                                  concentration_ref)
+        except AttributeError:
+            pass
+
+        try:
+            single_transfer.target_conc = cls._referenced_requested_concentration(output_artifact, concentration_ref)
+        except AttributeError:
+            pass
+
+        try:
             single_transfer.target_vol = output_artifact.udf_target_vol_ul
         except AttributeError:
-            raise_target_measurements_missing()
+            pass
+
         # single_transfer.pair = pair  # TODO: Both setting the pair and source target!, if needed, set this earlier!
         return single_transfer
 
@@ -560,6 +574,12 @@ class DilutionValidatorBase(object):
         """
         return []
 
+    def pre_conditions(self, transfer, robot_settings, dilution_settings):
+        """
+        Validates that the transfer is set up for dilution
+        """
+        return []
+
     def _group_by_type(self, results):
         def by_type(result):
             return result.type
@@ -577,8 +597,19 @@ class DilutionValidatorBase(object):
         Returns a tuple of (errors, warnings).
         """
         results = ValidationResults()
-        for transfer in transfer_batch._transfers:
+        for transfer in transfer_batch.transfers:
             validation_exceptions = list(self.rules(transfer, robot_settings, dilution_settings))
+            for exception in validation_exceptions:
+                if not exception.transfer:
+                    exception.transfer = transfer
+            results.extend(validation_exceptions)
+        return results
+
+    def pre_validate(self, transfer_batch, robot_settings, dilution_settings):
+        # TODO: Reuses code
+        results = ValidationResults()
+        for transfer in transfer_batch.transfers:
+            validation_exceptions = list(self.pre_conditions(transfer, robot_settings, dilution_settings))
             for exception in validation_exceptions:
                 if not exception.transfer:
                     exception.transfer = transfer
