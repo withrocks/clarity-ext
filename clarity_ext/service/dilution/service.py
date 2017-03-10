@@ -391,14 +391,6 @@ class SingleTransfer(object):
     def initialize_transfer(cls, single_transfer, concentration_ref):
         input_artifact = single_transfer.source_location.artifact
         output_artifact = single_transfer.target_location.artifact
-        # TODO: Move the target measurement to a later stage, since it varies based on the calculations
-        # which values need to be provided
-
-        # NOTE: This should happen later!
-        #def raise_target_measurements_missing():
-        #    raise UsageError("You need to provide target volume and concentration for all samples. "
-        #                     "Missing for {}.".format(single_transfer.target_location.artifact.id))
-
         try:
             single_transfer.source_conc = cls._referenced_concentration(input_artifact, concentration_ref)
         except AttributeError:

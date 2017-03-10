@@ -261,9 +261,28 @@ class ExtensionService(object):
             raise NotImplementedError("Unknown extension type")
         context.cleanup()
         os.chdir(old_dir)
+
+        self.notify(instance.notifications, context.validation_service.error_count,
+                    context.validation_service.warning_count)
+        # Notify the user if there were any errors or warnings:
+
+    def notify(self, notifications, error_count, warning_count):
         # Print notifications. Newlines will cause only the last notification to be shown, so
         # using slash instead:
-        print("/".join(instance.notifications))
+        if warning_count > 0 and error_count == 0:
+            notifications.append("There were some warnings during execution. Please check the log before continuing.")
+        elif error_count > 0:
+            notifications.append("There were errors during execution. "
+                                 "Changes need to be made before continuing. Please check the log for details.")
+
+        if len(notifications) > 0:
+            print("/".join(notifications))
+        else:
+            print("No errors or warnings")
+
+        if error_count != 0 or warning_count != 0:
+            # Exit with error code 1. This ensures that Clarity shows an error box instead of just a notifaction box.
+            sys.exit(1)
 
     def _validate_against_frozen(self, path, frozen_path):
         if os.path.exists(frozen_path):

@@ -6,6 +6,8 @@ class ValidationService:
     def __init__(self, step_logger_service, logger=None):
         self.logger = logger
         self.step_logger_service = step_logger_service
+        self.warning_count = 0
+        self.error_count = 0
 
     def handle_validation(self, results):
         """
@@ -23,6 +25,11 @@ class ValidationService:
         msg_row = "{}".format(result)
         self.step_logger_service.log(msg_row)
         self._log_debug("{}".format(msg_row))
+
+        if result.type == ValidationType.ERROR:
+            self.error_count += 1
+        if result.type == ValidationType.WARNING:
+            self.warning_count += 1
 
     def _log_debug(self, msg):
         if self.logger is not None:
