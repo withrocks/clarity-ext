@@ -37,11 +37,12 @@ class StepLoggerService:
                 return None
 
     def _log(self, level, msg):
+        time_str = time.strftime("%Y-%m-%d %H:%M:%S")
+        msg = "{} - {}".format(time_str, msg)
         if self.step_log:
             # TODO: Get formatting from the core logging framework
             if level:
-                self.step_log.write("{} - {} - {}".format(time.strftime("%Y-%m-%d %H:%M:%S"),
-                                                          logging.getLevelName(level), msg + self.NEW_LINE))
+                self.step_log.write("{} - {}".format(logging.getLevelName(level), msg + self.NEW_LINE))
             else:
                 self.step_log.write("{}".format(msg + self.NEW_LINE))
 

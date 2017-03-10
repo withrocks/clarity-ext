@@ -23,8 +23,7 @@ class ClarityService(object):
             if isinstance(item, Artifact):
                 artifacts.append(item)
             elif isinstance(item, Container) or isinstance(item, Sample):
-                # TODO: This is temporarily limited to Sample and Container.
-                # LIMS-1057
+                # TODO: This is temporarily limited to Sample and Container. LIMS-1057
                 other_domain_objects.append(item)
             else:
                 raise NotImplementedError("No update method available for {}".format(type(item)))
@@ -33,6 +32,10 @@ class ClarityService(object):
             self.update_single(domain_object, ignore_commit)
 
         if ignore_commit:
+            # TODO: When ignoring commits, the changes that would have been committed are not logged anymore
+            # Ignoring commits should only skip writing to the backend, but should log the changes that should have
+            # happened. Recommended fix is to update all domain objects through the repository and use a repo that logs
+            # only when called.
             self.logger.info("A request for updating artifacts was ignored. "
                              "View log to see which properties have changed.")
             return
