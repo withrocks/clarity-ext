@@ -84,10 +84,11 @@ class ClarityMapper(object):
 
         udfs = None
         if not is_input:
+            # Get the process-output section, output_generation_type is either PerInput for regular analytes or
+            # PerAllInputs for pools
             per_input_analytes = [process_output for process_output
                                   in process_type.process_outputs
-                                  if process_output.output_generation_type == "PerInput" and
-                                  process_output.artifact_type == "Analyte"]
+                                  if process_output.artifact_type == "Analyte"]
             process_output = utils.single_or_default(per_input_analytes)
             if process_output:
                 udfs = UdfMapping.expand_udfs(resource, process_output)
