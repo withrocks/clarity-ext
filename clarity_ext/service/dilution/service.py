@@ -332,7 +332,7 @@ class SingleTransfer(object):
 
         # In the case of temporary transfers, we keep a pointer to the original for easier calculations
         self.original = None
-        self.updated_source_vol = None
+        self.source_vol_delta = None
 
         # The TransferBatch takes care of marking the transfer as being a part of it
         self.transfer_batch = None
@@ -429,6 +429,13 @@ class SingleTransfer(object):
                                                       self.requested_concentration, self.requested_volume)
         return "{} => {}".format(source, target)
 
+    @property
+    def updated_source_vol(self):
+        if self.source_vol_delta:
+            return self.source_vol + self.source_vol_delta
+        else:
+            return None
+
     def __repr__(self):
         return "<SingleTransfer {}({},{}=>[{}]) =({},{})=> {}({},{}) {}>".format(
             self.source_location,
@@ -445,7 +452,7 @@ class SingleTransfer(object):
 
 # Represents source conc/vol, target conc/vol as one unit. TODO: Better name
 DilutionMeasurements = namedtuple('DilutionMeasurements', ['source_conc', 'source_vol', 'target_conc', 'target_vol'])
-UpdateInfo = namedtuple("UpdateInfo", ['target_conc', 'target_vol', 'updated_source_vol'])
+UpdateInfo = namedtuple("UpdateInfo", ['target_conc', 'target_vol', 'source_vol_delta'])
 
 
 class DilutionSettings:
