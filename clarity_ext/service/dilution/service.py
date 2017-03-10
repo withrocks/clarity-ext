@@ -217,19 +217,32 @@ class DilutionSession(object):
             transfer_batches = self.single_robot_transfer_batches_for_update()
 
         for target_analyte, transfers in self.group_transfers_by_target_analyte(transfer_batches).items():
-            if target_analyte.is_control:
-                # TODO: Rather set "should_update_source_vol" on every transfer for a control to simplify this
-                continue
+            if target_analyte.is_pool:
+                # TODO: This grouping of transfers looks overly complex. Check if a refactoring is in order
+                # In particular, shouldn't this happen at the beginning of the process (when creating the transfers)
+                regular_transfers = [t for t in transfers if not t.source_location.artifact.is_control]
+                # We assume the same delta for all samples in the pool:
+                source_vol_delta = list(set(t.source_vol_delta for t in regular_transfers
+                                        if t.should_update_source_vol))
+                source_vol_delta = utils.single(source_vol_delta)
+                # We also assume the same conc for all (or all None)
+                target_conc = utils.single(list(set(t.target_conc for t in regular_transfers)))
+                target_vol = utils.single(list(set(t.target_vol for t in regular_transfers)))
+                for transfer in transfers:
+                    ret[transfer.source_location.artifact] = ((transfer.source_location.artifact,
+                                                              transfer.target_location.artifact),
+                    UpdateInfo(target_conc, target_vol, source_vol_delta))
+            else:
+                if target_analyte.is_control:
+                    continue
 
-            primary_transfer = utils.single_or_default([t for t in transfers if t.is_primary])
-            updated_source_vol = utils.single_or_default([t.updated_source_vol for t in transfers
-                                               if t.should_update_source_vol])
-            if primary_transfer is None or updated_source_vol is None:
-                continue
-
-            ret[primary_transfer.source_location.artifact] = (
-                (primary_transfer.source_location.artifact, primary_transfer.target_location.artifact),
-                UpdateInfo(primary_transfer.target_conc, primary_transfer.target_vol, updated_source_vol))
+                primary_transfer = utils.single_or_default([t for t in transfers if t.is_primary])
+                source_vol_delta = utils.single_or_default([t.source_vol_delta for t in transfers
+                                                   if t.should_update_source_vol])
+                if not (primary_transfer is None or source_vol_delta is None):
+                    ret[primary_transfer.source_location.artifact] = (
+                        (primary_transfer.source_location.artifact, primary_transfer.target_location.artifact),
+                        UpdateInfo(primary_transfer.target_conc, primary_transfer.target_vol, source_vol_delta))
         return ret
 
     def group_transfers_by_target_analyte(self, transfer_batches):
@@ -644,11 +657,13 @@ class TransferBatch(object):
         self.validation_results = list()
         self._set_transfers(transfers, robot_settings)
         self.name = name
+        self._transfers_by_output_dict = None
 
     def get_container_slot(self, container):
         return self.container_to_container_slot[container]
 
     def _set_transfers(self, transfers, robot_settings):
+        self._transfers_by_output_dict = None
         self._transfers = transfers
         self._sort_and_name_containers(robot_settings)
         for transfer in transfers:
@@ -687,6 +702,20 @@ class TransferBatch(object):
         and row split is performed if needed
         """
         return self._transfers
+
+    @property
+    def transfers_by_output(self):
+        """Returns the transfers in the batch grouped by the artifact in the target well"""
+        if self._transfers_by_output_dict is None:
+            self._transfers_by_output_dict = self._transfers_by_output()
+        return self._transfers_by_output_dict
+
+    def _transfers_by_output(self):
+        def group_key(transfer):
+            # TODO: Use the artifact rather than the id
+            return transfer.target_location.artifact.id
+        transfers = sorted(self.transfers, key=group_key)
+        return {k: list(t) for k, t in groupby(transfers, key=group_key)}
 
     @property
     def container_mappings(self):

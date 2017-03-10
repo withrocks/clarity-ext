@@ -224,4 +224,32 @@ class OneToOneConcentrationCalcHandler(TransferCalcHandlerBase):
         transfer.pipette_buffer_volume = round(transfer.pipette_buffer_volume, 1)
 
 
+class PoolTransferCalcHandler(TransferCalcHandlerBase):
+    def handle_batch(self, batch, dilution_settings, robot_settings):
+        # Since we need the average in this handler, we override handle_batch rather than handle_transfer
+        # TODO: Should validate that the concentration is equal on all outputs in a group
+        for target, transfers in batch.transfers_by_output.items():
+            self.logger.debug("Grouped target={}, transfers={}".format(target, transfers))
+            regular_transfers = [t for t in transfers if not t.source_location.artifact.is_control]
+            sample_size = len(regular_transfers)
+
+            # Validation:
+            concs = list(set(t.source_conc for t in regular_transfers))
+            if len(concs) > 1:
+                # NOTE: Validation is now mixed between the validators and the handlers. It's probably clearer
+                # to keep it all in the handlers and remove the validators.
+                self.warning("Different source concentrations ({}) in the pool's input: {}. "
+                             "Target concentration can't be set for the pool".format(concs, target), transfers)
+                target_conc = None
+            else:
+                target_conc = concs[0]
+
+            for transfer in regular_transfers:
+                self.logger.debug("Transfer before transform: {}".format(transfer))
+                transfer.pipette_sample_volume = float(transfer.target_vol) / sample_size
+                transfer.source_vol_delta = -round(transfer.pipette_sample_volume +
+                                                   robot_settings.dilution_waste_volume, 1)
+                if target_conc:
+                    transfer.target_conc = target_conc
+                self.logger.debug("Transfer after transform:  {}".format(transfer))
 
