@@ -68,12 +68,21 @@ class DomainObjectWithUdfMixin(DomainObjectMixin):
         # new_api_resource = copy.deepcopy(self.api_resource)
         new_api_resource = self.api_resource
         updated_fields = list(self.udf_map.enumerate_updated())
+        # TODO: This is a patch to allow renaming artifacts. The whole approach to updating needs
+        # to be overhauled. Go through the mapper in all cases (as with Sample)
+        # and be able to ask the entire domain object if any of its attributes
+        # have changed since loading the object from the backend.
+        attrib_updates = False
 
-        if len(updated_fields) == 0:
+        if self.name != self.api_resource.name:
+            attrib_updates = True
+
+        if len(updated_fields) == 0 and not attrib_updates:
             return None
         else:
             for udf_info in updated_fields:
                 new_api_resource.udf[udf_info.key] = udf_info.value
+            new_api_resource.name = self.name
             return new_api_resource
 
 
