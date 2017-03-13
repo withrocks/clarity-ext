@@ -1,0 +1,1 @@
+Creates an extension that has both a script and a template file for generating a file.

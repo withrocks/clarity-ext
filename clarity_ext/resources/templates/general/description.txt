@@ -1,0 +1,1 @@
+Creates a GeneralExtension. Users should implement `execute`.

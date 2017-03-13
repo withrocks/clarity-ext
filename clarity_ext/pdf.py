@@ -1,9 +1,9 @@
 from PyPDF2 import PdfFileReader, PdfFileWriter
 
 
-class PdfSplitter:
-    def __init__(self, path):
-        self._stream = open(path, "rb")
+class PdfSplitter(object):
+    def __init__(self, stream):
+        self._stream = stream
         self._input_pdf = PdfFileReader(self._stream)
 
     def split(self, pages, filename):

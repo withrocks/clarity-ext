@@ -2,20 +2,30 @@ from __future__ import print_function
 import os
 import shutil
 import logging
+import importlib
+import pkgutil
 from driverfile import DriverFileIntegrationTests
+from clarity_ext.extensions import NoTestsFoundException
+
+
+logger = logging.getLogger(__name__)
 
 
 # Creates an integration test config file based on convention
 # i.e. position and contents of the script classes themselves.
-class ConfigFromConventionProvider:
+class ConfigFromConventionProvider(object):
 
     @classmethod
     def _enumerate_modules(cls, root_name):
-        import importlib
-        import pkgutil
         root = importlib.import_module(root_name)
         for loader, module_name, is_pkg in pkgutil.walk_packages(root.__path__):
-            module = loader.find_module(module_name).load_module(module_name)
+            try:
+                module = loader.find_module(module_name).load_module(module_name)
+            except SyntaxError:
+                logger.warning("Syntax error in module {}".format(module_name))
+            except ImportError:
+                logger.warning("ImportError in module {}".format(module_name))
+
             yield module
 
     @classmethod
@@ -33,7 +43,7 @@ class ConfigFromConventionProvider:
             yield entry
 
 
-class IntegrationTestService:
+class IntegrationTestService(object):
     CACHE_NAME = "test_run_cache"
 
     def __init__(self, logger=None):
@@ -78,19 +88,25 @@ class IntegrationTestService:
         :return:
         """
         from clarity_ext.extensions import ExtensionService
-        extension_svc = ExtensionService()
+        extension_svc = ExtensionService(lambda _: None)
         config_obj = ConfigFromConventionProvider.get_extension_config(module)
         exception_count = 0
 
         for entry in config_obj:
             module = entry["module"]
-            print("- {}".format(module))
-            from clarity_ext.extensions import ResultsDifferFromFrozenData
             try:
-                extension_svc.execute(module, "test", None, config, artifacts_to_stdout=False, print_help=False)
-            except ResultsDifferFromFrozenData as e:
-                print("Error: {}".format(e.message))
+                extension_svc.run_test(config, None, module, False, True, True)
+                print("- {}: SUCCESS".format(module))
+            except NoTestsFoundException:
+                print("- {}: WARNING - No tests were found".format(module))
+            except Exception as e:
+                # It's OK to use a catch-all exception handler here since this is only used while
+                # running tests, so we want to be optimistic and try to run all tests:
+                print("- {}: ERROR - {}".format(module, e.message))
+                print("  Fresh run:    clarity-ext extension {} test-fresh".format(module))
+                print("  Review, then: clarity-ext extension {} freeze".format(module))
                 exception_count += 1
+
         return exception_count
 
 

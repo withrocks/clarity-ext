@@ -1,0 +1,4 @@
+id,name,extra_info
+{%- for artifact in ext.artifacts() %}
+{{ artifact.id }},{{ artifact.name }},{{ artifact.extra_info }}
+{%- endfor %}
