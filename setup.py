@@ -9,7 +9,7 @@ dependencies = ['click', 'genologics', 'requests-cache', 'pyyaml', 'nose', 'PyPD
 
 setup(
     name='clarity-ext',
-    version='0.1.0',
+    version='0.2.0',
     url='https://github.com/withrocks/clarity-ext',
     author='withrocks',
     author_email='withrocks',
