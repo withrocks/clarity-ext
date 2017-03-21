@@ -96,7 +96,6 @@ class DilutionSession(object):
         self.transfer_split_handler = transfer_split_handler_type(self) if transfer_split_handler_type else None
         self.transfer_calc_handlers = [t(self) for t in transfer_calc_handler_types]
 
-
     def evaluate(self, pairs):
         """Refreshes all calculations for all registered robots and runs registered handlers and validators."""
         self.pairs = pairs
@@ -203,7 +202,7 @@ class DilutionSession(object):
         for robot_name in self.robot_settings_by_name:
             yield robot_name, self.driver_files(robot_name)
 
-    def update_infos_by_source_analyte(self, transfer_batches=None):
+    def update_infos_by_target_analyte(self, transfer_batches):
         """
         Returns the information that should be updated in the backend
 
@@ -212,45 +211,27 @@ class DilutionSession(object):
          - Target vol. should be updated on the target analyte
          - Source vol. should be updated on the source analyte
         """
-        ret = dict()
-        if not transfer_batches:
-            transfer_batches = self.single_robot_transfer_batches_for_update()
-
-        for target_analyte, transfers in self.group_transfers_by_target_analyte(transfer_batches).items():
-            if target_analyte.is_pool:
-                # TODO: This grouping of transfers looks overly complex. Check if a refactoring is in order
-                # In particular, shouldn't this happen at the beginning of the process (when creating the transfers)
+        for target, transfers in self.group_transfers_by_target_analyte(transfer_batches).items():
+            if target.is_pool:
                 regular_transfers = [t for t in transfers if not t.source_location.artifact.is_control]
-                # We assume the same delta for all samples in the pool:
                 source_vol_delta = list(set(t.source_vol_delta for t in regular_transfers
-                                        if t.should_update_source_vol))
+                                            if t.should_update_source_vol))
+                # We assume the same delta for all samples in the pool:
                 source_vol_delta = utils.single(source_vol_delta)
                 # We also assume the same conc for all (or all None)
                 target_conc = utils.single(list(set(t.target_conc for t in regular_transfers)))
                 target_vol = utils.single(list(set(t.target_vol for t in regular_transfers)))
-                for transfer in transfers:
-                    ret[transfer.source_location.artifact] = ((transfer.source_location.artifact,
-                                                              transfer.target_location.artifact),
-                    UpdateInfo(target_conc, target_vol, source_vol_delta))
+                yield target, [UpdateInfo(target_conc, target_vol, source_vol_delta)]
             else:
-                if target_analyte.is_control:
-                    continue
+                yield target, [t.update_info for t in transfers]
 
-                primary_transfer = utils.single_or_default([t for t in transfers if t.is_primary])
-                source_vol_delta = utils.single_or_default([t.source_vol_delta for t in transfers
-                                                   if t.should_update_source_vol])
-                if not (primary_transfer is None or source_vol_delta is None):
-                    ret[primary_transfer.source_location.artifact] = (
-                        (primary_transfer.source_location.artifact, primary_transfer.target_location.artifact),
-                        UpdateInfo(primary_transfer.target_conc, primary_transfer.target_vol, source_vol_delta))
-        return ret
-
-    def group_transfers_by_target_analyte(self, transfer_batches):
-        """Returns transfers grouped by target analyte, selecting one transfer batch if there are several"""
+    @staticmethod
+    def group_transfers_by_target_analyte(transfer_batches):
+        """Returns transfers grouped by target analyte"""
         ret = dict()
         for transfer_batch in transfer_batches:
             for transfer in transfer_batch.transfers:
-                artifact = transfer.target_location.artifact
+                artifact = transfer.final_target_location.artifact
                 ret.setdefault(artifact, list())
                 ret[artifact].append(transfer)
         return ret
@@ -263,7 +244,7 @@ class DilutionSession(object):
         """
         all_robots = self.transfer_batches_by_robot.items()
         candidate_name, candidate_batches = all_robots[0]
-        candidate_update_infos = self.update_infos_by_source_analyte(candidate_batches)
+        candidate_update_infos = {key: value for key, value in self.update_infos_by_target_analyte(candidate_batches)}
 
         # Validate that selecting this robot will have the same effect as selecting any other robot
         for current_name, current_batches in all_robots[1:]:
@@ -274,10 +255,10 @@ class DilutionSession(object):
             # For each transfer in the candidate, we must have a corresponding transfer in
             # the current having the same update_source_vol. Other values can be different (e.g.
             # sort order, plate names on robots etc.)
-            current_update_infos = self.update_infos_by_source_analyte(current_batches)
+            current_update_infos = {key: value for key, value in self.update_infos_by_target_analyte(current_batches)}
             for analyte, candidate_update_info in candidate_update_infos.items():
-                current_update_info = current_update_infos[analyte][1]
-                if candidate_update_info[1] != current_update_info:
+                current_update_info = current_update_infos[analyte]
+                if candidate_update_info != current_update_info:
                     raise Exception("There is a difference between the update infos between {} and {}. You need "
                                     "to explicitly select a robot".format(candidate_name, current_name))
         return candidate_batches
@@ -312,6 +293,9 @@ class SingleTransfer(object):
       * How much sample volume and buffer volume are needed (in the robot file)
       * Other metadata that will be used for warnings etc, e.g. has_to_evaporate/scaled_up etc.
     """
+    SPLIT_NONE = 0
+    SPLIT_ROW = 1
+    SPLIT_BATCH = 2
 
     def __init__(self, source_conc, source_vol, target_conc, target_vol, source_location, target_location):
         self.source_conc = source_conc
@@ -346,6 +330,10 @@ class SingleTransfer(object):
         # make sense to just set updated_source_vol to zero in that case, but this is currently simpler as it
         # solves the case with TransferBatches. Look into changing back to the other approach later
         self.should_update_source_vol = True
+        self.should_update_target_vol = True
+        self.should_update_target_conc = True
+
+        self.split_type = SingleTransfer.SPLIT_NONE
 
     def _container_slot(self, is_source):
         if self.transfer_batch is None or self.source_location is None or self.target_location is None:
@@ -428,8 +416,29 @@ class SingleTransfer(object):
         else:
             return None
 
+    @property
+    def update_info(self):
+        return UpdateInfo(target_conc=self.target_conc if self.should_update_target_conc else None,
+                          target_vol=self.target_vol if self.should_update_target_vol else None,
+                          source_vol_delta=self.source_vol_delta if self.should_update_source_vol else None)
+
+    @property
+    def final_target_location(self):
+        if not self.is_primary and self.split_type == SingleTransfer.SPLIT_BATCH:
+            return self.original.target_location
+        else:
+            return self.target_location
+
+    def split_type_string(self):
+        if self.split_type == SingleTransfer.SPLIT_BATCH:
+            return "batch"
+        elif self.split_type == SingleTransfer.SPLIT_ROW:
+            return "row"
+        else:
+            return "no split"
+
     def __repr__(self):
-        return "<SingleTransfer {}({},{}=>[{}]) =({},{})=> {}({},{}) {}>".format(
+        return "<SingleTransfer {}({},{}=>[{}]) =({},{})=> {}({},{}) {} / {}>".format(
             self.source_location,
             self.source_conc,
             self.source_vol,
@@ -439,7 +448,8 @@ class SingleTransfer(object):
             self.target_location,
             self.target_conc,
             self.target_vol,
-            "primary" if self.is_primary else "secondary")
+            "primary" if self.is_primary else "secondary ({})".format(self.split_type()),
+            tuple(self.update_info))
 
 
 # Represents source conc/vol, target conc/vol as one unit. TODO: Better name
@@ -786,6 +796,9 @@ class ContainerSlot(object):
         self.index = index
         self.name = name
         self.is_source = is_source
+
+    def __repr__(self):
+        return "{} ({}): [{}]".format(self.name, "source" if self.is_source else "target", self.container)
 
 
 class NeedsBatchSplit(TransferValidationException):
