@@ -7,7 +7,7 @@ class SharedResultFile(Artifact):
 
     def __init__(self, api_resource=None, id=None, name=None, udf_map=None, files=None):
         super(SharedResultFile, self).__init__(api_resource=api_resource,
-                                               id=id,
+                                               artifact_id=id,
                                                name=name,
                                                udf_map=udf_map)
         # TODO: These files are currently represented with api resources, not internal

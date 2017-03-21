@@ -11,7 +11,7 @@ class Aliquot(Artifact):
     """
 
     def __init__(self, api_resource, is_input, id=None, samples=None, name=None, well=None, udf_map=None):
-        super(Aliquot, self).__init__(api_resource=api_resource, id=id, name=name, udf_map=udf_map)
+        super(Aliquot, self).__init__(api_resource=api_resource, artifact_id=id, name=name, udf_map=udf_map)
         self.samples = samples
         self.well = well
         self.is_input = is_input

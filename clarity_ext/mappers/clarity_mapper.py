@@ -24,6 +24,11 @@ class ClarityMapper(object):
 
     def __init__(self):
         self.map = dict()
+
+        # Cache of all domain objects, indexed by the ID in the LIMS
+        # TODO: Currently just caching analytes 
+        self.domain_map = dict()
+
         # TODO: The container_repo used here could be reused per the lifetime of the mapper instead, and not
         # passed around.
         self.create_resource_by_type = {
@@ -81,6 +86,8 @@ class ClarityMapper(object):
         """
         # Map UDFs (which may be using different names in different Clarity setups)
         # to a key-value list with well-defined key names:
+        if resource.id in self.domain_map:
+            return self.domain_map[resource.id]
 
         udfs = None
         if not is_input:
@@ -120,6 +127,7 @@ class ClarityMapper(object):
         analyte.api_resource = resource
         analyte.reagent_labels = resource.reagent_labels
         self._after_object_created(analyte, resource)
+        self.domain_map[resource.id] = analyte
         return analyte
 
     def analyte_create_resource(self, analyte):
