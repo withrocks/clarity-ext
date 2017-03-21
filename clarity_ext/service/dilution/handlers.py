@@ -144,6 +144,9 @@ class TransferBatchHandlerBase(TransferHandlerBase):
                                            transfer.source_location,
                                            temp_target_location)
             transfer_copy.is_primary = False
+            transfer_copy.split_type = SingleTransfer.SPLIT_BATCH
+            transfer_copy.should_update_target_vol = False
+            transfer_copy.should_update_target_conc = False
 
             # In this case, we'll hardcode the values according to the lab's specs:
             transfer_copy.pipette_sample_volume = static_sample_volume
@@ -227,7 +230,6 @@ class OneToOneConcentrationCalcHandler(TransferCalcHandlerBase):
 class PoolTransferCalcHandler(TransferCalcHandlerBase):
     def handle_batch(self, batch, dilution_settings, robot_settings):
         # Since we need the average in this handler, we override handle_batch rather than handle_transfer
-        # TODO: Should validate that the concentration is equal on all outputs in a group
         for target, transfers in batch.transfers_by_output.items():
             self.logger.debug("Grouped target={}, transfers={}".format(target, transfers))
             regular_transfers = [t for t in transfers if not t.source_location.artifact.is_control]
