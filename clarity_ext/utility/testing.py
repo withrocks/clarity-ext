@@ -84,12 +84,12 @@ class DilutionTestDataHelper:
     def create_pair(self, pos_from=None, pos_to=None, source_container_name=None, target_container_name=None,
                     source_type=Analyte, target_type=Analyte):
         if source_container_name is None:
-            source_container = self.default_source
+            source_container_name = self.default_source
         if target_container_name is None:
-            target_container = self.default_target
+            target_container_name = self.default_target
 
-        source_container = self.get_container_by_name(source_container, True)
-        target_container = self.get_container_by_name(target_container, False)
+        source_container = self.get_container_by_name(source_container_name, True)
+        target_container = self.get_container_by_name(target_container_name, False)
 
         if pos_from is None:
             well = self.well_enumerator.next()
