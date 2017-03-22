@@ -448,7 +448,7 @@ class SingleTransfer(object):
             self.target_location,
             self.target_conc,
             self.target_vol,
-            "primary" if self.is_primary else "secondary ({})".format(self.split_type()),
+            "primary" if self.is_primary else "secondary ({})".format(self.split_type_string()),
             tuple(self.update_info))
 
 
@@ -683,14 +683,21 @@ class TransferBatch(object):
         def sort_key(c):
             return not c.is_temporary, c.id
 
-        source_containers = set(transfer.source_location.container for transfer in self._transfers)
+        # We need to ensure that the containers for controls always get index=0
+        # NOTE: This is very site-specific so it would be better to solve it with handlers
+        source_containers_controls = set(transfer.source_location.container for transfer in self._transfers
+                                         if transfer.source_location.artifact.is_control)
+        self.container_to_container_slot = dict()
+        for container in source_containers_controls:
+            self.container_to_container_slot[container] = self._container_to_slot(robot_settings, container, 0, True)
+
+        source_containers = set(transfer.source_location.container for transfer in self._transfers) - source_containers_controls
         target_containers = set(transfer.target_location.container for transfer in self._transfers)
         assert len(source_containers.intersection(target_containers)) == 0
 
-        source_containers = list(sorted(source_containers, key=sort_key))
-        target_containers = list(sorted(target_containers, key=sort_key))
+        source_containers = sorted(source_containers, key=sort_key)
+        target_containers = sorted(target_containers, key=sort_key)
 
-        self.container_to_container_slot = dict()
         for ix, container in enumerate(source_containers):
             self.container_to_container_slot[container] = \
                 self._container_to_slot(robot_settings, container, ix, True)
