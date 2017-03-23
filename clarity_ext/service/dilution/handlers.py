@@ -43,11 +43,11 @@ class TransferSplitHandlerBase(TransferHandlerBase):
         require_row_split = [t for t in transfer_batch.transfers
                              if self.needs_row_split(t, dilution_settings, robot_settings)]
         for transfer in require_row_split:
-            val = NeedsRowSplit(transfer)
-            self.dilution_session.validation_service.handle_single_validation(val)
-
-        for transfer in require_row_split:
             split_transfers = self.split_single_transfer(transfer, robot_settings)
+            if sum(t.pipette_sample_volume + t.pipette_buffer_volume for t in split_transfers) > \
+                    robot_settings.max_pipette_vol_for_row_split:
+                raise UsageError("Total volume has reached the max well volume ({})".format(
+                    robot_settings.max_pipette_vol_for_row_split))
             transfer_batch.transfers.remove(transfer)
             transfer_batch.transfers.extend(split_transfers)
 
@@ -64,12 +64,14 @@ class TransferBatchHandlerBase(TransferHandlerBase):
         Returns one or two transfer_batches, based on rules. Can be used to split a transfer_batch into original and
         temporary transfer_batches
         """
+        # Raise an error if any transfer requires evaporation, that's currently not implemented
+        for transfer in transfer_batch.transfers:
+            if transfer.pipette_sample_volume > transfer.target_vol:
+                raise UsageError("Evaporation needed for '{}' - not implemented yet".format(
+                    transfer.target_location.artifact.name))
+
         split = [t for t in transfer_batch.transfers if self.needs_split(t, dilution_settings, robot_settings)]
         no_split = [t for t in transfer_batch.transfers if t not in split]
-
-        for transfer in split:
-            val = NeedsBatchSplit(transfer)
-            self.dilution_session.validation_service.handle_single_validation(val)
 
         if len(split) > 0:
             return self.split_transfer_batch(split, no_split, dilution_settings, robot_settings)
@@ -185,6 +187,7 @@ class FixedVolumeCalcHandler(TransferCalcHandlerBase):
     I.e. no calculations at all. The fixed transfer volume is specified in
     individual scripts
     """
+
     def handle_transfer(self, transfer, dilution_settings, robot_settings):
         """Only updates the source volume"""
         transfer.source_vol_delta = -round(transfer.pipette_sample_volume +
@@ -199,6 +202,7 @@ class OneToOneConcentrationCalcHandler(TransferCalcHandlerBase):
     Transfer volumes are calculated on basis of a requested target
     concentration and target volume by the user.
     """
+
     def handle_transfer(self, transfer, dilution_settings, robot_settings):
         if transfer.source_location.artifact.is_control:
             transfer.pipette_buffer_volume = transfer.target_vol
@@ -254,4 +258,3 @@ class PoolTransferCalcHandler(TransferCalcHandlerBase):
                 if target_conc:
                     transfer.target_conc = target_conc
                 self.logger.debug("Transfer after transform:  {}".format(transfer))
-
