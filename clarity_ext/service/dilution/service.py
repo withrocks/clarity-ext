@@ -212,7 +212,8 @@ class DilutionSession(object):
          - Source vol. should be updated on the source analyte
         """
         for target, transfers in self.group_transfers_by_target_analyte(transfer_batches).items():
-            if target.is_pool:
+            # TODO: The `is_pooled` check is a quick-fix.
+            if target.is_pool and self.dilution_settings.is_pooled:
                 regular_transfers = [t for t in transfers if not t.source_location.artifact.is_control]
                 source_vol_delta = list(set(t.source_vol_delta for t in regular_transfers
                                             if t.should_update_source_vol))
@@ -488,6 +489,9 @@ class DilutionSettings:
         self.make_pools = make_pools
         self.include_control = True
         self.fixed_sample_volume = fixed_sample_volume
+
+        # NOTE: This is part of a quick-fix (used in one particular corner case)
+        self.is_pooled = False
 
     @staticmethod
     def _parse_conc_ref(concentration_ref):
