@@ -152,10 +152,17 @@ class ArtifactService:
         Performance note:
         Starts by fetching all input artifacts of all parent processes (to save time if there are further calls)
         """
+        # NOTE: Works only if the parent artifact has only one sample!
         if not self._parent_input_artifacts_by_sample_id:
             parent_input_artifacts = list(self.parent_input_artifacts())
-            self._parent_input_artifacts_by_sample_id = {
-                utils.single(current.samples).id: current for current in parent_input_artifacts}
+            for x in parent_input_artifacts:
+                print ">", x, x.samples
+            self._parent_input_artifacts_by_sample_id = dict()
+            for current in parent_input_artifacts:
+                for sample in current.samples:
+                    if sample.id in self._parent_input_artifacts_by_sample_id:
+                        raise ValueError("The sample {} is already in the dictionary".format(sample.id))
+                    self._parent_input_artifacts_by_sample_id[sample.id] = current
         return self._parent_input_artifacts_by_sample_id[sample.id]
 
     def all_output_result_files(self):
