@@ -3,6 +3,7 @@ import clarity_ext
 import xml.etree.ElementTree as ET
 import logging
 import re
+from genologics.entities import Queue
 
 
 class ProcessService(object):
@@ -34,3 +35,27 @@ class ProcessService(object):
         process step is active
         """
         return "{}/clarity/work-details/{}".format(process.uri.split("/api")[0], process.id.split("-")[1])
+
+    def get_queue(self, protocol, step, session=None):
+        # TODO: Uses REST objects still!
+        session = session or clarity_ext.ClaritySession.create(None)
+        step_obj = self.find_step(protocol, step)
+        queue = Queue(lims=session.api, id=step_obj.id)
+        queue.get()
+
+        # Create a step-creation object and post it. Note that this is not supported by the REST proxy
+        # so we'll implement it here
+        print queue.artifacts
+
+    def find_step(self, protocol, step, session=None):
+        session = session or clarity_ext.ClaritySession.create(None)
+        from clarity_ext import utils
+        protocol_obj = utils.single(session.api.get_protocols(name=protocol))
+        for current in protocol_obj.steps:
+            if current.name == step:
+                return current
+        raise StepNotFoundException()
+
+
+class StepNotFoundException(Exception):
+    pass
