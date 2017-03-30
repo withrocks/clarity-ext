@@ -105,9 +105,11 @@ class TransferBatchHandlerBase(TransferHandlerBase):
         second_transfers.extend(no_split)
 
         final_transfer_batch = TransferBatch(second_transfers, robot_settings, depth=1)
+        temp_transfer_batch.split = True
+        final_transfer_batch.split = True
+
         self.dilution_session.dilution_service.execute_handlers(self.dilution_session.transfer_calc_handlers,
                                                                 final_transfer_batch, dilution_settings, robot_settings)
-
         # For the analytes requiring splits
         return TransferBatchCollection(temp_transfer_batch, final_transfer_batch)
 
@@ -219,12 +221,14 @@ class OneToOneConcentrationCalcHandler(TransferCalcHandlerBase):
         # Scaling up is not needed on the regular case because it's covered by looping
         # TODO: To support more complex calculations and reuse of code, move this into a separate rule,
         # then apply rules in an order specified by the user (in the DilutionSettings).
-        if (transfer.transfer_batch.is_temporary and dilution_settings.scale_up_low_volumes and
-                    transfer.pipette_sample_volume < dilution_settings.robot_min_volume):
-            scale_factor = self.dilution_settings.robot_min_volume / float(transfer.pipette_sample_volume)
+        if transfer.transfer_batch.split and transfer.pipette_sample_volume < robot_settings.pipette_min_volume:
+            scale_factor = robot_settings.pipette_min_volume / float(transfer.pipette_sample_volume)
+            logging.debug("Before applying scale_factor '{}': {}".format(scale_factor, transfer))
             transfer.pipette_sample_volume *= scale_factor
             transfer.pipette_buffer_volume *= scale_factor
             transfer.scaled_up = True
+            logging.debug("After applying scale_factor: {}".format(transfer))
+
         transfer.source_vol_delta = -round(transfer.pipette_sample_volume +
                                            robot_settings.dilution_waste_volume, 1)
         transfer.pipette_sample_volume = round(transfer.pipette_sample_volume, 1)

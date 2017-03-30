@@ -671,6 +671,8 @@ class TransferBatch(object):
         self._set_transfers(transfers, robot_settings)
         self.name = name
         self._transfers_by_output_dict = None
+        # Set to True if the transfer batch was split
+        self.split = False
 
     def get_container_slot(self, container):
         return self.container_to_container_slot[container]
