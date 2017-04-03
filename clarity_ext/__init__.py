@@ -5,4 +5,4 @@ except ImportError:
     # Dependencies for these might not be available yet
     pass
 
-VERSION = "0.9.0-rc"
+VERSION = "0.9.0"
