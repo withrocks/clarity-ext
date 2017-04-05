@@ -684,20 +684,26 @@ class TransferBatch(object):
         for transfer in transfers:
             transfer.transfer_batch = self
 
+
     def _sort_and_name_containers(self, robot_settings):
         """Updates the list of containers and assigns temporary names and positions to them"""
         def sort_key(c):
             return not c.is_temporary, c.id
 
-        # We need to ensure that the containers for controls always get index=0
+        def contains_only_control(container):
+            return all(well.artifact.is_control for well in container.occupied)
+
+        # We need to ensure that the containers that contain only a control always get index=0
         # NOTE: This is very site-specific so it would be better to solve it with handlers
-        source_containers_controls = set(transfer.source_location.container for transfer in self._transfers
-                                         if transfer.source_location.artifact.is_control)
+        all_source_containers = set(transfer.source_location.container for transfer in self._transfers)
+        source_containers_only_control = set(container for container in all_source_containers
+                                             if contains_only_control(container))
+
         self.container_to_container_slot = dict()
-        for container in source_containers_controls:
+        for container in source_containers_only_control:
             self.container_to_container_slot[container] = self._container_to_slot(robot_settings, container, 0, True)
 
-        source_containers = set(transfer.source_location.container for transfer in self._transfers) - source_containers_controls
+        source_containers = all_source_containers - source_containers_only_control
         target_containers = set(transfer.target_location.container for transfer in self._transfers)
         assert len(source_containers.intersection(target_containers)) == 0
 

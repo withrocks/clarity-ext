@@ -159,7 +159,7 @@ class Container(DomainObjectMixin):
             empty_count = sum(1 for well in self if well.artifact is None)
             rows.append("... {} empty wells".format(empty_count))
         else:
-            well_to_string = lambda w: "X" if w.artifact else "_" if short else str
+            well_to_string = (lambda w: "X" if w.artifact else "_") if short else str
             table = self.to_table()
             longest = 0
             for row in table:
@@ -257,6 +257,11 @@ class Container(DomainObjectMixin):
 
         artifact.well = self.wells[well_pos]
         return self.wells[well_pos]
+
+    @property
+    def occupied(self):
+        """Returns non-empty wells as a list"""
+        return [well for well in self if well.artifact]
 
     def __iter__(self):
         return self.enumerate_wells(order=self.DOWN_FIRST)
