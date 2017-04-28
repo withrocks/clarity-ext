@@ -745,11 +745,20 @@ class TransferBatch(object):
         transfers = sorted(self.transfers, key=group_key)
         return {k: list(t) for k, t in groupby(transfers, key=group_key)}
 
+    def _include_in_container_mappings(self, transfer):
+        """
+        Exclude negative controls which is added in current step.
+        Do not exclude negative controls added in previous step.
+        """
+        a = transfer.source_location.artifact
+        return not a.is_control or a.id.startswith("2-")
+
     @property
     def container_mappings(self):
         ret = set()
         for transfer in self.transfers:
-            ret.add((transfer.source_slot, transfer.target_slot))
+            if self._include_in_container_mappings(transfer):
+                ret.add((transfer.source_slot, transfer.target_slot))
         ret = list(sorted(ret, key=lambda t: t[0].index))
         return ret
 
