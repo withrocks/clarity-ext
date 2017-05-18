@@ -145,8 +145,8 @@ class TransferBatchHandlerBase(TransferHandlerBase):
                                            transfer.source_vol,
                                            transfer.source_conc / 10.0,
                                            static_buffer_volume + static_sample_volume,
-                                           transfer.source_location,
-                                           temp_target_location)
+                                           source_location=transfer.source_location,
+                                           target_location=temp_target_location)
             transfer_copy.is_primary = False
             transfer_copy.split_type = SingleTransfer.SPLIT_BATCH
             transfer_copy.should_update_target_vol = False
@@ -231,6 +231,28 @@ class OneToOneConcentrationCalcHandler(TransferCalcHandlerBase):
 
         transfer.source_vol_delta = -round(transfer.pipette_sample_volume +
                                            robot_settings.dilution_waste_volume, 1)
+        transfer.pipette_sample_volume = round(transfer.pipette_sample_volume, 1)
+        transfer.pipette_buffer_volume = round(transfer.pipette_buffer_volume, 1)
+
+
+class OneToOneFactorCalcHandler(TransferCalcHandlerBase):
+    """
+    Transfer volumes are calculated on basis of a requested dilute 
+    factor and a target volume. 
+    Example:
+        Target volume 10 ul
+        Dilute factor = 10
+        Take 1 part sample and 9 parts buffer, that sums up to 10 ul in target
+    """
+    def handle_transfer(self, transfer, dilution_settings, robot_settings):
+        transfer.pipette_sample_volume = transfer.target_vol/float(transfer.dilute_factor)
+        transfer.pipette_buffer_volume = transfer.target_vol - transfer.pipette_sample_volume
+        transfer.source_vol_delta = -round(transfer.pipette_sample_volume +
+                                           robot_settings.dilution_waste_volume, 1)
+        if transfer.source_conc is None:
+            transfer.should_update_target_conc = False
+        else:
+            transfer.target_conc = transfer.source_conc/float(transfer.dilute_factor)
         transfer.pipette_sample_volume = round(transfer.pipette_sample_volume, 1)
         transfer.pipette_buffer_volume = round(transfer.pipette_buffer_volume, 1)
 

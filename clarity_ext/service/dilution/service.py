@@ -166,7 +166,7 @@ class DilutionSession(object):
         for pair in pairs:
             source_well = create_well(pair.input_artifact)
             target_well = create_well(pair.output_artifact)
-            transfers.append(SingleTransfer(None, None, None, None, source_well, target_well))
+            transfers.append(SingleTransfer(None, None, None, None, None, source_well, target_well))
 
         for transfer in transfers:
             self.initialize_transfer_from_settings(transfer, dilution_settings)
@@ -298,11 +298,13 @@ class SingleTransfer(object):
     SPLIT_ROW = 1
     SPLIT_BATCH = 2
 
-    def __init__(self, source_conc, source_vol, target_conc, target_vol, source_location, target_location):
+    def __init__(self, source_conc, source_vol, target_conc, target_vol, dilute_factor,
+                 source_location, target_location):
         self.source_conc = source_conc
         self.source_vol = source_vol
         self.target_conc = target_conc
         self.target_vol = target_vol
+        self.dilute_factor = dilute_factor
 
         self.source_location = source_location
         self.target_location = target_location
@@ -397,6 +399,11 @@ class SingleTransfer(object):
 
         try:
             single_transfer.target_vol = output_artifact.udf_target_vol_ul
+        except AttributeError:
+            pass
+
+        try:
+            single_transfer.dilute_factor = output_artifact.udf_dilution_factor
         except AttributeError:
             pass
 

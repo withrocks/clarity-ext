@@ -1,10 +1,11 @@
+import logging
 from clarity_ext.domain.validation import ValidationType, UsageError
 
 
 class ValidationService:
 
     def __init__(self, step_logger_service, logger=None):
-        self.logger = logger
+        self.logger = logger or logging.getLogger(__name__)
         self.step_logger_service = step_logger_service
         self.warning_count = 0
         self.error_count = 0
@@ -16,6 +17,7 @@ class ValidationService:
         if len(results) > 0:
             self._log_debug("Validation errors, len = {}".format(len(results)))
             for result in results:
+                self._log_debug(result)
                 self.handle_single_validation(result)
         # If any of the validation results were errors, raise an exception:
         if any(result for result in results if result.type == ValidationType.ERROR):
