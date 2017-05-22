@@ -111,6 +111,16 @@ class UdfMapping(object):
     def __eq__(self, other):
         return self.values == other.values
 
+    def force(self, key, value):
+        """
+        In general, users should not add UDFs that are not defined in the UDF map already. In some cases however,
+        e.g. when updating UDFs on input artifacts in a step, there is no clean way to add the UDFs to the map
+        based on step metadata. The user can then force the UDF by using this method.
+        """
+        if key not in self:
+            self.add(key, None)
+        self[key].value = value
+
     def add(self, key, value):
         if key in self.raw_map:
             raise ValueError("Key already in dictionary {}".format(key))
