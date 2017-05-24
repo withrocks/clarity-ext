@@ -14,16 +14,17 @@ class DilutionService(object):
         self.validation_service = validation_service
         self.logger = logger or logging.getLogger(__name__)
 
-    def create_session(self, robots, dilution_settings, transfer_batch_handler_type, transfer_split_handler_type,
-                       transfer_validator, context, transfer_calc_handler_types):
+    def create_session(self, robots, dilution_settings,
+                       handler_types, context, transfer_calc_handler_types):
         """
         Creates a DilutionSession based on the settings. Call evaluate to validate the entire session
         with a particular batch of objects.
 
         A DilutionSession contains several TransferBatch objects that need to be evaluated together
         """
-        session = DilutionSession(self, robots, dilution_settings, transfer_batch_handler_type,
-                                  transfer_split_handler_type, transfer_validator, self.validation_service,
+        session = DilutionSession(self, robots, dilution_settings,
+                                  handler_types,
+                                  self.validation_service,
                                   context, transfer_calc_handler_types)
         return session
 
@@ -63,9 +64,10 @@ class DilutionSession(object):
     and updating values.
     """
 
-    def __init__(self, dilution_service, robots, dilution_settings, transfer_batch_handler_type,
-                 transfer_split_handler_type, transfer_validator, validation_service, context,
-                 transfer_calc_handler_types, logger=None):
+    def __init__(self, dilution_service, robots, dilution_settings,
+                 handler_types,
+                 transfer_validator, validation_service, context,
+                 logger=None):
         """
         Initializes a DilutionSession object for the robots.
 
@@ -91,34 +93,19 @@ class DilutionSession(object):
         self.validation_service = validation_service
         self.context = context
         self.logger = logger or logging.getLogger(__name__)
-
-        self.transfer_batch_handler = transfer_batch_handler_type(self) if transfer_batch_handler_type else None
-        self.transfer_split_handler = transfer_split_handler_type(self) if transfer_split_handler_type else None
-        self.transfer_calc_handlers = [t(self) for t in transfer_calc_handler_types]
+        self.handler_instances = [t(self) for t in handler_types]
 
     def evaluate(self, pairs):
         """Refreshes all calculations for all registered robots and runs registered handlers and validators."""
         self.pairs = pairs
+        self.transfer_batches_by_robot = dict()
+        for robot_settings in self.robot_settings_by_name.values():
+            batches = self.create_batches(
+                self.pairs, self.dilution_settings, robot_settings, self.handler_instances,
+                self.transfer_validator)
+            self.transfer_batches_by_robot[robot_settings.name] = batches
 
-        for pair in pairs:
-            for robot_settings in self.robot_settings_by_name.values():
-                routes_by_pair = dict()
-                route = self.find_route(pair, self.dilution_settings, robot_settings, self.transfer_batch_handler,
-                                        self.transfer_split_handler, self.transfer_validator,
-                                        self.transfer_calc_handlers)
-                routes_by_pair[pair] = route
-                print route
-            print "TODO, agg", routes_by_pair
-            # TODO: Then aggregate these...
-
-            # self.transfer_batches_by_robot = dict()
-            # for robot_settings in self.robot_settings_by_name.values():
-            #    self.transfer_batches_by_robot[robot_settings.name] = self.create_batches(
-            #        self.pairs, self.dilution_settings, robot_settings, self.transfer_batch_handler,
-            #        self.transfer_split_handler, self.transfer_validator, self.transfer_calc_handlers)
-
-    def find_route(self, pair, dilution_settings, robot_settings, transfer_batch_handlers, transfer_split_handlers,
-                   transfer_validator, transfer_calc_handlers):
+    def find_route(self, pair, dilution_settings, robot_settings, transfer_handlers, transfer_validator):
         """Creates a dilution transfer route for this pair. These can then be aggregated into batches in the end.
 
         The route will contain exact information about how and why the sample changes like it does.
@@ -136,7 +123,7 @@ class DilutionSession(object):
         but if the 10x (looped) dilution needs to be applied, you would get this:
             (1000, 45) desc=start, location=a:1@source
             (?, ?) transfers=[(4.0, 36.0)], desc='split 10x', location=a:1@temp-looped
-            (2, 55) transfers=[(2.0, 49.0)], desc='split row', location=a:1@target
+            (2, 55) transfers=[(2.0, 49.0), (0, 49.0)], desc='split row', location=a:1@target
             (2, 55) desc=end, location=a:1@target
 
         This makes it straightforward to debug and review how dilution is executed
@@ -144,16 +131,27 @@ class DilutionSession(object):
 
         # TODO: Join all handlers into one type?
         route = TransferRoute(pair, robot_settings.name)
+
+        # TODO: Simply execute all handlers in order (with one interface)
+
         # route.add(TransferLocation("here", None))
-        print(route)
-        import sys; sys.exit()
         return route
 
-    def create_batches(self, pairs, dilution_settings, robot_settings, transfer_batch_handler, transfer_split_handler,
-                       transfer_validator, transfer_calc_handlers):
+    def create_batches(self, pairs, dilution_settings, robot_settings,
+                       handlers, transfer_validator):
         """
         Creates a batch and breaks it up if required by the validator
         """
+        print handlers
+        routes_by_pair = dict()
+        for pair in pairs:
+            route = self.find_route(pair, dilution_settings, robot_settings,
+                                    handlers,
+                                    transfer_validator)
+            print route
+            routes_by_pair[pair] = route
+        import sys; sys.exit()
+
         # Create the "original transfer batch". This batch may be split up into other batches
         original_transfer_batch = self.create_batch(pairs, robot_settings,
                                                     dilution_settings, transfer_calc_handlers)
