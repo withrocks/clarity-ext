@@ -99,11 +99,55 @@ class DilutionSession(object):
     def evaluate(self, pairs):
         """Refreshes all calculations for all registered robots and runs registered handlers and validators."""
         self.pairs = pairs
-        self.transfer_batches_by_robot = dict()
-        for robot_settings in self.robot_settings_by_name.values():
-            self.transfer_batches_by_robot[robot_settings.name] = self.create_batches(
-                self.pairs, self.dilution_settings, robot_settings, self.transfer_batch_handler,
-                self.transfer_split_handler, self.transfer_validator, self.transfer_calc_handlers)
+
+        for pair in pairs:
+            for robot_settings in self.robot_settings_by_name.values():
+                routes_by_pair = dict()
+                route = self.find_route(pair, self.dilution_settings, robot_settings, self.transfer_batch_handler,
+                                        self.transfer_split_handler, self.transfer_validator,
+                                        self.transfer_calc_handlers)
+                routes_by_pair[pair] = route
+                print route
+            print "TODO, agg", routes_by_pair
+            # TODO: Then aggregate these...
+
+            # self.transfer_batches_by_robot = dict()
+            # for robot_settings in self.robot_settings_by_name.values():
+            #    self.transfer_batches_by_robot[robot_settings.name] = self.create_batches(
+            #        self.pairs, self.dilution_settings, robot_settings, self.transfer_batch_handler,
+            #        self.transfer_split_handler, self.transfer_validator, self.transfer_calc_handlers)
+
+    def find_route(self, pair, dilution_settings, robot_settings, transfer_batch_handlers, transfer_split_handlers,
+                   transfer_validator, transfer_calc_handlers):
+        """Creates a dilution transfer route for this pair. These can then be aggregated into batches in the end.
+
+        The route will contain exact information about how and why the sample changes like it does.
+
+        E.g. if you start with (22.8, 38) => (22, 35), you would get the following transfer route:
+            (22.8, 38) start
+            (22, 35) end
+
+        first_expected = "in-FROM:A:1	1	DNA1	4.0	36.0	1	END1	source	temp1"
+        self.assertEqual(first_expected, driver_files[0].to_string(include_header=False))
+
+        second_expected = "in-FROM:A:1-temp	1	DNA1	2.0	49.0	1	END1	temp1	target\r\n" \
+                          "in-FROM:A:1-temp	1	DNA1	0.0	49.0	1	END1	temp1	target"
+
+        but if the 10x (looped) dilution needs to be applied, you would get this:
+            (1000, 45) desc=start, location=a:1@source
+            (?, ?) transfers=[(4.0, 36.0)], desc='split 10x', location=a:1@temp-looped
+            (2, 55) transfers=[(2.0, 49.0)], desc='split row', location=a:1@target
+            (2, 55) desc=end, location=a:1@target
+
+        This makes it straightforward to debug and review how dilution is executed
+        """
+
+        # TODO: Join all handlers into one type?
+        route = TransferRoute(pair, robot_settings.name)
+        # route.add(TransferLocation("here", None))
+        print(route)
+        import sys; sys.exit()
+        return route
 
     def create_batches(self, pairs, dilution_settings, robot_settings, transfer_batch_handler, transfer_split_handler,
                        transfer_validator, transfer_calc_handlers):
@@ -114,7 +158,8 @@ class DilutionSession(object):
         original_transfer_batch = self.create_batch(pairs, robot_settings,
                                                     dilution_settings, transfer_calc_handlers)
         if transfer_batch_handler:
-            transfer_batches = transfer_batch_handler.handle_batch(original_transfer_batch, dilution_settings, robot_settings)
+            transfer_batches = transfer_batch_handler.handle_batch(original_transfer_batch, dilution_settings,
+                                                                   robot_settings)
         else:
             transfer_batches = TransferBatchCollection(original_transfer_batch)
 
@@ -684,9 +729,9 @@ class TransferBatch(object):
         for transfer in transfers:
             transfer.transfer_batch = self
 
-
     def _sort_and_name_containers(self, robot_settings):
         """Updates the list of containers and assigns temporary names and positions to them"""
+
         def sort_key(c):
             return not c.is_temporary, c.id
 
@@ -742,6 +787,7 @@ class TransferBatch(object):
         def group_key(transfer):
             # TODO: Use the artifact rather than the id
             return transfer.target_location.artifact.id
+
         transfers = sorted(self.transfers, key=group_key)
         return {k: list(t) for k, t in groupby(transfers, key=group_key)}
 
@@ -783,6 +829,7 @@ class TransferBatchCollection(object):
     Encapsulates the list of TransferBatch object that go together, i.e. as the result of splitting a
     TransferBatch.
     """
+
     def __init__(self, *args):
         self._batches = list()
         self._batches.extend(args)
@@ -803,6 +850,44 @@ class TransferBatchCollection(object):
         return "\n\n".join(ret)
 
 
+class TransferRoute(object):
+    """Contains the route for a pair on a particular robot.
+
+    Routes are aggregated into batches (robot driver files).
+    """
+
+    def __init__(self, pair, robot):
+        self.pair = pair
+        self.robot = robot
+        self.locations = list()
+
+        # TODO: Transfers instead of TransferLocation?
+        self.start = self.pair.input_artifact
+        self.end = self.pair.output_artifact
+
+    def add(self, transfer_location):
+        self.locations.append(transfer_location)
+
+    def __str__(self):
+        ret = list()
+        ret.append("TransferRoute for {} => {} on '{}':".format(self.pair.input_artifact.name,
+                                                                self.pair.output_artifact.name,
+                                                                self.robot))
+        for location in self.locations:
+            ret.append(" - {}".format(location))
+        return "\n".join(ret)
+
+
+class TransferLocation(object):
+    def __init__(self, name, artifact):
+        # TODO: artifact or location?
+        self.name = name
+        self.artifact = artifact
+
+    def __str__(self):
+        return "{} - {}".format(self.name, self.artifact)
+
+
 class ContainerSlot(object):
     """
     During a dilution, containers are positioned on a robot in a sequential order.
@@ -810,6 +895,7 @@ class ContainerSlot(object):
 
     The name is the name used by the robot to reference the container.
     """
+
     def __init__(self, container, index, name, is_source):
         self.container = container
         self.index = index

@@ -65,13 +65,16 @@ class TransferBatchHandlerBase(TransferHandlerBase):
         temporary transfer_batches
         """
         # Raise an error if any transfer requires evaporation, that's currently not implemented
+        """
         for transfer in transfer_batch.transfers:
             if transfer.pipette_sample_volume > transfer.target_vol:
                 raise UsageError("Evaporation needed for '{}' - not implemented yet".format(
                     transfer.target_location.artifact.name))
+        """
 
         split = [t for t in transfer_batch.transfers if self.needs_split(t, dilution_settings, robot_settings)]
         no_split = [t for t in transfer_batch.transfers if t not in split]
+        print split, no_split
 
         if len(split) > 0:
             return self.split_transfer_batch(split, no_split, dilution_settings, robot_settings)
