@@ -52,14 +52,16 @@ class TransferSplitHandlerBase(TransferHandlerBase):
             transfer_batch.transfers.extend(split_transfers)
 
 
-class TransferBatchHandlerBase(TransferHandlerBase):
+class TransferTempContainerHandlerBase(TransferHandlerBase):
+    """Transfer handlers that require a split. Will return
+    """
     __metaclass__ = abc.ABCMeta
 
     @abc.abstractmethod
     def needs_split(self, transfer, dilution_settings, robot_settings):
         pass
 
-    def handle_batch(self, transfer_batch, dilution_settings, robot_settings):
+    def x_handle_batch(self, transfer_batch, dilution_settings, robot_settings):
         """
         Returns one or two transfer_batches, based on rules. Can be used to split a transfer_batch into original and
         temporary transfer_batches

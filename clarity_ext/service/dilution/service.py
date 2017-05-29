@@ -129,8 +129,10 @@ class DilutionSession(object):
         This makes it straightforward to debug and review how dilution is executed
         """
 
-        # TODO: Join all handlers into one type?
         route = TransferRoute(pair, robot_settings.name)
+
+        for handler in transfer_handlers:
+            route.execute(handler)
 
         # TODO: Simply execute all handlers in order (with one interface)
 
@@ -142,14 +144,11 @@ class DilutionSession(object):
         """
         Creates a batch and breaks it up if required by the validator
         """
-        print handlers
         routes_by_pair = dict()
         for pair in pairs:
-            route = self.find_route(pair, dilution_settings, robot_settings,
-                                    handlers,
-                                    transfer_validator)
-            print route
+            route = self.find_route(pair, dilution_settings, robot_settings, handlers, transfer_validator)
             routes_by_pair[pair] = route
+
         import sys; sys.exit()
 
         # Create the "original transfer batch". This batch may be split up into other batches
@@ -189,6 +188,8 @@ class DilutionSession(object):
         NOTE: The batch has not been validated in this call. Caller should validate.
         """
         # NOTE: The original containers are copied, so the containers in the transfer batch can be modified at will
+
+        # TODO: Do this in the final section
         containers = dict()
         # First ensure that we've taken copies of the original containers, since we want to be able to move
         # the artifacts to different wells, it's cleaner to do that in a copied container:
@@ -849,7 +850,7 @@ class TransferBatchCollection(object):
 
 
 class TransferRoute(object):
-    """Contains the route for a pair on a particular robot.
+    """Contains the route for an input/output pair on a particular robot.
 
     Routes are aggregated into batches (robot driver files).
     """
@@ -857,14 +858,20 @@ class TransferRoute(object):
     def __init__(self, pair, robot):
         self.pair = pair
         self.robot = robot
-        self.locations = list()
+        self.nodes = list()
 
-        # TODO: Transfers instead of TransferLocation?
         self.start = self.pair.input_artifact
         self.end = self.pair.output_artifact
 
-    def add(self, transfer_location):
-        self.locations.append(transfer_location)
+    def add(self, node):
+        self.nodes.append(node)
+
+    def execute(self, handler):
+        """Executes the handler.
+
+        The handler should have an execute method, which returns one or more Transfer objects.
+        """
+        handler.execute()
 
     def __str__(self):
         ret = list()
@@ -876,14 +883,13 @@ class TransferRoute(object):
         return "\n".join(ret)
 
 
-class TransferLocation(object):
-    def __init__(self, name, artifact):
-        # TODO: artifact or location?
-        self.name = name
-        self.artifact = artifact
+class TransferRouteNode(object):
+    def __init__(self, transfers, handler):
+        self.transfers = transfers
+        self.handler = handler
 
     def __str__(self):
-        return "{} - {}".format(self.name, self.artifact)
+        return "node"
 
 
 class ContainerSlot(object):
