@@ -63,7 +63,7 @@ class DilutionSession(object):
     and updating values.
     """
 
-    def __init__(self, dilution_service, robots, dilution_settings, transfer_batch_handler_type,
+    def __init__(self, dilution_service, robots, dilution_settings, transfer_batch_handler_types,
                  transfer_split_handler_type, transfer_validator, validation_service, context,
                  transfer_calc_handler_types, logger=None):
         """
@@ -72,7 +72,7 @@ class DilutionSession(object):
         :param dilution_service: A service providing methods for creating batches
         :param robots: A list of RobotSettings objects
         :param dilution_settings: The list of settings to apply for the dilution
-        :param transfer_batch_handler: A handler that support splitting TransferBatch objects
+        :param transfer_batch_handlers: Handlers that split the transfers into several transfers
         :param transfer_handler: A handler that supports splitting SingleTransfer objects (row in a TransferBatch)
         :param transfer_validator: A validator that runs on an entire TransferBatch that has perhaps been split.
         :param validation_service: The service that handles the results of validation exceptions
@@ -92,7 +92,7 @@ class DilutionSession(object):
         self.context = context
         self.logger = logger or logging.getLogger(__name__)
 
-        self.transfer_batch_handler = transfer_batch_handler_type(self) if transfer_batch_handler_type else None
+        self.transfer_batch_handlers = [t(self) for t in transfer_batch_handler_types]
         self.transfer_split_handler = transfer_split_handler_type(self) if transfer_split_handler_type else None
         self.transfer_calc_handlers = [t(self) for t in transfer_calc_handler_types]
 
@@ -102,10 +102,84 @@ class DilutionSession(object):
         self.transfer_batches_by_robot = dict()
         for robot_settings in self.robot_settings_by_name.values():
             self.transfer_batches_by_robot[robot_settings.name] = self.create_batches(
-                self.pairs, self.dilution_settings, robot_settings, self.transfer_batch_handler,
+                self.pairs, self.dilution_settings, robot_settings, self.transfer_batch_handlers,
                 self.transfer_split_handler, self.transfer_validator, self.transfer_calc_handlers)
 
-    def create_batches(self, pairs, dilution_settings, robot_settings, transfer_batch_handler, transfer_split_handler,
+    def calculate_split_transfers(self, original_transfers, handler):
+        # For each target well, we need to push this to a temporary plate:
+        # First we need a map from the actual target plates to temp plates:
+        map_target_container_to_temp = dict()
+        for transfer in original_transfers:
+            target_container = transfer.target_location.container
+            if target_container not in map_target_container_to_temp:
+                temp_container = Container.create_from_container(target_container)
+                temp_container.id = "{}{}".format(handler.temp_container_prefix(), len(map_target_container_to_temp) + 1)
+                temp_container.name = temp_container.id
+                map_target_container_to_temp[target_container] = temp_container
+
+        for transfer in original_transfers:
+            temp_target_container = map_target_container_to_temp[transfer.target_location.container]
+            yield handler.split_transfer(transfer, temp_target_container)
+
+    def _do_split(self, split, no_split, handler, dilution_settings, robot_settings):
+        splits = list(self.calculate_split_transfers(split, handler))
+        temp_transfers = [t for t, m in splits]
+        no_split.extend([m for t, m in splits])
+
+        temp_transfer_batch = TransferBatch(temp_transfers, robot_settings, depth=1, is_temporary=True)
+
+        self.dilution_service.execute_handlers(self.transfer_calc_handlers,
+                                               temp_transfer_batch,
+                                               dilution_settings, robot_settings)
+
+        # We need to create a new transfers list with:
+        #  - target_location should be the original target location
+        #  - source_location should also bet the original source location
+        temp_transfer_batch.split = True
+
+        return temp_transfer_batch
+
+    def split_batch(self, batch, transfer_batch_handlers, robot_settings):
+        """Returns one or more batches in a TransferBatchCollection
+        after splitting using all the batch split handlers
+        """
+        split_per_handler = dict()
+        no_split = list()
+
+        def handle_split(transfer):
+            for transfer_batch_handler in transfer_batch_handlers:
+                needs_split = transfer_batch_handler.needs_split(transfer, self.dilution_settings, robot_settings)
+                if needs_split:
+                    split_per_handler.setdefault(transfer_batch_handler, list())
+                    split_per_handler[transfer_batch_handler].append(transfer)
+                    # We're only allowing one handler to split per transfer
+                    return True
+            return False
+
+        # Group each transfer into those that need to be split and those that don't:
+        for transfer in batch.transfers:
+            if not handle_split(transfer):
+                no_split.append(transfer)
+
+        print "Grouped split/no-split"
+        print split_per_handler
+        print no_split
+
+        temp_batches = list()
+        # Second transfers are the ones that were not split, after being configured
+        for handler, split in split_per_handler.items():
+            temp_batch = self._do_split(split, no_split, handler, self.dilution_settings, robot_settings)
+            temp_batches.append(temp_batch)
+
+        final_transfer_batch = TransferBatch(no_split, robot_settings, depth=1)
+        final_transfer_batch.split = True
+        print "HERE"
+        print temp_batches
+        print final_transfer_batch
+
+        return temp_batches, final_transfer_batch
+
+    def create_batches(self, pairs, dilution_settings, robot_settings, transfer_batch_handlers, transfer_split_handler,
                        transfer_validator, transfer_calc_handlers):
         """
         Creates a batch and breaks it up if required by the validator
@@ -113,11 +187,14 @@ class DilutionSession(object):
         # Create the "original transfer batch". This batch may be split up into other batches
         original_transfer_batch = self.create_batch(pairs, robot_settings,
                                                     dilution_settings, transfer_calc_handlers)
-        if transfer_batch_handler:
-            transfer_batches = transfer_batch_handler.handle_batch(original_transfer_batch, dilution_settings, robot_settings)
-        else:
-            transfer_batches = TransferBatchCollection(original_transfer_batch)
+        temp_batches, main_transfer_batch = self.split_batch(original_transfer_batch, transfer_batch_handlers, robot_settings)
 
+        # Execute each calculation handler on the main batch:
+        self.dilution_service.execute_handlers(self.transfer_calc_handlers,
+                                               main_transfer_batch, self.dilution_settings, robot_settings)
+        transfer_batches = TransferBatchCollection(*(temp_batches + [main_transfer_batch]))
+
+        # Now split each transfer batch per-row if there is such a handler, then run the validator:
         for transfer_batch in transfer_batches:
             self.dilution_service.execute_handler(transfer_split_handler, transfer_batch,
                                                   dilution_settings, robot_settings)
@@ -684,7 +761,6 @@ class TransferBatch(object):
         for transfer in transfers:
             transfer.transfer_batch = self
 
-
     def _sort_and_name_containers(self, robot_settings):
         """Updates the list of containers and assigns temporary names and positions to them"""
         def sort_key(c):
@@ -777,6 +853,9 @@ class TransferBatch(object):
             report.append("{}".format(transfer))
         return "\n".join(report)
 
+    def __str__(self):
+        return self.report()
+
 
 class TransferBatchCollection(object):
     """
@@ -797,6 +876,12 @@ class TransferBatchCollection(object):
         return self._batches[item]
 
     def report(self):
+        return self.__str__()
+
+    def __repr__(self):
+        return repr(self._batches)
+
+    def __str__(self):
         ret = list()
         for batch in self._batches:
             ret.append(batch.report())

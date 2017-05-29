@@ -57,107 +57,24 @@ class TransferBatchHandlerBase(TransferHandlerBase):
 
     @abc.abstractmethod
     def needs_split(self, transfer, dilution_settings, robot_settings):
+        """Returns True if the transfer requires a split"""
         pass
 
-    def handle_batch(self, transfer_batch, dilution_settings, robot_settings):
+    @abc.abstractmethod
+    def temp_container_prefix(self):
+        pass
+
+    @abc.abstractmethod
+    def split_transfer(self, transfer, temp_target_container):
         """
-        Returns one or two transfer_batches, based on rules. Can be used to split a transfer_batch into original and
-        temporary transfer_batches
+        Given the original transfer, returns a pair of transfers, one that needs to go to a temporary plate
+        and another that doesn't
         """
-        # Raise an error if any transfer requires evaporation, that's currently not implemented
-        for transfer in transfer_batch.transfers:
-            if transfer.pipette_sample_volume > transfer.target_vol:
-                raise UsageError("Evaporation needed for '{}' - not implemented yet".format(
-                    transfer.target_location.artifact.name))
+        pass
 
-        split = [t for t in transfer_batch.transfers if self.needs_split(t, dilution_settings, robot_settings)]
-        no_split = [t for t in transfer_batch.transfers if t not in split]
-
-        if len(split) > 0:
-            return self.split_transfer_batch(split, no_split, dilution_settings, robot_settings)
-        else:
-            # No split was required
-            return TransferBatchCollection(transfer_batch)
-
-    def split_transfer_batch(self, split, no_split, dilution_settings, robot_settings):
-        first_transfers = list(self.calculate_split_transfers(split))
-        temp_transfer_batch = TransferBatch(first_transfers, robot_settings, depth=1, is_temporary=True)
-        self.dilution_session.dilution_service.execute_handlers(self.dilution_session.transfer_calc_handlers,
-                                                                temp_transfer_batch,
-                                                                dilution_settings, robot_settings)
-        second_transfers = list()
-
-        # We need to create a new transfers list with:
-        #  - target_location should be the original target location
-        #  - source_location should also bet the original source location
-        for temp_transfer in temp_transfer_batch.transfers:
-            # NOTE: It's correct that the source_location is being set to the target_location here:
-            new_transfer = SingleTransfer(temp_transfer.target_conc, temp_transfer.target_vol,
-                                          temp_transfer.original.target_conc, temp_transfer.original.target_vol,
-                                          source_location=temp_transfer.target_location,
-                                          target_location=temp_transfer.original.target_location)
-
-            # In the case of a split TransferBatch, only the secondary transfer should update source volume:
-            new_transfer.should_update_source_vol = False
-            second_transfers.append(new_transfer)
-
-        # Add other transfers just as they were:
-        second_transfers.extend(no_split)
-
-        final_transfer_batch = TransferBatch(second_transfers, robot_settings, depth=1)
-        temp_transfer_batch.split = True
-        final_transfer_batch.split = True
-
-        self.dilution_session.dilution_service.execute_handlers(self.dilution_session.transfer_calc_handlers,
-                                                                final_transfer_batch, dilution_settings, robot_settings)
-        # For the analytes requiring splits
-        return TransferBatchCollection(temp_transfer_batch, final_transfer_batch)
-
-    def calculate_split_transfers(self, original_transfers):
-        # For each target well, we need to push this to a temporary plate:
-
-        # First we need a map from the actual target plates to temp plates:
-        map_target_container_to_temp = dict()
-        for transfer in original_transfers:
-            target_container = transfer.target_location.container
-            if target_container not in map_target_container_to_temp:
-                temp_container = Container.create_from_container(target_container)
-                temp_container.id = "temp{}".format(len(map_target_container_to_temp) + 1)
-                temp_container.name = temp_container.id
-                map_target_container_to_temp[target_container] = temp_container
-
-        for transfer in original_transfers:
-            temp_target_container = map_target_container_to_temp[transfer.target_location.container]
-            # TODO: Copy the source location rather than using the original?
-
-            # Create a temporary analyte representing the new one on the temp plate:
-            temp_analyte = copy.copy(transfer.source_location.artifact)
-            temp_analyte.id += "-temp"
-            temp_analyte.name += "-temp"
-            temp_target_location = temp_target_container.set_well(
-                transfer.target_location.position,
-                temp_analyte)
-
-            # TODO: This should be defined by a rule provided by the inheriting class
-            static_sample_volume = 4
-            static_buffer_volume = 36
-            transfer_copy = SingleTransfer(transfer.source_conc,
-                                           transfer.source_vol,
-                                           transfer.source_conc / 10.0,
-                                           static_buffer_volume + static_sample_volume,
-                                           transfer.source_location,
-                                           temp_target_location)
-            transfer_copy.is_primary = False
-            transfer_copy.split_type = SingleTransfer.SPLIT_BATCH
-            transfer_copy.should_update_target_vol = False
-            transfer_copy.should_update_target_conc = False
-
-            # In this case, we'll hardcode the values according to the lab's specs:
-            transfer_copy.pipette_sample_volume = static_sample_volume
-            transfer_copy.pipette_buffer_volume = static_buffer_volume
-            transfer_copy.original = transfer
-
-            yield transfer_copy
+    def should_calculate(self):
+        """Returns true if the calculation handlers should be run after the split"""
+        return True
 
 
 class TransferCalcHandlerBase(TransferHandlerBase):
