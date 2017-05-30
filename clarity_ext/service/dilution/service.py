@@ -27,20 +27,20 @@ class DilutionService(object):
                                   context, transfer_calc_handler_types)
         return session
 
-    def execute_handlers(self, handlers, transfer_batch, dilution_settings, robot_settings):
+    def execute_handlers(self, handlers, transfer, dilution_settings, robot_settings):
         """Executes the handlers in order on the transfer_batch"""
         for handler in handlers:
-            self.execute_handler(handler, transfer_batch, dilution_settings, robot_settings)
+            self.execute_handler(handler, transfer, dilution_settings, robot_settings)
 
-    def execute_handler(self, handler, transfer_batch, dilution_settings, robot_settings):
-        """Executes the handler on the transfer batch. If handler is None, nothing happens"""
+    def execute_handler(self, handler, transfer, dilution_settings, robot_settings):
+        """Executes the handler on the transfer. If handler is None, nothing happens"""
         if handler:
-            self._log_handler(handler, transfer_batch)
-            handler.handle_batch(transfer_batch, dilution_settings, robot_settings)
+            self._log_handler(handler, transfer)
+            handler.handle_transfer(transfer, dilution_settings, robot_settings)
 
-    def _log_handler(self, handler, transfer_batch):
-        self.logger.debug("Executing handler '{}' for transfer_batch '{}'".format(
-            type(handler).__name__, transfer_batch.name))
+    def _log_handler(self, handler, transfer):
+        self.logger.debug("Executing handler '{}' for transfer'{}'".format(
+            type(handler).__name__, transfer))
 
     """
     @staticmethod
@@ -128,9 +128,11 @@ class DilutionSession(object):
 
         temp_transfer_batch = TransferBatch(temp_transfers, robot_settings, depth=1, is_temporary=True)
 
+        """
         self.dilution_service.execute_handlers(self.transfer_calc_handlers,
                                                temp_transfer_batch,
                                                dilution_settings, robot_settings)
+        """
 
         # We need to create a new transfers list with:
         #  - target_location should be the original target location
@@ -177,7 +179,29 @@ class DilutionSession(object):
         print temp_batches
         print final_transfer_batch
 
+        # Execute calculation handlers on each transfer that wasn't split.
+        # Split transfers handle their own calculation (TODO)
+        for transfer in no_split:
+            self.dilution_service.execute_handlers(self.transfer_calc_handlers,
+                                                   transfer, self.dilution_settings, robot_settings)
+
         return temp_batches, final_transfer_batch
+
+    def split_rows(self, row_split_handler, transfer_batch, dilution_settings, robot_settings):
+        if not row_split_handler:
+            return
+
+        require_row_split = [t for t in transfer_batch.transfers
+                             if row_split_handler.needs_row_split(t, dilution_settings, robot_settings)]
+        for transfer in require_row_split:
+            split_transfers = row_split_handler.split_single_transfer(transfer, robot_settings)
+            # TODO: Validation to handler?
+            if sum(t.pipette_sample_volume + t.pipette_buffer_volume for t in split_transfers) > \
+                    robot_settings.max_pipette_vol_for_row_split:
+                raise UsageError("Total volume has reached the max well volume ({})".format(
+                    robot_settings.max_pipette_vol_for_row_split))
+            transfer_batch.transfers.remove(transfer)
+            transfer_batch.transfers.extend(split_transfers)
 
     def create_batches(self, pairs, dilution_settings, robot_settings, transfer_batch_handlers, transfer_split_handler,
                        transfer_validator, transfer_calc_handlers):
@@ -189,15 +213,12 @@ class DilutionSession(object):
                                                     dilution_settings, transfer_calc_handlers)
         temp_batches, main_transfer_batch = self.split_batch(original_transfer_batch, transfer_batch_handlers, robot_settings)
 
-        # Execute each calculation handler on the main batch:
-        self.dilution_service.execute_handlers(self.transfer_calc_handlers,
-                                               main_transfer_batch, self.dilution_settings, robot_settings)
         transfer_batches = TransferBatchCollection(*(temp_batches + [main_transfer_batch]))
 
         # Now split each transfer batch per-row if there is such a handler, then run the validator:
         for transfer_batch in transfer_batches:
-            self.dilution_service.execute_handler(transfer_split_handler, transfer_batch,
-                                                  dilution_settings, robot_settings)
+            self.split_rows(transfer_split_handler, transfer_batch, dilution_settings, robot_settings)
+
             # Run the validator on the transfer batch:
             if transfer_validator:
                 results = transfer_validator.validate(transfer_batch, robot_settings, dilution_settings)
@@ -254,7 +275,8 @@ class DilutionSession(object):
         if self.transfer_validator:
             pre_results = self.transfer_validator.pre_validate(batch, dilution_settings, robot_settings)
             self.validation_service.handle_validation(pre_results)
-        self.dilution_service.execute_handlers(transfer_calc_handlers, batch, dilution_settings, robot_settings)
+        for transfer in batch.transfers:
+            self.dilution_service.execute_handlers(transfer_calc_handlers, transfer, dilution_settings, robot_settings)
         return batch
 
     def initialize_transfer_from_settings(self, transfer, dilution_settings):

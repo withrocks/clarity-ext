@@ -39,18 +39,6 @@ class TransferSplitHandlerBase(TransferHandlerBase):
     def split_single_transfer(self, transfer, robot_settings):
         pass
 
-    def handle_batch(self, transfer_batch, dilution_settings, robot_settings):
-        require_row_split = [t for t in transfer_batch.transfers
-                             if self.needs_row_split(t, dilution_settings, robot_settings)]
-        for transfer in require_row_split:
-            split_transfers = self.split_single_transfer(transfer, robot_settings)
-            if sum(t.pipette_sample_volume + t.pipette_buffer_volume for t in split_transfers) > \
-                    robot_settings.max_pipette_vol_for_row_split:
-                raise UsageError("Total volume has reached the max well volume ({})".format(
-                    robot_settings.max_pipette_vol_for_row_split))
-            transfer_batch.transfers.remove(transfer)
-            transfer_batch.transfers.extend(split_transfers)
-
 
 class TransferBatchHandlerBase(TransferHandlerBase):
     __metaclass__ = abc.ABCMeta
@@ -68,13 +56,13 @@ class TransferBatchHandlerBase(TransferHandlerBase):
     def split_transfer(self, transfer, temp_target_container):
         """
         Given the original transfer, returns a pair of transfers, one that needs to go to a temporary plate
-        and another that doesn't
+        and the one that takes from the temporary plate to the end destination
         """
         pass
 
     def should_calculate(self):
         """Returns true if the calculation handlers should be run after the split"""
-        return True
+        return False
 
 
 class TransferCalcHandlerBase(TransferHandlerBase):
@@ -82,12 +70,6 @@ class TransferCalcHandlerBase(TransferHandlerBase):
     Base class for handlers that change the transfer in some way, in particular calculating values
     """
     __metaclass__ = abc.ABCMeta
-
-    def handle_batch(self, transfer_batch, dilution_settings, robot_settings):
-        """By default, run through the entire batch and call calc."""
-        # TODO: Shouldn't transfer_batch be an iterator?
-        for transfer in transfer_batch.transfers:
-            self.handle_transfer(transfer, dilution_settings, robot_settings)
 
     def handle_transfer(self, transfer, dilution_settings, robot_settings):
         pass
