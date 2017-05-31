@@ -40,31 +40,6 @@ class TransferSplitHandlerBase(TransferHandlerBase):
         pass
 
 
-class TransferBatchHandlerBase(TransferHandlerBase):
-    __metaclass__ = abc.ABCMeta
-
-    @abc.abstractmethod
-    def needs_split(self, transfer, dilution_settings, robot_settings):
-        """Returns True if the transfer requires a split"""
-        pass
-
-    @abc.abstractmethod
-    def temp_container_prefix(self):
-        pass
-
-    @abc.abstractmethod
-    def split_transfer(self, transfer, temp_target_container):
-        """
-        Given the original transfer, returns a pair of transfers, one that needs to go to a temporary plate
-        and the one that takes from the temporary plate to the end destination
-        """
-        pass
-
-    def should_calculate(self):
-        """Returns true if the calculation handlers should be run after the split"""
-        return False
-
-
 class TransferCalcHandlerBase(TransferHandlerBase):
     """
     Base class for handlers that change the transfer in some way, in particular calculating values
@@ -80,6 +55,13 @@ class TransferCalcHandlerBase(TransferHandlerBase):
                 yield TransferValidationException(transfer, msg, validation_type)
         else:
             yield TransferValidationException(transfers, msg, validation_type)
+
+
+class RequiresTempContainerHandlerBase(TransferCalcHandlerBase):
+    """Base class for handling transfers that need to be moved to temporary containers.
+    """
+    def handle_transfers(self, transfer, temp_transfer, main_transfer, dilution_settings, robot_settings):
+        pass
 
 
 class FixedVolumeCalcHandler(TransferCalcHandlerBase):
@@ -105,6 +87,7 @@ class OneToOneConcentrationCalcHandler(TransferCalcHandlerBase):
     """
 
     def handle_transfer(self, transfer, dilution_settings, robot_settings):
+        raise
         if transfer.source_location.artifact.is_control:
             transfer.pipette_buffer_volume = transfer.target_vol
             return
@@ -116,17 +99,6 @@ class OneToOneConcentrationCalcHandler(TransferCalcHandlerBase):
         transfer.has_to_evaporate = \
             (transfer.target_vol - transfer.pipette_sample_volume) < 0
 
-        # In the case of looped dilutions, we scale up on the temporary plate only
-        # Scaling up is not needed on the regular case because it's covered by looping
-        # TODO: To support more complex calculations and reuse of code, move this into a separate rule,
-        # then apply rules in an order specified by the user (in the DilutionSettings).
-        if transfer.transfer_batch.split and transfer.pipette_sample_volume < robot_settings.pipette_min_volume:
-            scale_factor = robot_settings.pipette_min_volume / float(transfer.pipette_sample_volume)
-            logging.debug("Before applying scale_factor '{}': {}".format(scale_factor, transfer))
-            transfer.pipette_sample_volume *= scale_factor
-            transfer.pipette_buffer_volume *= scale_factor
-            transfer.scaled_up = True
-            logging.debug("After applying scale_factor: {}".format(transfer))
 
         transfer.source_vol_delta = -round(transfer.pipette_sample_volume +
                                            robot_settings.dilution_waste_volume, 1)
