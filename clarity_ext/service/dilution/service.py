@@ -98,6 +98,7 @@ class DilutionSession(object):
 
     def evaluate(self, pairs):
         """Refreshes all calculations for all registered robots and runs registered handlers and validators."""
+        raise
         self.pairs = pairs
         self.transfer_batches_by_robot = dict()
         for robot_settings in self.robot_settings_by_name.values():
@@ -123,16 +124,11 @@ class DilutionSession(object):
 
     def _do_split(self, split, no_split, handler, dilution_settings, robot_settings):
         splits = list(self.calculate_split_transfers(split, handler))
+
         temp_transfers = [t for t, m in splits]
         no_split.extend([m for t, m in splits])
 
         temp_transfer_batch = TransferBatch(temp_transfers, robot_settings, depth=1, is_temporary=True)
-
-        """
-        self.dilution_service.execute_handlers(self.transfer_calc_handlers,
-                                               temp_transfer_batch,
-                                               dilution_settings, robot_settings)
-        """
 
         # We need to create a new transfers list with:
         #  - target_location should be the original target location
@@ -163,21 +159,18 @@ class DilutionSession(object):
             if not handle_split(transfer):
                 no_split.append(transfer)
 
-        print "Grouped split/no-split"
-        print split_per_handler
-        print no_split
+        if len(split_per_handler) == 0:
+            return list(), batch
 
         temp_batches = list()
+        final_transfers = list()
         # Second transfers are the ones that were not split, after being configured
         for handler, split in split_per_handler.items():
-            temp_batch = self._do_split(split, no_split, handler, self.dilution_settings, robot_settings)
+            temp_batch = self._do_split(split, final_transfers, handler, self.dilution_settings, robot_settings)
             temp_batches.append(temp_batch)
 
-        final_transfer_batch = TransferBatch(no_split, robot_settings, depth=1)
+        final_transfer_batch = TransferBatch(final_transfers, robot_settings, depth=1)
         final_transfer_batch.split = True
-        print "HERE"
-        print temp_batches
-        print final_transfer_batch
 
         # Execute calculation handlers on each transfer that wasn't split.
         # Split transfers handle their own calculation (TODO)
@@ -213,7 +206,9 @@ class DilutionSession(object):
                                                     dilution_settings, transfer_calc_handlers)
         temp_batches, main_transfer_batch = self.split_batch(original_transfer_batch, transfer_batch_handlers, robot_settings)
 
+        print temp_batches, main_transfer_batch
         transfer_batches = TransferBatchCollection(*(temp_batches + [main_transfer_batch]))
+        print transfer_batches
 
         # Now split each transfer batch per-row if there is such a handler, then run the validator:
         for transfer_batch in transfer_batches:
