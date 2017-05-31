@@ -31,20 +31,6 @@ class DilutionService(object):
         self.logger.debug("Executing handler '{}' for transfer'{}'".format(
             type(handler).__name__, transfer))
 
-    """
-    @staticmethod
-    def create_strategy(dilution_settings, robot_settings):
-        if dilution_settings.volume_calc_method == DilutionSettings.VOLUME_CALC_FIXED:
-            return FixedVolumeCalc(dilution_settings, robot_settings)
-        elif dilution_settings.volume_calc_method == DilutionSettings.VOLUME_CALC_BY_CONC and not dilution_settings.make_pools:
-            return OneToOneConcentrationCalc(dilution_settings, robot_settings)
-        elif dilution_settings.volume_calc_method == DilutionSettings.VOLUME_CALC_BY_CONC and dilution_settings.make_pools:
-            return PoolConcentrationCalc(dilution_settings)
-        else:
-            raise ValueError("Volume calculation method is not implemented for these settings: '{}'".
-                             format(dilution_settings))
-    """
-
 
 class DilutionSession(object):
     """
@@ -84,7 +70,7 @@ class DilutionSession(object):
         self.transfer_batch_handlers = [t(self) for t in transfer_batch_handler_types]
         self.transfer_split_handler = transfer_split_handler_type(self) if transfer_split_handler_type else None
         self.transfer_calc_handlers = [t(self) for t in transfer_calc_handler_types]
-        self.temporary_container_by_original = dict()
+        self.map_temporary_container_by_original = dict()
 
     def evaluate(self, pairs):
         """Refreshes all calculations for all registered robots and runs registered handlers and validators."""
@@ -95,46 +81,27 @@ class DilutionSession(object):
                 self.pairs, self.dilution_settings, robot_settings, self.transfer_batch_handlers,
                 self.transfer_split_handler, self.transfer_validator, self.transfer_calc_handlers)
 
-    def xxx_calculate_split_transfers(self, original_transfers, handler):
-        # For each target well, we need to push this to a temporary plate:
-        # First we need a map from the actual target plates to temp plates:
-        map_target_container_to_temp = dict()
-        for transfer in original_transfers:
-            target_container = transfer.target_location.container
-            if target_container not in map_target_container_to_temp:
-                temp_container = Container.create_from_container(target_container)
-                temp_container.id = "{}{}".format(handler.temp_container_prefix(), len(map_target_container_to_temp) + 1)
-                temp_container.name = temp_container.id
-                map_target_container_to_temp[target_container] = temp_container
-
-        for transfer in original_transfers:
-            temp_target_container = map_target_container_to_temp[transfer.target_location.container]
-            yield handler.split_transfer(transfer, temp_target_container)
-
-    """
-    def execute_handlers(self, handlers, transfer, dilution_settings, robot_settings):
-        #Executes the handlers in order on the transfer_batch
-        for handler in handlers:
-            self.execute_handler(handler, transfer, dilution_settings, robot_settings)
-    """
-
     def execute_handler(self, handler, transfer, dilution_settings, robot_settings):
         """Executes the handler on the transfer. If handler is None, nothing happens"""
         if handler:
+            if not handler.should_execute(transfer, dilution_settings, robot_settings):
+                return
+
             if hasattr(handler, "handle_transfers"):
                 temp_transfer, main_transfer = self.split_transfer(transfer, handler)
+                temp_transfer.batch = handler.tag()
                 return handler.handle_transfers(transfer, temp_transfer, main_transfer, dilution_settings, robot_settings)
             else:
                 return handler.handle_transfer(transfer, dilution_settings, robot_settings)
 
     def get_temporary_container(self, target_container, prefix):
         """Returns the temporary container that should be used rather than the original one, when splitting transfers"""
-        if target_container not in self.temporary_container_by_original:
+        if target_container.id not in self.map_temporary_container_by_original:
             temp_container = Container.create_from_container(target_container)
-            temp_container.id = "{}{}".format(prefix, len(self.temporary_container_by_original) + 1)
+            temp_container.id = "{}{}".format(prefix, len(self.map_temporary_container_by_original) + 1)
             temp_container.name = temp_container.id
-            self.temporary_container_by_original[target_container] = temp_container
-        return self.temporary_container_by_original[target_container]
+            self.map_temporary_container_by_original[target_container.id] = temp_container
+        return self.map_temporary_container_by_original[target_container.id]
 
     def split_transfer(self, transfer, handler):
         """Returns two transfers where the first one will go on a temporary container"""
@@ -154,73 +121,14 @@ class DilutionSession(object):
         temp_analyte.name += "-" + tag
 
         temp_target_container = self.get_temporary_container(transfer.target_location.container, tag)
+        temp_transfer.source_location = transfer.source_location
         temp_transfer.target_location = temp_target_container.set_well(transfer.target_location.position, temp_analyte)
 
         # Main:
         main_transfer.source_location = temp_transfer.target_location
         main_transfer.target_location = transfer.target_location
 
-        return temp_analyte, main_transfer
-
-        pass
-
-    def _do_split(self, split, no_split, handler, dilution_settings, robot_settings):
-        splits = list(self.calculate_split_transfers(split, handler))
-
-        temp_transfers = [t for t, m in splits]
-        no_split.extend([m for t, m in splits])
-
-        temp_transfer_batch = TransferBatch(temp_transfers, robot_settings, depth=1, is_temporary=True)
-
-        # We need to create a new transfers list with:
-        #  - target_location should be the original target location
-        #  - source_location should also bet the original source location
-        temp_transfer_batch.split = True
-
-        return temp_transfer_batch
-
-    def split_batch(self, batch, transfer_batch_handlers, robot_settings):
-        """Returns one or more batches in a TransferBatchCollection
-        after splitting using all the batch split handlers
-        """
-        split_per_handler = dict()
-        no_split = list()
-
-        def handle_split(transfer):
-            for transfer_batch_handler in transfer_batch_handlers:
-                needs_split = transfer_batch_handler.needs_split(transfer, self.dilution_settings, robot_settings)
-                if needs_split:
-                    split_per_handler.setdefault(transfer_batch_handler, list())
-                    split_per_handler[transfer_batch_handler].append(transfer)
-                    # We're only allowing one handler to split per transfer
-                    return True
-            return False
-
-        # Group each transfer into those that need to be split and those that don't:
-        for transfer in batch.transfers:
-            if not handle_split(transfer):
-                no_split.append(transfer)
-
-        if len(split_per_handler) == 0:
-            return list(), batch
-
-        temp_batches = list()
-        final_transfers = list()
-        # Second transfers are the ones that were not split, after being configured
-        for handler, split in split_per_handler.items():
-            temp_batch = self._do_split(split, final_transfers, handler, self.dilution_settings, robot_settings)
-            temp_batches.append(temp_batch)
-
-        final_transfer_batch = TransferBatch(final_transfers, robot_settings, depth=1)
-        final_transfer_batch.split = True
-
-        # Execute calculation handlers on each transfer that wasn't split.
-        # Split transfers handle their own calculation (TODO)
-        for transfer in no_split:
-            self.dilution_service.execute_handlers(self.transfer_calc_handlers,
-                                                   transfer, self.dilution_settings, robot_settings)
-
-        return temp_batches, final_transfer_batch
+        return temp_transfer, main_transfer
 
     def split_rows(self, row_split_handler, transfer_batch, dilution_settings, robot_settings):
         if not row_split_handler:
@@ -238,44 +146,42 @@ class DilutionSession(object):
             transfer_batch.transfers.remove(transfer)
             transfer_batch.transfers.extend(split_transfers)
 
-    def evaluate_transfer_route(self, transfer, robot_settings):
-        """Evaluates which route this transfer needs to take in order to be fulfilled. Returns a list of transfers.
-        """
-        print "Evaluating {}-route for transfer {}".format(robot_settings.name, transfer)
-        route = list()
-        route.append((transfer, None))
-
+    def evaluate_transfer(self, transfer, robot_settings):
+        """Runs the calculation handlers on the transfer, returning a list of one or two transfers (if split)"""
         for handler in self.transfer_calc_handlers:
-            ret = self.execute_handler(handler, transfer, self.dilution_settings, robot_settings)
-            # Currently allowing only one rule.
-            if ret:
-                route.append(ret)
-                break
-
-        print "Done", route
-        for x in route:
-            print x
-
-        return route
+            transfers = self.execute_handler(handler, transfer, self.dilution_settings, robot_settings)
+            # Currently allowing only one rule to be executed.
+            if transfers:
+                return list(transfers)
+        return None
 
     def create_batches(self, pairs, dilution_settings, robot_settings, transfer_batch_handlers, transfer_split_handler,
                        transfer_validator, transfer_calc_handlers):
         """
         Creates a batch and breaks it up if required by the validator
         """
-        # Create the "original transfer batch". This batch may be split up into other batches
-        #original_transfer_batch = self.create_batch(pairs, robot_settings, dilution_settings, transfer_calc_handlers)
         transfers = self.create_transfers_from_pairs(pairs, robot_settings, dilution_settings)
+        evaluated_transfers = list()
 
         for transfer in transfers:
-            self.evaluate_transfer_route(transfer, robot_settings)
+            evaluated = self.evaluate_transfer(transfer, robot_settings)
+            evaluated_transfers.extend(evaluated)
 
-        import sys; sys.exit()
-        temp_batches, main_transfer_batch = self.split_batch(original_transfer_batch, transfer_batch_handlers, robot_settings)
+        # Now group all temporary transfers together
+        transfer_by_batch = dict()
+        for transfer in evaluated_transfers:
+            batch = transfer.batch or "default"
+            transfer_by_batch.setdefault(batch, list())
+            transfer_by_batch[batch].append(transfer)
 
-        print temp_batches, main_transfer_batch
-        transfer_batches = TransferBatchCollection(*(temp_batches + [main_transfer_batch]))
-        print transfer_batches
+        import pprint
+        pprint.pprint (transfer_by_batch)
+
+        transfer_batches = TransferBatchCollection()
+        for key in transfer_by_batch:
+            depth = 0 if key == "default" else 1  # TODO Used?
+            is_temporary = key != "default"  # and this?
+            transfer_batches.append(TransferBatch(transfer_by_batch[key], robot_settings, depth, is_temporary, key))
 
         # Now split each transfer batch per-row if there is such a handler, then run the validator:
         for transfer_batch in transfer_batches:
@@ -494,6 +400,9 @@ class SingleTransfer(object):
         self.should_update_target_conc = True
 
         self.split_type = SingleTransfer.SPLIT_NONE
+
+        # A string identifying the batch the transfer should be grouped into, None being the default one.
+        self.batch = None
 
     def _container_slot(self, is_source):
         if self.transfer_batch is None or self.source_location is None or self.target_location is None:
@@ -851,6 +760,7 @@ class TransferBatch(object):
         def contains_only_control(container):
             return all(well.artifact.is_control for well in container.occupied)
 
+        print self._transfers
         # We need to ensure that the containers that contain only a control always get index=0
         # NOTE: This is very site-specific so it would be better to solve it with handlers
         all_source_containers = set(transfer.source_location.container for transfer in self._transfers)
@@ -947,6 +857,9 @@ class TransferBatchCollection(object):
     def __init__(self, *args):
         self._batches = list()
         self._batches.extend(args)
+
+    def append(self, obj):
+        self._batches.append(obj)
 
     def __iter__(self):
         return iter(self._batches)
