@@ -1,80 +1,4 @@
-import abc
-from clarity_ext.service.dilution.service import *
-
-
-class TransferHandlerBase(object):
-    """Base class for all handlers"""
-    __metaclass__ = abc.ABCMeta
-
-    def __init__(self, dilution_session):
-        self.dilution_session = dilution_session
-        self.validation_exceptions = list()
-        self.logger = logging.getLogger(__name__)
-
-    def error(self, msg, transfers):
-        """
-        Adds a validation exception to the list of validation errors and warnings. Errors are logged after the handler
-        is done processing and then a UsageError is thrown.
-        """
-        self.validation_exceptions.extend(self._create_exceptions(msg, transfers, ValidationType.ERROR))
-
-    def warning(self, msg, transfers):
-        """
-        Adds a validation warning to the list of validation warnings. Validation warnings are only logged.
-
-        Transfers can be either a list of transfers or one transfer
-        """
-        self.validation_exceptions.extend(self._create_exceptions(msg, transfers, ValidationType.WARNING))
-
-
-class TransferSplitHandlerBase(TransferHandlerBase):
-    """Base class for handlers that can split one transfer into more"""
-    __metaclass__ = abc.ABCMeta
-
-    @abc.abstractmethod
-    def needs_row_split(self, transfer, dilution_settings, robot_settings):
-        pass
-
-    @abc.abstractmethod
-    def split_single_transfer(self, transfer, robot_settings):
-        pass
-
-
-class TransferCalcHandlerBase(TransferHandlerBase):
-    """
-    Base class for handlers that change the transfer in some way, in particular calculating values
-    """
-    __metaclass__ = abc.ABCMeta
-
-    def handle_transfer(self, transfer, dilution_settings, robot_settings):
-        pass
-
-    def _create_exceptions(self, msg, transfers, validation_type):
-        if isinstance(transfers, list):
-            for transfer in transfers:
-                yield TransferValidationException(transfer, msg, validation_type)
-        else:
-            yield TransferValidationException(transfers, msg, validation_type)
-
-
-class RequiresTempContainerHandlerBase(TransferCalcHandlerBase):
-    """Base class for handling transfers that need to be moved to temporary containers.
-    """
-    def handle_transfers(self, transfer, temp_transfer, main_transfer, dilution_settings, robot_settings):
-        pass
-
-
-class FixedVolumeCalcHandler(TransferCalcHandlerBase):
-    """
-    Implements sample volume calculations for transfer only dilutions.
-    I.e. no calculations at all. The fixed transfer volume is specified in
-    individual scripts
-    """
-
-    def handle_transfer(self, transfer, dilution_settings, robot_settings):
-        """Only updates the source volume"""
-        transfer.source_vol_delta = -round(transfer.pipette_sample_volume +
-                                           robot_settings.dilution_waste_volume, 1)
+from clarity_ext.service.dilution.service import TransferCalcHandlerBase
 
 
 class OneToOneConcentrationCalcHandler(TransferCalcHandlerBase):
@@ -86,8 +10,7 @@ class OneToOneConcentrationCalcHandler(TransferCalcHandlerBase):
     concentration and target volume by the user.
     """
 
-    def handle_transfer(self, transfer, dilution_settings, robot_settings):
-        raise
+    def handle_transfer(self, transfer):
         if transfer.source_location.artifact.is_control:
             transfer.pipette_buffer_volume = transfer.target_vol
             return
@@ -99,9 +22,8 @@ class OneToOneConcentrationCalcHandler(TransferCalcHandlerBase):
         transfer.has_to_evaporate = \
             (transfer.target_vol - transfer.pipette_sample_volume) < 0
 
-
         transfer.source_vol_delta = -round(transfer.pipette_sample_volume +
-                                           robot_settings.dilution_waste_volume, 1)
+                                           self.robot_settings.dilution_waste_volume, 1)
         transfer.pipette_sample_volume = round(transfer.pipette_sample_volume, 1)
         transfer.pipette_buffer_volume = round(transfer.pipette_buffer_volume, 1)
 
