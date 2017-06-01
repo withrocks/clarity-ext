@@ -109,6 +109,7 @@ class DilutionSession(object):
         evaluated = list()
         for transfer in transfers:
             self._log_handler(handler, transfer)
+            print "HERE", handler
             evaluated.extend(handler.run(transfer))
         return evaluated
 
@@ -168,9 +169,9 @@ class DilutionSession(object):
         """Runs the calculation handlers on the transfer, returning a list of one or two transfers (if split)"""
         evaluated = [transfer]
         for handler in transfer_handlers:
-            print "EVAL before", handler, evaluated
+            #print "EVAL before", handler, evaluated
             evaluated = self.execute_handler(handler, evaluated)
-            print "     after", evaluated
+            #print "     after", evaluated
         return evaluated
 
     def create_batches(self, pairs, dilution_settings, robot_settings, transfer_validator, transfer_handlers):
@@ -956,12 +957,16 @@ class TransferHandlerBase(object):
     def run(self, transfer):
         """Called by the engine"""
         if not self.should_execute(transfer):
-            return None
-        self.handle_transfer(transfer)
+            return [transfer]
+        ret = self.handle_transfer(transfer)
+        ret = ret or transfer
         self.executed = True
         # After execution, we always return a list of transfers, since some handlers may split
         # transfers up
-        return [transfer]
+        if isinstance(ret, collections.Iterable):
+            return ret
+        else:
+            return [ret]
 
     def handle_transfer(self, transfer):
         pass
@@ -998,9 +1003,9 @@ class OrTransferHandler(TransferHandlerBase):
         evaluated = None
         for handler in self.sub_handlers:
             evaluated = handler.run(transfer)
-            if handler.executed:
+            if evaluated and handler.executed:
                 break
-        return evaluated
+        return evaluated or [transfer]
 
     def __repr__(self):
         return "OR({})".format(", ".join(map(repr, self.sub_handlers)))
@@ -1011,15 +1016,7 @@ class TransferSplitHandlerBase(TransferHandlerBase):
     """Base class for handlers that can split one transfer into more"""
     __metaclass__ = abc.ABCMeta
 
-    """
-    @abc.abstractmethod
-    def needs_row_split(self, transfer, dilution_settings, robot_settings):
-        pass
-
-    @abc.abstractmethod
-    def split_single_transfer(self, transfer, robot_settings):
-        pass
-    """
+    # TODO: Better naming so it's clear that this differs from the row-split
     def handle_split(self, transfer, temp_transfer, main_transfer):
         pass
 
@@ -1039,17 +1036,12 @@ class TransferCalcHandlerBase(TransferHandlerBase):
     """
     __metaclass__ = abc.ABCMeta
 
-
     def _create_exceptions(self, msg, transfers, validation_type):
         if isinstance(transfers, list):
             for transfer in transfers:
                 yield TransferValidationException(transfer, msg, validation_type)
         else:
             yield TransferValidationException(transfers, msg, validation_type)
-
-
-# TODO: Temp move all here (circular ref)
-#from clarity_ext.service.dilution.service import TransferCalcHandlerBase
 
 
 class FixedVolumeCalcHandler(TransferCalcHandlerBase):
@@ -1063,5 +1055,4 @@ class FixedVolumeCalcHandler(TransferCalcHandlerBase):
         """Only updates the source volume"""
         transfer.source_vol_delta = -round(transfer.pipette_sample_volume +
                                            robot_settings.dilution_waste_volume, 1)
-
 
