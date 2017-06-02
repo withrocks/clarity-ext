@@ -68,8 +68,6 @@ class ClarityMapper(object):
 
     def _update_udfs(self, domain_object, resource):
         updated_fields = list(domain_object.udf_map.enumerate_updated())
-        print updated_fields
-
         if len(updated_fields) == 0:
             return None
         else:
