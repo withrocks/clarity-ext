@@ -1,7 +1,7 @@
-from clarity_ext.service.dilution.service import TransferCalcHandlerBase
+from clarity_ext.service.dilution.service import TransferHandlerBase
 
 
-class OneToOneConcentrationCalcHandler(TransferCalcHandlerBase):
+class OneToOneConcentrationCalcHandler(TransferHandlerBase):
     """
     Implements sample volume calculations for a one to one dilution,
     referring that a single transfer has a single source well/tube
@@ -28,10 +28,11 @@ class OneToOneConcentrationCalcHandler(TransferCalcHandlerBase):
         transfer.pipette_buffer_volume = round(transfer.pipette_buffer_volume, 1)
 
 
-class PoolTransferCalcHandler(TransferCalcHandlerBase):
-    def handle_batch(self, batch, dilution_settings, robot_settings):
-        # Since we need the average in this handler, we override handle_batch rather than handle_transfer
-        for target, transfers in batch.transfers_by_output.items():
+class PoolTransferCalcHandler(TransferHandlerBase):
+    def handle_transfer(self, transfer):
+        # TODO: Test with RE, some fundamental changes after refactoring
+        # TODO: Since we need the average in this handler, we override handle_batch rather than handle_transfer
+        for target, transfers in self.virtual_batch.transfers_by_output.items():
             self.logger.debug("Grouped target={}, transfers={}".format(target, transfers))
             regular_transfers = [t for t in transfers if not t.source_location.artifact.is_control]
             sample_size = len(regular_transfers)
@@ -51,7 +52,7 @@ class PoolTransferCalcHandler(TransferCalcHandlerBase):
                 self.logger.debug("Transfer before transform: {}".format(transfer))
                 transfer.pipette_sample_volume = float(transfer.target_vol) / sample_size
                 transfer.source_vol_delta = -round(transfer.pipette_sample_volume +
-                                                   robot_settings.dilution_waste_volume, 1)
+                                                   self.robot_settings.dilution_waste_volume, 1)
                 if target_conc:
                     transfer.target_conc = target_conc
                 self.logger.debug("Transfer after transform:  {}".format(transfer))

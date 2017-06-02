@@ -76,13 +76,10 @@ class DilutionSession(object):
         self.pairs = pairs
         self.transfer_batches_by_robot = dict()
         for robot_settings in self.robot_settings_by_name.values():
-            transfer_handlers = self.init_transfer_handlers(self.transfer_handler_types,
-                                                            self.dilution_settings, robot_settings)
             self.transfer_batches_by_robot[robot_settings.name] = self.create_batches(
-                self.pairs, self.dilution_settings, robot_settings,
-                self.transfer_validator, transfer_handlers)
+                self.pairs, self.dilution_settings, robot_settings, self.transfer_validator)
 
-    def init_transfer_handlers(self, transfer_handle_types, dilution_settings, robot_settings):
+    def init_transfer_handlers(self, transfer_handle_types, dilution_settings, robot_settings, virtual_batch):
         """
         Initializes the transfer handlers for a particular robot and dilution settings
 
@@ -91,10 +88,12 @@ class DilutionSession(object):
         handlers = list()
         for transfer_handle_type in transfer_handle_types:
             if isinstance(transfer_handle_type, collections.Iterable):
-                transfer_handlers = [t(self, dilution_settings, robot_settings) for t in transfer_handle_type]
-                handlers.append(OrTransferHandler(self, dilution_settings, robot_settings, *transfer_handlers))
+                transfer_handlers = [t(self, dilution_settings, robot_settings, virtual_batch)
+                                     for t in transfer_handle_type]
+                handlers.append(OrTransferHandler(self, dilution_settings, robot_settings,
+                                                  virtual_batch, *transfer_handlers))
             else:
-                handlers.append(transfer_handle_type(self, dilution_settings, robot_settings))
+                handlers.append(transfer_handle_type(self, dilution_settings, robot_settings, virtual_batch))
         return handlers
 
     def _log_handler(self, handler, transfer):
@@ -109,7 +108,6 @@ class DilutionSession(object):
         evaluated = list()
         for transfer in transfers:
             self._log_handler(handler, transfer)
-            print "HERE", handler
             evaluated.extend(handler.run(transfer))
         return evaluated
 
@@ -174,8 +172,15 @@ class DilutionSession(object):
             #print "     after", evaluated
         return evaluated
 
-    def create_batches(self, pairs, dilution_settings, robot_settings, transfer_validator, transfer_handlers):
+    def create_batches(self, pairs, dilution_settings, robot_settings, transfer_validator):
+        # Create the original "virtual" transfers. These represent what we would like to happen:
         transfers = self.create_transfers_from_pairs(pairs, robot_settings, dilution_settings)
+        virtual_batch = TransferBatch(transfers, robot_settings)
+        transfer_handlers = self.init_transfer_handlers(self.transfer_handler_types,
+                                                        self.dilution_settings,
+                                                        robot_settings,
+                                                        virtual_batch)
+
         evaluated_transfers = list()
 
         # Evaluate the transfers, i.e. execute all handlers. This does not group them into transfer batches yet
@@ -943,10 +948,11 @@ class TransferHandlerBase(object):
     """Base class for all handlers"""
     __metaclass__ = abc.ABCMeta
 
-    def __init__(self, dilution_session, dilution_settings, robot_settings):
+    def __init__(self, dilution_session, dilution_settings, robot_settings, virtual_batch):
         self.dilution_session = dilution_session
         self.dilution_settings = dilution_settings
         self.robot_settings = robot_settings
+        self.virtual_batch = virtual_batch
         self.validation_exceptions = list()
         self.logger = logging.getLogger(__name__)
         self.executed = False
@@ -989,14 +995,21 @@ class TransferHandlerBase(object):
         """
         self.validation_exceptions.extend(self._create_exceptions(msg, transfers, ValidationType.WARNING))
 
+    def _create_exceptions(self, msg, transfers, validation_type):
+        if isinstance(transfers, list):
+            for transfer in transfers:
+                yield TransferValidationException(transfer, msg, validation_type)
+        else:
+            yield TransferValidationException(transfers, msg, validation_type)
+
     def __repr__(self):
         return self.__class__.__name__
 
 
 class OrTransferHandler(TransferHandlerBase):
     """A handler that stops executing the subhandlers when one of them succeeds"""
-    def __init__(self, dilution_session, dilution_settings, robot_settings, *sub_handlers):
-        super(OrTransferHandler, self).__init__(dilution_session, dilution_settings, robot_settings)
+    def __init__(self, dilution_session, dilution_settings, robot_settings, virtual_batch, *sub_handlers):
+        super(OrTransferHandler, self).__init__(dilution_session, dilution_settings, robot_settings, virtual_batch)
         self.sub_handlers = sub_handlers
 
     def run(self, transfer):
@@ -1030,29 +1043,15 @@ class TransferSplitHandlerBase(TransferHandlerBase):
         return [temp_transfer, main_transfer]
 
 
-class TransferCalcHandlerBase(TransferHandlerBase):
-    """
-    Base class for handlers that change the transfer in some way, in particular calculating values
-    """
-    __metaclass__ = abc.ABCMeta
-
-    def _create_exceptions(self, msg, transfers, validation_type):
-        if isinstance(transfers, list):
-            for transfer in transfers:
-                yield TransferValidationException(transfer, msg, validation_type)
-        else:
-            yield TransferValidationException(transfers, msg, validation_type)
-
-
-class FixedVolumeCalcHandler(TransferCalcHandlerBase):
+class FixedVolumeCalcHandler(TransferHandlerBase):
     """
     Implements sample volume calculations for transfer only dilutions.
     I.e. no calculations at all. The fixed transfer volume is specified in
     individual scripts
     """
 
-    def handle_transfer(self, transfer, dilution_settings, robot_settings):
+    def handle_transfer(self, transfer):
         """Only updates the source volume"""
         transfer.source_vol_delta = -round(transfer.pipette_sample_volume +
-                                           robot_settings.dilution_waste_volume, 1)
+                                           self.robot_settings.dilution_waste_volume, 1)
 
