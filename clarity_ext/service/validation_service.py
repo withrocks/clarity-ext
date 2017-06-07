@@ -21,6 +21,8 @@ class ValidationService:
                 self.handle_single_validation(result)
         # If any of the validation results were errors, raise an exception:
         if any(result for result in results if result.type == ValidationType.ERROR):
+            for stuff in results:
+                print stuff
             raise UsageError("Errors during validation. See the step log for further details.", results)
 
     def handle_single_validation(self, result):

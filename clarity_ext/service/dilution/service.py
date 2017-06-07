@@ -8,7 +8,6 @@ from clarity_ext.service.file_service import Csv
 from clarity_ext.domain.validation import ValidationException, ValidationType, ValidationResults, UsageError
 from clarity_ext import utils
 from clarity_ext.domain import Container, Well
-from clarity_ext.service.dilution.handlers import OrTransferHandler
 
 
 class DilutionService(object):
@@ -95,11 +94,14 @@ class DilutionSession(object):
         """Executes the handler on all transfers at the current level in the path.
 
         Returns a list of evaluated transfers, perhaps unchanged.
+        
+        Runs the validation on the handler too
         """
         evaluated = list()
         for transfer in transfers:
             self._log_handler(handler, transfer)
-            evaluated.extend(handler.run(transfer))
+            after_handled = handler.run(transfer)
+            evaluated.extend(after_handled)
         return evaluated
 
     def get_temporary_container(self, target_container, prefix):
@@ -184,9 +186,8 @@ class DilutionSession(object):
         transfer_by_batch = dict()
 
         for transfer in evaluated_transfers:
-            batch = transfer.batch or "default"
-            transfer_by_batch.setdefault(batch, list())
-            transfer_by_batch[batch].append(transfer)
+            transfer_by_batch.setdefault(transfer.batch, list())
+            transfer_by_batch[transfer.batch].append(transfer)
 
         transfer_batches = TransferBatchCollection()
         for key in transfer_by_batch:
@@ -194,11 +195,8 @@ class DilutionSession(object):
             is_temporary = key != "default"  # and this?
             transfer_batches.append(TransferBatch(transfer_by_batch[key], robot_settings, depth, is_temporary, key))
 
-        # Run the validator on each transfer batch:
-        for transfer_batch in transfer_batches:
-            if transfer_validator:
-                results = transfer_validator.validate(transfer_batch, robot_settings, dilution_settings)
-                self.validation_service.handle_validation(results)
+        for handler in transfer_handlers:
+            self.validation_service.handle_validation(handler.validation_results)
 
         for ix, transfer_batch in enumerate(transfer_batches):
             # Evaluate CSVs:
@@ -411,8 +409,8 @@ class SingleTransfer(object):
 
         self.split_type = SingleTransfer.SPLIT_NONE
 
-        # A string identifying the batch the transfer should be grouped into, None being the default one.
-        self.batch = None
+        # A string identifying the batch the transfer should be grouped into
+        self.batch = "default"
 
     def _container_slot(self, is_source):
         if self.transfer_batch is None or self.source_location is None or self.target_location is None:
@@ -674,14 +672,8 @@ class DilutionValidatorBase(object):
     def warning(msg):
         return TransferValidationException(None, msg, ValidationType.WARNING)
 
-    def rules(self, transfer, robot_settings, dilution_settings):
-        """
-        Validates that the transfer is correct. Will not run if `can_start_calculation`
-        returns False.
-
-        This should be overridden to provide custom validation rules for a particular dilution.
-        """
-        return []
+    # NOTE: Moved rules to each handler. The validator now only has the pre-conditions. We could also move them to the
+    # handlers.
 
     def pre_conditions(self, transfer, robot_settings, dilution_settings):
         """
@@ -698,24 +690,7 @@ class DilutionValidatorBase(object):
             ret[k] = list(g)
         return ret.get(ValidationType.ERROR, list()), ret.get(ValidationType.WARNING, list())
 
-    def validate(self, transfer_batch, robot_settings, dilution_settings):
-        """
-        Validates the transfers, first by validating that calculation can be performed, then by
-        running all custom validations.
-
-        Returns a tuple of (errors, warnings).
-        """
-        results = ValidationResults()
-        for transfer in transfer_batch.transfers:
-            validation_exceptions = list(self.rules(transfer, robot_settings, dilution_settings))
-            for exception in validation_exceptions:
-                if not exception.transfer:
-                    exception.transfer = transfer
-            results.extend(validation_exceptions)
-        return results
-
     def pre_validate(self, transfers, robot_settings, dilution_settings):
-        # TODO: Reuses code
         results = ValidationResults()
         for transfer in transfers:
             validation_exceptions = list(self.pre_conditions(transfer, robot_settings, dilution_settings))
@@ -941,9 +916,99 @@ class NeedsRowSplit(TransferValidationException):
         super(NeedsRowSplit, self).__init__(transfer, "The transfer requires a row split", ValidationType.WARNING)
 
 
-# TODO: Use NeedsBatchSplit with "reason"?
-class NeedsEvaporation(TransferValidationException):
-    def __init__(self):
-        super(NeedsEvaporation, self).__init__(None, "The transfer requires evaporation", ValidationType.WARNING)
+class TransferHandlerBase(object):
+    """Base class for all handlers"""
+    __metaclass__ = abc.ABCMeta
 
+    def __init__(self, dilution_session, dilution_settings, robot_settings, virtual_batch):
+        self.dilution_session = dilution_session
+        self.dilution_settings = dilution_settings
+        self.robot_settings = robot_settings
+        self.virtual_batch = virtual_batch
+        self.validation_exceptions = list()
+        self.logger = logging.getLogger(__name__)
+        self.executed = False
+        self.validation_results = ValidationResults()
+
+    def tag(self):
+        return None
+
+    def run(self, transfer):
+        """Called by the engine"""
+        if not self.should_execute(transfer):
+            return [transfer]
+        ret = self.handle_transfer(transfer)
+        ret = ret or transfer
+        self.executed = True
+
+        # After execution, we always return a list of transfers, since some handlers may split
+        # transfers up
+        if not isinstance(ret, collections.Iterable):
+            ret = [ret]
+
+        for transfer in ret:
+            self._validate(transfer)
+        return ret
+
+    def _validate(self, transfer):
+        """Proxy method for validate, which should be overriden by the user"""
+        exceptions = list(self.validate(transfer))
+        for exception in exceptions:
+            if not exception.transfer:
+                exception.transfer = transfer
+        self.validation_results.extend(exceptions)
+
+    def validate(self, transfer):
+        return list()
+
+    def handle_transfer(self, transfer):
+        pass
+
+    def should_execute(self, transfer):
+        return True
+
+    def error(self, msg, transfer=None):
+        self.validation_results.append(TransferValidationException(transfer, msg, ValidationType.ERROR))
+
+    def warning(self, msg, transfer=None):
+        self.validation_results.append(TransferValidationException(transfer, msg, ValidationType.WARNING))
+
+    def __repr__(self):
+        return self.__class__.__name__
+
+
+class TransferSplitHandlerBase(TransferHandlerBase):
+    """Base class for handlers that can split one transfer into more"""
+    __metaclass__ = abc.ABCMeta
+
+    # TODO: Better naming so it's clear that this differs from the row-split
+    def handle_split(self, transfer, temp_transfer, main_transfer):
+        pass
+
+    def run(self, transfer):
+        if not self.should_execute(transfer):
+            return None
+        temp_transfer, main_transfer = self.dilution_session.split_transfer(transfer, self)
+        temp_transfer.batch = self.tag()
+        self.handle_split(transfer, temp_transfer, main_transfer)
+        self.executed = True
+        return [temp_transfer, main_transfer]
+
+
+class OrTransferHandler(TransferHandlerBase):
+    """A handler that stops executing the subhandlers when one of them succeeds"""
+    def __init__(self, dilution_session, dilution_settings, robot_settings, virtual_batch, *sub_handlers):
+        super(OrTransferHandler, self).__init__(dilution_session, dilution_settings, robot_settings, virtual_batch)
+        self.sub_handlers = sub_handlers
+
+    def run(self, transfer):
+        evaluated = None
+        for handler in self.sub_handlers:
+            evaluated = handler.run(transfer)
+            if evaluated and handler.executed:
+                break
+        return evaluated or [transfer]
+
+    def __repr__(self):
+        return "OR({})".format(", ".join(map(repr, self.sub_handlers)))
 
