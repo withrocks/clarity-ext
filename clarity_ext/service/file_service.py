@@ -280,6 +280,9 @@ class Csv:
             ret.append(self.delim.join(map(str, line)))
         return self.newline.join(ret)
 
+    def __repr__(self):
+        return "<Csv {}>".format(self.file_name)
+
 
 class CsvLine:
     """Represents one line in a CSV file, items can be added or removed like this were a dictionary"""

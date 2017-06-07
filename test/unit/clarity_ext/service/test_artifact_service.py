@@ -12,7 +12,6 @@ class TestArtifactService(unittest.TestCase):
         # We expect exacty these two containers:
         expected = set(["cont-id3", "cont-id4"])
         actual = set([x.id for x in svc.all_output_containers()])
-        print actual
         self.assertEqual(expected, actual)
 
     def test_input_containers_expected(self):

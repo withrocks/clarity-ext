@@ -2,11 +2,13 @@ import abc
 import copy
 import logging
 from itertools import groupby
+import collections
 from collections import namedtuple
 from clarity_ext.service.file_service import Csv
 from clarity_ext.domain.validation import ValidationException, ValidationType, ValidationResults, UsageError
 from clarity_ext import utils
 from clarity_ext.domain import Container, Well
+from clarity_ext.service.dilution.handlers import OrTransferHandler
 
 
 class DilutionService(object):
@@ -14,47 +16,16 @@ class DilutionService(object):
         self.validation_service = validation_service
         self.logger = logger or logging.getLogger(__name__)
 
-    def create_session(self, robots, dilution_settings, transfer_batch_handler_type, transfer_split_handler_type,
-                       transfer_validator, context, transfer_calc_handler_types):
+    def create_session(self, robots, dilution_settings, transfer_validator, context, transfer_calc_handler_types):
         """
         Creates a DilutionSession based on the settings. Call evaluate to validate the entire session
         with a particular batch of objects.
 
         A DilutionSession contains several TransferBatch objects that need to be evaluated together
         """
-        session = DilutionSession(self, robots, dilution_settings, transfer_batch_handler_type,
-                                  transfer_split_handler_type, transfer_validator, self.validation_service,
+        session = DilutionSession(self, robots, dilution_settings, transfer_validator, self.validation_service,
                                   context, transfer_calc_handler_types)
         return session
-
-    def execute_handlers(self, handlers, transfer_batch, dilution_settings, robot_settings):
-        """Executes the handlers in order on the transfer_batch"""
-        for handler in handlers:
-            self.execute_handler(handler, transfer_batch, dilution_settings, robot_settings)
-
-    def execute_handler(self, handler, transfer_batch, dilution_settings, robot_settings):
-        """Executes the handler on the transfer batch. If handler is None, nothing happens"""
-        if handler:
-            self._log_handler(handler, transfer_batch)
-            handler.handle_batch(transfer_batch, dilution_settings, robot_settings)
-
-    def _log_handler(self, handler, transfer_batch):
-        self.logger.debug("Executing handler '{}' for transfer_batch '{}'".format(
-            type(handler).__name__, transfer_batch.name))
-
-    """
-    @staticmethod
-    def create_strategy(dilution_settings, robot_settings):
-        if dilution_settings.volume_calc_method == DilutionSettings.VOLUME_CALC_FIXED:
-            return FixedVolumeCalc(dilution_settings, robot_settings)
-        elif dilution_settings.volume_calc_method == DilutionSettings.VOLUME_CALC_BY_CONC and not dilution_settings.make_pools:
-            return OneToOneConcentrationCalc(dilution_settings, robot_settings)
-        elif dilution_settings.volume_calc_method == DilutionSettings.VOLUME_CALC_BY_CONC and dilution_settings.make_pools:
-            return PoolConcentrationCalc(dilution_settings)
-        else:
-            raise ValueError("Volume calculation method is not implemented for these settings: '{}'".
-                             format(dilution_settings))
-    """
 
 
 class DilutionSession(object):
@@ -63,21 +34,18 @@ class DilutionSession(object):
     and updating values.
     """
 
-    def __init__(self, dilution_service, robots, dilution_settings, transfer_batch_handler_type,
-                 transfer_split_handler_type, transfer_validator, validation_service, context,
-                 transfer_calc_handler_types, logger=None):
+    def __init__(self, dilution_service, robots, dilution_settings, transfer_validator,
+                 validation_service, context, transfer_handler_types, logger=None):
         """
         Initializes a DilutionSession object for the robots.
 
         :param dilution_service: A service providing methods for creating batches
         :param robots: A list of RobotSettings objects
         :param dilution_settings: The list of settings to apply for the dilution
-        :param transfer_batch_handler: A handler that support splitting TransferBatch objects
-        :param transfer_handler: A handler that supports splitting SingleTransfer objects (row in a TransferBatch)
         :param transfer_validator: A validator that runs on an entire TransferBatch that has perhaps been split.
         :param validation_service: The service that handles the results of validation exceptions
         :param context: The context the session is being created in
-        :param transfer_calc_handlers: A list of handlers that calculate the values
+        :param transfer_handler_types: A list of handlers that transform the SingleTransfer objects
         """
         self.dilution_service = dilution_service
         self.robot_settings_by_name = {robot.name: robot for robot in robots}
@@ -91,10 +59,8 @@ class DilutionSession(object):
         self.validation_service = validation_service
         self.context = context
         self.logger = logger or logging.getLogger(__name__)
-
-        self.transfer_batch_handler = transfer_batch_handler_type(self) if transfer_batch_handler_type else None
-        self.transfer_split_handler = transfer_split_handler_type(self) if transfer_split_handler_type else None
-        self.transfer_calc_handlers = [t(self) for t in transfer_calc_handler_types]
+        self.transfer_handler_types = transfer_handler_types
+        self.map_temporary_container_by_original = dict()
 
     def evaluate(self, pairs):
         """Refreshes all calculations for all registered robots and runs registered handlers and validators."""
@@ -102,26 +68,134 @@ class DilutionSession(object):
         self.transfer_batches_by_robot = dict()
         for robot_settings in self.robot_settings_by_name.values():
             self.transfer_batches_by_robot[robot_settings.name] = self.create_batches(
-                self.pairs, self.dilution_settings, robot_settings, self.transfer_batch_handler,
-                self.transfer_split_handler, self.transfer_validator, self.transfer_calc_handlers)
+                self.pairs, self.dilution_settings, robot_settings, self.transfer_validator)
 
-    def create_batches(self, pairs, dilution_settings, robot_settings, transfer_batch_handler, transfer_split_handler,
-                       transfer_validator, transfer_calc_handlers):
+    def init_transfer_handlers(self, transfer_handle_types, dilution_settings, robot_settings, virtual_batch):
         """
-        Creates a batch and breaks it up if required by the validator
-        """
-        # Create the "original transfer batch". This batch may be split up into other batches
-        original_transfer_batch = self.create_batch(pairs, robot_settings,
-                                                    dilution_settings, transfer_calc_handlers)
-        if transfer_batch_handler:
-            transfer_batches = transfer_batch_handler.handle_batch(original_transfer_batch, dilution_settings, robot_settings)
-        else:
-            transfer_batches = TransferBatchCollection(original_transfer_batch)
+        Initializes the transfer handlers for a particular robot and dilution settings
 
+        Lists of handlers are implicitly understood to be short-circuited ORs.
+        """
+        handlers = list()
+        for transfer_handle_type in transfer_handle_types:
+            if isinstance(transfer_handle_type, collections.Iterable):
+                transfer_handlers = [t(self, dilution_settings, robot_settings, virtual_batch)
+                                     for t in transfer_handle_type]
+                handlers.append(OrTransferHandler(self, dilution_settings, robot_settings,
+                                                  virtual_batch, *transfer_handlers))
+            else:
+                handlers.append(transfer_handle_type(self, dilution_settings, robot_settings, virtual_batch))
+        return handlers
+
+    def _log_handler(self, handler, transfer):
+        self.logger.debug("Executing handler '{}' for transfer'{}'".format(
+            type(handler).__name__, transfer))
+
+    def execute_handler(self, handler, transfers):
+        """Executes the handler on all transfers at the current level in the path.
+
+        Returns a list of evaluated transfers, perhaps unchanged.
+        """
+        evaluated = list()
+        for transfer in transfers:
+            self._log_handler(handler, transfer)
+            evaluated.extend(handler.run(transfer))
+        return evaluated
+
+    def get_temporary_container(self, target_container, prefix):
+        """Returns the temporary container that should be used rather than the original one, when splitting transfers"""
+        if target_container.id not in self.map_temporary_container_by_original:
+            temp_container = Container.create_from_container(target_container)
+            temp_container.id = "{}{}".format(prefix, len(self.map_temporary_container_by_original) + 1)
+            temp_container.name = temp_container.id
+            self.map_temporary_container_by_original[target_container.id] = temp_container
+        return self.map_temporary_container_by_original[target_container.id]
+
+    def split_transfer(self, transfer, handler):
+        """Returns two transfers where the first one will go on a temporary container"""
+        # TODO: Base class
+        temp_transfer = SingleTransfer(0, 0, 0, 0, 0, None, None)
+        main_transfer = SingleTransfer(0, 0, 0, 0, 0, None, None)
+
+        temp_transfer.is_primary = False
+        temp_transfer.split_type = SingleTransfer.SPLIT_BATCH
+        temp_transfer.should_update_target_vol = False
+        temp_transfer.should_update_target_conc = False
+        temp_transfer.original = transfer
+
+        temp_analyte = copy.copy(transfer.source_location.artifact)
+        tag = handler.tag()
+        temp_analyte.id += "-" + tag
+        temp_analyte.name += "-" + tag
+
+        temp_target_container = self.get_temporary_container(transfer.target_location.container, tag)
+        temp_transfer.source_location = transfer.source_location
+        temp_transfer.target_location = temp_target_container.set_well(transfer.target_location.position, temp_analyte)
+
+        # Main:
+        main_transfer.source_location = temp_transfer.target_location
+        main_transfer.target_location = transfer.target_location
+
+        return temp_transfer, main_transfer
+
+    def split_rows(self, row_split_handler, transfer_batch, dilution_settings, robot_settings):
+        if not row_split_handler:
+            return
+
+        require_row_split = [t for t in transfer_batch.transfers
+                             if row_split_handler.needs_row_split(t, dilution_settings, robot_settings)]
+        for transfer in require_row_split:
+            split_transfers = row_split_handler.split_single_transfer(transfer, robot_settings)
+            # TODO: Validation to handler?
+            if sum(t.pipette_sample_volume + t.pipette_buffer_volume for t in split_transfers) > \
+                    robot_settings.max_pipette_vol_for_row_split:
+                raise UsageError("Total volume has reached the max well volume ({})".format(
+                    robot_settings.max_pipette_vol_for_row_split))
+            transfer_batch.transfers.remove(transfer)
+            transfer_batch.transfers.extend(split_transfers)
+
+    def evaluate_transfer(self, transfer, transfer_handlers):
+        """Runs the calculation handlers on the transfer, returning a list of one or two transfers (if split)"""
+        evaluated = [transfer]  # TODO: Encapsulate in a class instead to make it clear what we're doing
+        for handler in transfer_handlers:
+            #print "EVAL before", handler, evaluated
+            evaluated = self.execute_handler(handler, evaluated)
+            #print "     after", evaluated
+        return evaluated
+
+    def create_batches(self, pairs, dilution_settings, robot_settings, transfer_validator):
+        # Create the original "virtual" transfers. These represent what we would like to happen:
+        transfers = self.create_transfers_from_pairs(pairs, robot_settings, dilution_settings)
+        virtual_batch = TransferBatch(transfers, robot_settings)
+        transfer_handlers = self.init_transfer_handlers(self.transfer_handler_types,
+                                                        self.dilution_settings,
+                                                        robot_settings,
+                                                        virtual_batch)
+
+        evaluated_transfers = list()
+
+        # Evaluate the transfers, i.e. execute all handlers. This does not group them into transfer batches yet
+        for transfer in transfers:
+            # Executing the handler on the transfer can result in several transfers
+            evaluated = self.evaluate_transfer(transfer, transfer_handlers)
+            evaluated_transfers.extend(evaluated)
+
+        # Now group all evaluated transfers together into a batch
+        transfer_by_batch = dict()
+
+        for transfer in evaluated_transfers:
+            batch = transfer.batch or "default"
+            transfer_by_batch.setdefault(batch, list())
+            transfer_by_batch[batch].append(transfer)
+
+        transfer_batches = TransferBatchCollection()
+        for key in transfer_by_batch:
+            depth = 0 if key == "default" else 1  # TODO Used?
+            is_temporary = key != "default"  # and this?
+            transfer_batches.append(TransferBatch(transfer_by_batch[key], robot_settings, depth, is_temporary, key))
+
+        # Run the validator on each transfer batch:
         for transfer_batch in transfer_batches:
-            self.dilution_service.execute_handler(transfer_split_handler, transfer_batch,
-                                                  dilution_settings, robot_settings)
-            # Run the validator on the transfer batch:
             if transfer_validator:
                 results = transfer_validator.validate(transfer_batch, robot_settings, dilution_settings)
                 self.validation_service.handle_validation(results)
@@ -139,11 +213,13 @@ class DilutionSession(object):
 
         return transfer_batches
 
-    def create_batch(self, pairs, robot_settings, dilution_settings, transfer_calc_handlers):
+    def create_transfers_from_pairs(self, pairs, robot_settings, dilution_settings):
         """
-        Creates one batch (one-to-one relationship with a robot driver file) based on the input arguments.
+        Creates the original transfer objects from the pairs
 
-        NOTE: The batch has not been validated in this call. Caller should validate.
+        Runs only the pre-validation (which usually ensures that the user provided conc/vol)
+
+        Does not validate the transfers in another way or run the calculations.
         """
         # NOTE: The original containers are copied, so the containers in the transfer batch can be modified at will
         containers = dict()
@@ -171,14 +247,11 @@ class DilutionSession(object):
         for transfer in transfers:
             self.initialize_transfer_from_settings(transfer, dilution_settings)
 
-        # Wrap the transfers in a TransferBatch object, it will do a basic validation on itself:
-        # and raise a UsageError if it can't be used.
-        batch = TransferBatch(transfers, robot_settings, name=robot_settings.name)
         if self.transfer_validator:
-            pre_results = self.transfer_validator.pre_validate(batch, dilution_settings, robot_settings)
+            pre_results = self.transfer_validator.pre_validate(transfers, dilution_settings, robot_settings)
             self.validation_service.handle_validation(pre_results)
-        self.dilution_service.execute_handlers(transfer_calc_handlers, batch, dilution_settings, robot_settings)
-        return batch
+
+        return transfers
 
     def initialize_transfer_from_settings(self, transfer, dilution_settings):
         # TODO: Handler
@@ -337,6 +410,9 @@ class SingleTransfer(object):
         self.should_update_target_conc = True
 
         self.split_type = SingleTransfer.SPLIT_NONE
+
+        # A string identifying the batch the transfer should be grouped into, None being the default one.
+        self.batch = None
 
     def _container_slot(self, is_source):
         if self.transfer_batch is None or self.source_location is None or self.target_location is None:
@@ -638,10 +714,10 @@ class DilutionValidatorBase(object):
             results.extend(validation_exceptions)
         return results
 
-    def pre_validate(self, transfer_batch, robot_settings, dilution_settings):
+    def pre_validate(self, transfers, robot_settings, dilution_settings):
         # TODO: Reuses code
         results = ValidationResults()
-        for transfer in transfer_batch.transfers:
+        for transfer in transfers:
             validation_exceptions = list(self.pre_conditions(transfer, robot_settings, dilution_settings))
             for exception in validation_exceptions:
                 if not exception.transfer:
@@ -660,7 +736,7 @@ class TransferValidationException(ValidationException):
     def __repr__(self):
         return "{}: {} transfer ({}@{} => {}@{}) - {}".format(
             self._repr_type(),
-            self.transfer.transfer_batch.name,
+            self.transfer.transfer_batch.name if self.transfer.transfer_batch else "",
             self.transfer.source_location.position, self.transfer.source_location.container.id,
             self.transfer.target_location.position, self.transfer.target_location.container.id,
             self.msg)
@@ -690,7 +766,6 @@ class TransferBatch(object):
         self._sort_and_name_containers(robot_settings)
         for transfer in transfers:
             transfer.transfer_batch = self
-
 
     def _sort_and_name_containers(self, robot_settings):
         """Updates the list of containers and assigns temporary names and positions to them"""
@@ -752,6 +827,7 @@ class TransferBatch(object):
         transfers = sorted(self.transfers, key=group_key)
         return {k: list(t) for k, t in groupby(transfers, key=group_key)}
 
+    # TODO: site-specific?
     def _include_in_container_mappings(self, transfer):
         """
         Exclude negative controls which is added in current step.
@@ -766,6 +842,7 @@ class TransferBatch(object):
         for transfer in self.transfers:
             if self._include_in_container_mappings(transfer):
                 ret.add((transfer.source_slot, transfer.target_slot))
+
         ret = list(sorted(ret, key=lambda t: t[0].index))
         return ret
 
@@ -793,6 +870,9 @@ class TransferBatch(object):
             report.append("{}".format(transfer))
         return "\n".join(report)
 
+    def __str__(self):
+        return self.report()
+
 
 class TransferBatchCollection(object):
     """
@@ -802,6 +882,9 @@ class TransferBatchCollection(object):
     def __init__(self, *args):
         self._batches = list()
         self._batches.extend(args)
+
+    def append(self, obj):
+        self._batches.append(obj)
 
     def __iter__(self):
         return iter(self._batches)
@@ -813,6 +896,17 @@ class TransferBatchCollection(object):
         return self._batches[item]
 
     def report(self):
+        return self.__str__()
+
+    @property
+    def driver_files(self):
+        """Returns the driver files (csvs) as a dictionary"""
+        return {tb.name: tb.driver_file for tb in self}
+
+    def __repr__(self):
+        return repr(self._batches)
+
+    def __str__(self):
         ret = list()
         for batch in self._batches:
             ret.append(batch.report())
@@ -851,3 +945,5 @@ class NeedsRowSplit(TransferValidationException):
 class NeedsEvaporation(TransferValidationException):
     def __init__(self):
         super(NeedsEvaporation, self).__init__(None, "The transfer requires evaporation", ValidationType.WARNING)
+
+
