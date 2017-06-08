@@ -124,36 +124,24 @@ class DilutionSession(object):
 
         return temp_transfer, main_transfer
 
-    def split_rows(self, row_split_handler, transfer_batch, dilution_settings, robot_settings):
-        if not row_split_handler:
-            return
-
-        require_row_split = [t for t in transfer_batch.transfers
-                             if row_split_handler.needs_row_split(t, dilution_settings, robot_settings)]
-        for transfer in require_row_split:
-            split_transfers = row_split_handler.split_single_transfer(transfer, robot_settings)
-            # TODO: Validation to handler?
-            if sum(t.pipette_sample_volume + t.pipette_buffer_volume for t in split_transfers) > \
-                    robot_settings.max_pipette_vol_for_row_split:
-                raise UsageError("Total volume has reached the max well volume ({})".format(
-                    robot_settings.max_pipette_vol_for_row_split))
-            transfer_batch.transfers.remove(transfer)
-            transfer_batch.transfers.extend(split_transfers)
-
     def _evaluate_transfer_route_rec(self, current, transfer_handlers, handler_ix):
-        if handler_ix == len(transfer_handlers) - 1:
+        if handler_ix == len(transfer_handlers):
             return
         handler = transfer_handlers[handler_ix]
         current.children = handler.run(current)  # Run will always return a list of TransferRouteNodes
+
+        # Stop processing this transfer if there are any validation errors (warnings are OK)
+        if len(current.transfer.validation_results.errors) > 0:
+            return
         assert isinstance(current.children, list), (handler, current.children)
         for child in current.children:
             self._evaluate_transfer_route_rec(child, transfer_handlers, handler_ix + 1)
 
     def evaluate_transfer_route(self, transfer, transfer_handlers):
         """Runs the calculation handlers on the transfer, returning a list of one or two transfers (if split)"""
-        root = TransferRouteNode(transfer, None)
+        root = TransferRouteNode(transfer)
         self._evaluate_transfer_route_rec(root, transfer_handlers, 0)
-        return TransferRoute(root)
+        return TransferRoute(root, transfer_handlers)
 
     def create_batches(self, pairs, dilution_settings, robot_settings):
         # Create the original "virtual" transfers. These represent what we would like to happen:
@@ -174,17 +162,15 @@ class DilutionSession(object):
             route = self.evaluate_transfer_route(transfer, transfer_handlers)
             transfer_routes[transfer] = route
 
-        for key, transfer_route in transfer_routes.items():
-            print(transfer_route)
+        if self.logger.isEnabledFor(logging.DEBUG):
+            self.logger.debug("Calculated transfer routes:")
+            for route in transfer_routes.values():
+                self.logger.debug(str(route))
 
         # NOTE: the transfer_routes dictionary now contains detailed information about which route each transfer
         # takes so it should be easy to debug. We could add this to the metadata as extra info, but currently
         # it's just disposed of (but can be used for debugging). Note also that it intentionally takes copies of
         # each transfer.
-
-        # In the end, we're interested in the leaf nodes of the tree only. These will be added to the driver files:
-        for key, transfer_route in transfer_routes.items():
-            print(key, transfer_route.transfers)
 
         # Now group all evaluated transfers together into a batch
         transfer_by_batch = dict()
@@ -261,10 +247,6 @@ class DilutionSession(object):
             # Get a list of SingleTransfer objects
             SingleTransfer.initialize_transfer(transfer, dilution_settings.concentration_ref)
 
-    @staticmethod
-    def _should_include_pair(pair, dilution_settings):
-        return not pair.input_artifact.is_control or dilution_settings.include_control
-
     def transfer_batches(self, robot_name):
         """Returns the driver file for the robot. Might be cached"""
         return self.transfer_batches_by_robot[robot_name]
@@ -290,6 +272,8 @@ class DilutionSession(object):
                 source_vol_delta = list(set(t.source_vol_delta for t in regular_transfers
                                             if t.should_update_source_vol))
                 # We assume the same delta for all samples in the pool:
+                print "HERE", source_vol_delta
+                print regular_transfers
                 source_vol_delta = utils.single(source_vol_delta)
                 # We also assume the same conc for all (or all None)
                 target_conc = utils.single(list(set(t.target_conc for t in regular_transfers)))
@@ -412,6 +396,8 @@ class SingleTransfer(object):
 
         # A string identifying the batch the transfer should be grouped into
         self.batch = "default"
+
+        self.validation_results = ValidationResults()
 
     def _container_slot(self, is_source):
         if self.transfer_batch is None or self.source_location is None or self.target_location is None:
@@ -661,49 +647,6 @@ class RobotSettings(object):
             file_ext=self.file_ext)
 
 
-class DilutionValidatorBase(object):
-    """
-    Validates transfer objects that are to be diluted. Inherit from this object to support behavior
-    different from the default.
-    """
-
-    @staticmethod
-    def error(msg):
-        return TransferValidationException(None, msg, ValidationType.ERROR)
-
-    @staticmethod
-    def warning(msg):
-        return TransferValidationException(None, msg, ValidationType.WARNING)
-
-    # NOTE: Moved rules to each handler. The validator now only has the pre-conditions. We could also move them to the
-    # handlers.
-
-    def pre_conditions(self, transfer, robot_settings, dilution_settings):
-        """
-        Validates that the transfer is set up for dilution
-        """
-        return []
-
-    def _group_by_type(self, results):
-        def by_type(result):
-            return result.type
-
-        ret = dict()
-        for k, g in groupby(sorted(results, key=by_type), key=by_type):
-            ret[k] = list(g)
-        return ret.get(ValidationType.ERROR, list()), ret.get(ValidationType.WARNING, list())
-
-    def pre_validate(self, transfers, robot_settings, dilution_settings):
-        results = ValidationResults()
-        for transfer in transfers:
-            validation_exceptions = list(self.pre_conditions(transfer, robot_settings, dilution_settings))
-            for exception in validation_exceptions:
-                if not exception.transfer:
-                    exception.transfer = transfer
-            results.extend(validation_exceptions)
-        return results
-
-
 class TransferValidationException(ValidationException):
     """Wraps a validation exception for Dilution transfer objects"""
 
@@ -874,7 +817,10 @@ class TransferBatchCollection(object):
         return self._batches[item]
 
     def report(self):
-        return self.__str__()
+        ret = list()
+        for batch in self._batches:
+            ret.append(batch.report())
+        return "\n\n".join(ret)
 
     @property
     def driver_files(self):
@@ -883,12 +829,6 @@ class TransferBatchCollection(object):
 
     def __repr__(self):
         return repr(self._batches)
-
-    def __str__(self):
-        ret = list()
-        for batch in self._batches:
-            ret.append(batch.report())
-        return "\n\n".join(ret)
 
 
 class ContainerSlot(object):
@@ -906,17 +846,6 @@ class ContainerSlot(object):
 
     def __repr__(self):
         return "{} ({}): [{}]".format(self.name, "source" if self.is_source else "target", self.container)
-
-
-class NeedsBatchSplit(TransferValidationException):
-    def __init__(self, transfer):
-        super(NeedsBatchSplit, self).__init__(transfer, "The transfer requires a split into another batch",
-                                              ValidationType.WARNING)
-
-
-class NeedsRowSplit(TransferValidationException):
-    def __init__(self, transfer):
-        super(NeedsRowSplit, self).__init__(transfer, "The transfer requires a row split", ValidationType.WARNING)
 
 
 class TransferHandlerBase(object):
@@ -937,15 +866,17 @@ class TransferHandlerBase(object):
 
     def run(self, transfer_route_node):
         """Called by the engine"""
+        transfer_route_node.handler = self
         if not self.should_execute(transfer_route_node.transfer):
-            return [TransferRouteNode(copy.copy(transfer_route_node.transfer), self)]
+            return [TransferRouteNode(copy.copy(transfer_route_node.transfer))]
         ret = self.handle_transfer(transfer_route_node.transfer)
+        transfer_route_node.handler_executed = True
         if ret is None:
             # When nothing is returned, we continue with the same values, but a shallow copy for debuggingb
-            return [TransferRouteNode(copy.copy(transfer_route_node.transfer), self)]
+            return [TransferRouteNode(copy.copy(transfer_route_node.transfer))]
         else:
             # Otherwise (when splitting) we return a list of new transfer route nodes:
-            return [TransferRouteNode(t, self) for t in ret]
+            return [TransferRouteNode(t) for t in ret]
 
     def handle_transfer(self, transfer):
         pass
@@ -954,10 +885,13 @@ class TransferHandlerBase(object):
         return True
 
     def error(self, msg, transfer):
+        # TODO: Enough to push onto the transfer
         self.validation_results.append(TransferValidationException(transfer, msg, ValidationType.ERROR))
+        transfer.validation_results.append(TransferValidationException(transfer, msg, ValidationType.ERROR))
 
     def warning(self, msg, transfer):
         self.validation_results.append(TransferValidationException(transfer, msg, ValidationType.WARNING))
+        transfer.validation_results.append(TransferValidationException(transfer, msg, ValidationType.WARNING))
 
     def __repr__(self):
         return self.__class__.__name__
@@ -977,7 +911,7 @@ class TransferSplitHandlerBase(TransferHandlerBase):
         temp_transfer, main_transfer = self.dilution_session.split_transfer(transfer_route_node.transfer, self)
         temp_transfer.batch = self.tag()
         self.handle_split(transfer_route_node.transfer, temp_transfer, main_transfer)
-        return [TransferRouteNode(temp_transfer, self), TransferRouteNode(main_transfer, self)]
+        return [TransferRouteNode(temp_transfer), TransferRouteNode(main_transfer)]
 
 
 class OrTransferHandler(TransferHandlerBase):
@@ -988,15 +922,17 @@ class OrTransferHandler(TransferHandlerBase):
 
     def run(self, transfer_node):
         """Given a transfer route node, returns a list of one or more transfers resulting from it"""
+        transfer_node.handler = self
         evaluated = None
         for handler in self.sub_handlers:
             evaluated = handler.run(transfer_node)
             if evaluated:
                 break
         if evaluated:
+            transfer_node.executed = True
             return evaluated
         else:
-            return [TransferRouteNode(copy.copy(transfer_node.transfer), self)]
+            return [TransferRouteNode(copy.copy(transfer_node.transfer))]
 
     def __repr__(self):
         return "OR({})".format(", ".join(map(repr, self.sub_handlers)))
@@ -1004,32 +940,38 @@ class OrTransferHandler(TransferHandlerBase):
 
 class TransferRoute(object):
     """Describes the route needed to get to a preferred dilution"""
-    def __init__(self, root):
+    def __init__(self, root, handlers):
         self.root = root
+        self.handlers = handlers
 
     def __str__(self):
         # Traverse the tree, printing out the leaves
-        ret = ["Transfer route"]
+        ret = ["Transfer route:"]
+        ret.append(len(ret[0]) * "-")
+        ret.append("Handlers: {}".format(self.handlers))
 
-        for node in self.walk():
-            ret.append(str(node))
+        for node, level in self.walk():
+            ret.append("{}{}".format(level * " ", node))
         return "\n".join(ret)
 
     @property
     def transfers(self):
         """The leaf nodes of the tree form the transfers we'll expose"""
-        return [node.transfer for node in self.walk() if node.is_leaf]
+        return [node.transfer for node, level in self.walk() if node.is_leaf]
 
     def walk(self):
-        """Walks the tree and returns all nodes in it"""
-        def walk_rec(root, lst):
-            lst.append(root)
-            for child in root.children:
-                walk_rec(child, lst)
+        """Walks the tree in a BFS manner, yielding the current node and the level"""
+        s = set()
+        q = list()  # Contains (node, level)
 
-        ret = list()
-        walk_rec(self.root, ret)
-        return ret
+        s.add(self.root)
+        q.append((self.root, 0))
+
+        while len(q) > 0:
+            current, level = q.pop()
+            yield (current, level)
+            for child in current.children:
+                q.append((child, level + 1))
 
     def __repr__(self):
         return repr(self.root)
@@ -1042,15 +984,17 @@ class TransferRouteNode(object):
     during validation and because transfers may be split, we encapsulate each evaluated transfer in the node by a
     TransferRouteNode
     """
-    def __init__(self, transfer, handler=None):
+    def __init__(self, transfer):
         self.transfer = transfer
         self.children = list()
-        self.validation_exceptions = list()  # Validation exceptions that occurred during handling
-        self.handler = handler
+        #self.validation_results = list()  # Validation exceptions that occurred during handling
+        self.handler = None
+        self.handler_executed = False  # True if the handler has actually executed
 
     @property
     def is_leaf(self):
         return len(self.children) == 0
 
     def __repr__(self):
-        return "{}({}) is_leaf={}".format(self.handler, self.transfer, self.is_leaf)
+        return "{}({}) is_leaf={}, handler_executed={}".format(self.handler, self.transfer, self.is_leaf,
+                                                               self.handler_executed)
