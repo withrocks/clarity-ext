@@ -88,15 +88,6 @@ class DilutionSession(object):
         self.logger.debug("Executing handler '{}' for transfer'{}'".format(
             type(handler).__name__, transfer))
 
-    def execute_handler(self, handler, transfer_node):
-        """Executes the handler on all transfers at the current level in the path.
-
-        Returns a list of evaluated transfers, perhaps unchanged.
-        
-        Runs the validation on the handler too
-        """
-        pass
-
     def get_temporary_container(self, target_container, prefix):
         """Returns the temporary container that should be used rather than the original one, when splitting transfers"""
         if target_container.id not in self.map_temporary_container_by_original:
@@ -152,12 +143,9 @@ class DilutionSession(object):
     def _evaluate_transfer_route_rec(self, current, transfer_handlers, handler_ix):
         if handler_ix == len(transfer_handlers) - 1:
             return
-        print "HERE", handler_ix, len(transfer_handlers)
         handler = transfer_handlers[handler_ix]
-        print "H", handler, type(current), current.transfer
         current.children = handler.run(current)  # Run will always return a list of TransferRouteNodes
-        assert isinstance(current.children, list), handler
-        print "H", current.children
+        assert isinstance(current.children, list), (handler, current.children)
         for child in current.children:
             self._evaluate_transfer_route_rec(child, transfer_handlers, handler_ix + 1)
 
@@ -187,17 +175,24 @@ class DilutionSession(object):
             transfer_routes[transfer] = route
 
         for key, transfer_route in transfer_routes.items():
-            print "ROUTE", type(transfer_route)
             print(transfer_route)
 
-        import sys; sys.exit()
+        # NOTE: the transfer_routes dictionary now contains detailed information about which route each transfer
+        # takes so it should be easy to debug. We could add this to the metadata as extra info, but currently
+        # it's just disposed of (but can be used for debugging). Note also that it intentionally takes copies of
+        # each transfer.
+
+        # In the end, we're interested in the leaf nodes of the tree only. These will be added to the driver files:
+        for key, transfer_route in transfer_routes.items():
+            print(key, transfer_route.transfers)
 
         # Now group all evaluated transfers together into a batch
         transfer_by_batch = dict()
 
-        for transfer in evaluated_transfers:
-            transfer_by_batch.setdefault(transfer.batch, list())
-            transfer_by_batch[transfer.batch].append(transfer)
+        for transfer_route in transfer_routes.values():
+            for transfer in transfer_route.transfers:
+                transfer_by_batch.setdefault(transfer.batch, list())
+                transfer_by_batch[transfer.batch].append(transfer)
 
         transfer_batches = TransferBatchCollection()
         for key in transfer_by_batch:
@@ -643,6 +638,7 @@ class RobotSettings(object):
     def transfer_sort_key(transfer):
         """
         Sort the transfers based on:
+            - Regular before controls
             - source position (container.index)
             - well index (down first)
             - pipette volume (descending)
@@ -650,7 +646,8 @@ class RobotSettings(object):
         assert transfer.transfer_batch is not None
         assert transfer.source_slot is not None
         assert transfer.source_slot.index is not None
-        return (transfer.source_slot.index,
+        return (transfer.source_location.artifact.is_control,
+                transfer.source_slot.index,
                 transfer.source_location.index_down_first,
                 -transfer.pipette_total_volume)
 
@@ -989,13 +986,17 @@ class OrTransferHandler(TransferHandlerBase):
         super(OrTransferHandler, self).__init__(dilution_session, dilution_settings, robot_settings, virtual_batch)
         self.sub_handlers = sub_handlers
 
-    def run(self, transfer):
+    def run(self, transfer_node):
+        """Given a transfer route node, returns a list of one or more transfers resulting from it"""
         evaluated = None
         for handler in self.sub_handlers:
-            evaluated = handler.run(transfer)
+            evaluated = handler.run(transfer_node)
             if evaluated:
                 break
-        return evaluated  # TODO: what if none runs?
+        if evaluated:
+            return evaluated
+        else:
+            return [TransferRouteNode(copy.copy(transfer_node.transfer), self)]
 
     def __repr__(self):
         return "OR({})".format(", ".join(map(repr, self.sub_handlers)))
@@ -1013,6 +1014,11 @@ class TransferRoute(object):
         for node in self.walk():
             ret.append(str(node))
         return "\n".join(ret)
+
+    @property
+    def transfers(self):
+        """The leaf nodes of the tree form the transfers we'll expose"""
+        return [node.transfer for node in self.walk() if node.is_leaf]
 
     def walk(self):
         """Walks the tree and returns all nodes in it"""
