@@ -84,10 +84,6 @@ class DilutionSession(object):
                 handlers.append(transfer_handle_type(self, dilution_settings, robot_settings, virtual_batch))
         return handlers
 
-    def _log_handler(self, handler, transfer):
-        self.logger.debug("Executing handler '{}' for transfer'{}'".format(
-            type(handler).__name__, transfer))
-
     def get_temporary_container(self, target_container, prefix):
         """Returns the temporary container that should be used rather than the original one, when splitting transfers"""
         if target_container.id not in self.map_temporary_container_by_original:
@@ -251,11 +247,6 @@ class DilutionSession(object):
         """Returns the driver file for the robot. Might be cached"""
         return self.transfer_batches_by_robot[robot_name]
 
-    def all_driver_files(self):
-        """Returns all robot driver files in tuples (robot, robot_file)"""
-        for robot_name in self.robot_settings_by_name:
-            yield robot_name, self.driver_files(robot_name)
-
     def update_infos_by_target_analyte(self, transfer_batches):
         """
         Returns the information that should be updated in the backend
@@ -272,8 +263,6 @@ class DilutionSession(object):
                 source_vol_delta = list(set(t.source_vol_delta for t in regular_transfers
                                             if t.should_update_source_vol))
                 # We assume the same delta for all samples in the pool:
-                print "HERE", source_vol_delta
-                print regular_transfers
                 source_vol_delta = utils.single(source_vol_delta)
                 # We also assume the same conc for all (or all None)
                 target_conc = utils.single(list(set(t.target_conc for t in regular_transfers)))
