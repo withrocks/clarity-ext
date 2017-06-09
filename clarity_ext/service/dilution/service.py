@@ -229,19 +229,7 @@ class DilutionSession(object):
             target_well = create_well(pair.output_artifact)
             transfers.append(SingleTransfer(None, None, None, None, None, source_well, target_well))
 
-        for transfer in transfers:
-            self.initialize_transfer_from_settings(transfer, self.dilution_settings)
-
         return transfers
-
-    def initialize_transfer_from_settings(self, transfer, dilution_settings):
-        # TODO: Handler
-        if dilution_settings.volume_calc_method == DilutionSettings.VOLUME_CALC_FIXED:
-            transfer.source_vol = transfer.source_location.artifact.udf_current_sample_volume_ul
-            transfer.pipette_sample_volume = dilution_settings.fixed_sample_volume
-        else:
-            # Get a list of SingleTransfer objects
-            SingleTransfer.initialize_transfer(transfer, dilution_settings.concentration_ref)
 
     def transfer_batches(self, robot_name):
         """Returns the driver file for the robot. Might be cached"""
