@@ -14,6 +14,7 @@ from clarity_ext import ClaritySession
 from clarity_ext.repository import StepRepository
 from clarity_ext.service import ArtifactService
 from clarity_ext.utility.integration_test_service import IntegrationTest
+from clarity_ext.service.validation_service import UsageError
 from jinja2 import Template
 import time
 import random

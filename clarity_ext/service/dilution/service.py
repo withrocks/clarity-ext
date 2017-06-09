@@ -429,6 +429,7 @@ class SingleTransfer(object):
             raise NotImplementedError("Concentration ref {} not implemented".format(
                 concentration_ref))
 
+    # TODO: Can be removed!
     @classmethod
     def initialize_transfer(cls, single_transfer, concentration_ref):
         input_artifact = single_transfer.source_location.artifact
@@ -453,10 +454,6 @@ class SingleTransfer(object):
         except AttributeError:
             pass
 
-        try:
-            single_transfer.dilute_factor = output_artifact.udf_dilution_factor
-        except AttributeError:
-            pass
 
         # single_transfer.pair = pair  # TODO: Both setting the pair and source target!, if needed, set this earlier!
         return single_transfer
@@ -879,12 +876,9 @@ class TransferHandlerBase(object):
         return True
 
     def error(self, msg, transfer):
-        # TODO: Enough to push onto the transfer
-        # self.validation_results.append(TransferValidationException(transfer, msg, ValidationType.ERROR))
         transfer.validation_results.append(TransferValidationException(transfer, msg, ValidationType.ERROR))
 
     def warning(self, msg, transfer):
-        # self.validation_results.append(TransferValidationException(transfer, msg, ValidationType.WARNING))
         transfer.validation_results.append(TransferValidationException(transfer, msg, ValidationType.WARNING))
 
     def __repr__(self):
