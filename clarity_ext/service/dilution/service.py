@@ -419,7 +419,7 @@ class SingleTransfer(object):
 
     @property
     def updated_source_vol(self):
-        if self.source_vol_delta:
+        if self.source_vol_delta and self.source_vol:
             return self.source_vol + self.source_vol_delta
         else:
             return None
@@ -799,9 +799,13 @@ class TransferBatchCollection(object):
     Encapsulates the list of TransferBatch object that go together, i.e. as the result of splitting a
     TransferBatch.
     """
+
     def __init__(self, *args):
         self._batches = list()
         self._batches.extend(args)
+
+    def append(self, obj):
+        self._batches.append(obj)
 
     def __iter__(self):
         return iter(self._batches)
@@ -818,6 +822,14 @@ class TransferBatchCollection(object):
             ret.append(batch.report())
         return "\n\n".join(ret)
 
+    @property
+    def driver_files(self):
+        """Returns the driver files (csvs) as a dictionary"""
+        return {tb.name: tb.driver_file for tb in self}
+
+    def __repr__(self):
+        return repr(self._batches)
+
 
 class ContainerSlot(object):
     """
@@ -826,6 +838,7 @@ class ContainerSlot(object):
 
     The name is the name used by the robot to reference the container.
     """
+
     def __init__(self, container, index, name, is_source):
         self.container = container
         self.index = index

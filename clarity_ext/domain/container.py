@@ -28,9 +28,10 @@ class Well(DomainObjectMixin):
         return "{}:{}".format(self.position.row, self.position.col)
 
     def __repr__(self):
-        return "{}{}: {}".format(self.position.row_letter,
-                                 self.position.col,
-                                 self.artifact.id if self.artifact is not None else "None")
+        return "{}{}@{}[{}]".format(self.position.row_letter,
+                                self.position.col,
+                                self.container.id,
+                                self.artifact.id if self.artifact is not None else "None")
 
     @property
     def index_down_first(self):

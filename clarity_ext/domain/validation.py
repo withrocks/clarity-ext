@@ -42,6 +42,9 @@ class ValidationResults(object):
     def __iter__(self):
         return iter(self.results)
 
+    def __repr__(self):
+        return repr(self.results)
+
 
 class UsageError(Exception):
     """
