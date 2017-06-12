@@ -155,6 +155,7 @@ class UdfMapping(object):
 
         Raises a KeyError if the key is not available in the UDF map
         """
+        print key, self.raw_map
         udf_info = self.raw_map[key]
         if len(udf_info) > 1:
             raise UdfMappingNotUniqueException(key)
