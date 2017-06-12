@@ -129,12 +129,17 @@ class DilutionSession(object):
         if handler_ix == len(transfer_handlers):
             return
         handler = transfer_handlers[handler_ix]
+        self.logger.debug("Evaluating handler #{}, {} on {}".format(handler_ix, handler,
+                                                                    current.transfer.source_location))
+        self.logger.debug("- In:   {}".format(current))
         current.children = handler.run(current)  # Run will always return a list of TransferRouteNodes
+        if self.logger.isEnabledFor(logging.DEBUG):
+            for ix, child in enumerate(current.children):
+                self.logger.debug("- Out{}: {}".format(ix, child))
 
         # Stop processing this transfer if there are any validation errors (warnings are OK)
         if len(current.transfer.validation_results.errors) > 0:
             return
-        assert isinstance(current.children, list), (handler, current.children)
         for child in current.children:
             self._evaluate_transfer_route_rec(child, transfer_handlers, handler_ix + 1)
 
@@ -467,7 +472,7 @@ class SingleTransfer(object):
 
     @property
     def updated_source_vol(self):
-        if self.source_vol_delta:
+        if self.source_vol_delta and self.source_vol:
             return self.source_vol + self.source_vol_delta
         else:
             return None
