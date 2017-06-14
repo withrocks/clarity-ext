@@ -24,7 +24,6 @@ import logging.handlers
 # Defines all classes that are expected to be extended. These are
 # also imported to the top-level module
 class ExtensionService(object):
-
     RUN_MODE_TEST = "test"
     RUN_MODE_TEST_FRESH = "test-fresh"
     RUN_MODE_FREEZE = "freeze"
@@ -257,33 +256,60 @@ class ExtensionService(object):
         if issubclass(extension, DriverFileExtension):
             context.upload_file_service.upload(instance.shared_file(), instance.filename(), instance.to_string())
         elif issubclass(extension, GeneralExtension):
-            instance.execute()
+            try:
+                instance.execute()
+            except UsageError as e:
+                # UsageErrors are deferred and handled by the notify method
+                # To support the case (legacy) if someone raises an error without adding it to the defer list,
+                # we add it to the instance too:
+                if len(instance.errors) == 0:
+                    instance.errors[e] = list()
+                pass
         else:
             raise NotImplementedError("Unknown extension type")
         context.cleanup()
         os.chdir(old_dir)
 
-        self.notify(instance.notifications, context.validation_service.error_count,
-                    context.validation_service.warning_count)
-        # Notify the user if there were any errors or warnings:
+        self.notify(instance.errors, instance.warnings,
+                    context.validation_service.error_count, context.validation_service.warning_count, context)
 
-    def notify(self, notifications, error_count, warning_count):
-        # Print notifications. Newlines will cause only the last notification to be shown, so
-        # using slash instead:
-        if warning_count > 0 and error_count == 0:
-            notifications.append("There were some warnings during execution. Please check the log before continuing.")
-        elif error_count > 0:
-            notifications.append("There were errors during execution. "
-                                 "Changes need to be made before continuing. Please check the log for details.")
+    def notify(self, user_errors, user_warnings, other_errors_count, other_warnings_count, context):
+        """Notifies the user of errors and warnings during execution. user_errors and user_warnings
+        should be shown in the UI. The engine itself may have gathered other errors and warnings, which
+        are then accessible in the error log.
+        """
+        total_error_count = len(user_errors) + other_errors_count
+        total_warning_count = len(user_warnings) + other_warnings_count
 
-        if len(notifications) > 0:
-            print("/".join(notifications))
-        else:
-            print("No errors or warnings")
+        if total_error_count > 0 or total_warning_count > 0:
+            errors = self._generate_notifications(user_errors)
+            warnings = self._generate_notifications(user_warnings)
+            end_user_notification = list()
+            # Log the error/warning, but also show it to the user
+            if errors:
+                for error in errors:
+                    context.logger.error(error)
+                end_user_notification.append("Errors: " + "; ".join(errors))
+            if warnings:
+                for warning in warnings:
+                    context.logger.warning(warning)
+                end_user_notification.append("Warnings: " + "; ".join(warnings))
+            print("; ".join(end_user_notification))
 
-        if error_count != 0 or warning_count != 0:
+        if total_error_count > 0:
             # Exit with error code 1. This ensures that Clarity shows an error box instead of just a notifaction box.
             sys.exit(1)
+
+    def _generate_notifications(self, bag):
+        if len(bag) == 0:
+            return None
+        messages = list()
+        for key, values in bag.items():
+            current = "{}".format(key)
+            if values:
+                current += ": {}".format(values)
+            messages.append(current)
+        return messages
 
     def _validate_against_frozen(self, path, frozen_path):
         if os.path.exists(frozen_path):
@@ -393,20 +419,38 @@ class GeneralExtension(object):
         self.response = None
         # Expose the IntegrationTest type like this so it doesn't need to be imported
         self.test = IntegrationTest
-        self.notifications = list()
+        self.errors = dict()
+        self.warnings = dict()
 
-    def usage_warning(self, msg):
+    def usage_warning(self, category, value=None):
         """
         Notify the user of an error or warning
         """
-        self.notify("{}. See {} for details".format(msg, self.context.step_log_name))
+        self._defer_warning_or_error(False, category, value)
 
     def usage_error(self, msg):
         """
-        Raise an error which the user can possibly fix by changing input parameters. Will log to the
-        Step log by default.
+        Raise an error which the user can possibly fix by changing input parameters.
         """
-        raise UsageError("{}. See {} for details".format(msg, self.context.step_log_name))
+        self.usage_error_defer(msg, None)
+        self.raise_deferred()
+
+    def usage_error_defer(self, category, value=None):
+        """Defers raising the error until at the end of the extension run.
+
+        Category can be any string, e.g. 'UDF target vol missing for artifact', in which case the value would
+        be the id or name of the sample."""
+        self._defer_warning_or_error(True, category, value)
+
+    def _defer_warning_or_error(self, is_error, category, value=None):
+        bag = self.errors if is_error else self.warnings
+        bag.setdefault(category, list())
+        if value:
+            bag[category].append(value)
+
+    def raise_deferred(self):
+        """Raises the errors that have been deferred"""
+        raise UsageError("Usage error")
 
     def notify(self, msg):
         """
@@ -571,4 +615,3 @@ class ExtensionTestLogFilter(logging.Filter):
             if record.name.startswith("clarity_ext.extensions"):
                 return False
             return True
-
