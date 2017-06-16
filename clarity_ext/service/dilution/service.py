@@ -102,8 +102,9 @@ class DilutionSession(object):
 
     def split_transfer(self, transfer, handler):
         """Returns two transfers where the first one will go on a temporary container"""
-        temp_transfer = SingleTransfer(0, 0, 0, 0, 0, None, None)
-        main_transfer = SingleTransfer(0, 0, 0, 0, 0, None, None)
+        temp_transfer = SingleTransfer(transfer.source_conc, transfer.source_vol,
+                                       transfer.target_conc, transfer.target_vol, 0, None, None)
+        main_transfer = copy.copy(temp_transfer)
 
         temp_transfer.is_primary = False
         temp_transfer.split_type = SingleTransfer.SPLIT_BATCH
@@ -422,7 +423,7 @@ class SingleTransfer(object):
 
     @property
     def updated_source_vol(self):
-        if self.source_vol_delta and self.source_vol:
+        if self.source_vol_delta is not None and self.source_vol is not None:
             return self.source_vol + self.source_vol_delta
         else:
             return None
