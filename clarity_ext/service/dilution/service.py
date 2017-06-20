@@ -470,51 +470,12 @@ UpdateInfo = namedtuple("UpdateInfo", ['target_conc', 'target_vol', 'source_vol_
 
 class DilutionSettings:
     """Defines the rules for how a dilution should be performed"""
-    CONCENTRATION_REF_NGUL = 1
-    CONCENTRATION_REF_NM = 2
-    VOLUME_CALC_FIXED = 1
-    VOLUME_CALC_BY_CONC = 2
-
-    CONCENTRATION_REF_TO_STR = {
-        CONCENTRATION_REF_NGUL: "ng/ul",
-        CONCENTRATION_REF_NM: "nM"
-    }
-
-    def __init__(self, scale_up_low_volumes=False, concentration_ref=None, include_blanks=False,
-                 volume_calc_method=None, make_pools=False, fixed_sample_volume=None):
-        """
-        :param dilution_waste_volume: Extra volume that should be subtracted from the sample volume
-        to account for waste during dilution
-        """
-        self.scale_up_low_volumes = scale_up_low_volumes
-        # TODO: Use py3 enums instead
-        if concentration_ref is not None:
-            concentration_ref = self._parse_conc_ref(concentration_ref)
-            if concentration_ref not in [self.CONCENTRATION_REF_NM, self.CONCENTRATION_REF_NGUL]:
-                raise ValueError("Unsupported concentration_ref '{}'".format(concentration_ref))
+    def __init__(self, concentration_ref=None, fixed_sample_volume=None):
         self.concentration_ref = concentration_ref
-        # TODO: include_blanks, has that to do with output only? If so, it should perhaps be in RobotSettings
-        self.include_blanks = include_blanks
-        self.volume_calc_method = volume_calc_method
-        self.make_pools = make_pools
-        self.include_control = True
         self.fixed_sample_volume = fixed_sample_volume
 
         # NOTE: This is part of a quick-fix (used in one particular corner case)
         self.is_pooled = False
-
-    @staticmethod
-    def _parse_conc_ref(concentration_ref):
-        if isinstance(concentration_ref, basestring):
-            for key, value in DilutionSettings.CONCENTRATION_REF_TO_STR.items():
-                if value.lower() == concentration_ref.lower():
-                    return key
-        else:
-            return concentration_ref
-
-    @staticmethod
-    def concentration_unit_to_string(conc_ref):
-        return DilutionSettings.CONCENTRATION_REF_TO_STR[conc_ref]
 
 
 class RobotSettings(object):
