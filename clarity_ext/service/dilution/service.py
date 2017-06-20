@@ -263,7 +263,7 @@ class DilutionSession(object):
         """
         for target, transfers in self.group_transfers_by_target_analyte(transfer_batches).items():
             # TODO: The `is_pooled` check is a quick-fix.
-            if target.is_pool and self.dilution_settings.is_pooled:
+            if target.is_pool and self.dilution_settings["is_pooled"]:
                 regular_transfers = [t for t in transfers if not t.source_location.artifact.is_control]
                 source_vol_delta = list(set(t.source_vol_delta for t in regular_transfers
                                             if t.should_update_source_vol))
@@ -466,16 +466,6 @@ class SingleTransfer(object):
 # Represents source conc/vol, target conc/vol as one unit. TODO: Better name
 DilutionMeasurements = namedtuple('DilutionMeasurements', ['source_conc', 'source_vol', 'target_conc', 'target_vol'])
 UpdateInfo = namedtuple("UpdateInfo", ['target_conc', 'target_vol', 'source_vol_delta'])
-
-
-class DilutionSettings:
-    """Defines the rules for how a dilution should be performed"""
-    def __init__(self, concentration_ref=None, fixed_sample_volume=None):
-        self.concentration_ref = concentration_ref
-        self.fixed_sample_volume = fixed_sample_volume
-
-        # NOTE: This is part of a quick-fix (used in one particular corner case)
-        self.is_pooled = False
 
 
 class RobotSettings(object):
