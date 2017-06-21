@@ -90,7 +90,7 @@ def extension(module, mode, args, cache):
             key_values = (argument.split("=") for argument in separated)
             args = [{key: value for key, value in key_values}]
 
-        validate_against_frozen = True # Indicates a run that should ignore the frozen directory
+        validate_against_frozen = True  # Indicates a run that should ignore the frozen directory
         if mode == "test-fresh":
             mode = "test"
             validate_against_frozen = False
@@ -105,7 +105,7 @@ def extension(module, mode, args, cache):
             except ResultsDifferFromFrozenData as ex:
                 print("Results differ from frozen data: " + ex.message)
         elif mode == ExtensionService.RUN_MODE_EXEC:
-            extension_svc.set_log_strategy(log_level, True, True, True, "/opt/clarity-ext/logs", "extensions.log")
+            extension_svc.set_log_strategy(log_level, False, True, True, "/opt/clarity-ext/logs", "extensions.log")
             extension_svc.run_exec(config, args, module)
         else:
             raise NotImplementedError("Mode '{}' is not implemented".format(mode))
