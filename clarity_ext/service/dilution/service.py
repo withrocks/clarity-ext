@@ -678,6 +678,9 @@ class TransferBatch(object):
             report.append("{}".format(transfer))
         return "\n".join(report)
 
+    def __iter__(self):
+        return iter(self.transfers)
+
 
 class TransferBatchCollection(object):
     """
