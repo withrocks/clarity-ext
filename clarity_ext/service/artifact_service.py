@@ -132,7 +132,6 @@ class ArtifactService:
         This method will fetch all of the input artifacts based on all of your output artifacts in one call
         and index them by their respective process id.
         """
-
         # We will need the input artifacts from the previous step
         parent_processes = set([artifact.input.parent_process for artifact in self.all_output_artifacts()])
 
@@ -154,9 +153,11 @@ class ArtifactService:
         """
         if not self._parent_input_artifacts_by_sample_id:
             parent_input_artifacts = list(self.parent_input_artifacts())
-            self._parent_input_artifacts_by_sample_id = {
-                utils.single(current.samples).id: current for current in parent_input_artifacts
-                if len(current.samples) == 1}
+            self._parent_input_artifacts_by_sample_id = dict()
+            for parent_input_artifact in parent_input_artifacts:
+                for sample in parent_input_artifact.samples:
+                    assert sample.id not in self._parent_input_artifacts_by_sample_id
+                    self._parent_input_artifacts_by_sample_id[sample.id] = parent_input_artifact
         return self._parent_input_artifacts_by_sample_id[sample.id]
 
     def all_output_result_files(self):
