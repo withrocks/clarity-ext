@@ -17,6 +17,7 @@ setup(
     description='Main entry point for Clarity extensions in the SNP&SEQ installation',
     long_description=__doc__,
     packages=find_packages(exclude=['tests']),
+    package_data={'': ['*.j2', '*.txt', 'README']},
     include_package_data=True,
     zip_safe=False,
     platforms='any',
