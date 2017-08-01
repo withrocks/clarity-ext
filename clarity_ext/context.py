@@ -86,7 +86,8 @@ class ExtensionContext(object):
         dilution_service = DilutionService(validation_service)
         upload_file_service = UploadFileService(OSService(), artifact_service,
                                                 uploaded_to_stdout=uploaded_to_stdout,
-                                                disable_commits=not upload_files)
+                                                disable_commits=not upload_files,
+                                                session=session)
         return ExtensionContext(session, artifact_service, file_service, current_user,
                                 step_logger_service, step_repo, clarity_service,
                                 dilution_service, process_service, upload_file_service,

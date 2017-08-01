@@ -7,6 +7,7 @@ import logging
 from lxml import objectify
 import collections
 from clarity_ext import utils
+import requests
 
 
 class FileService:
@@ -133,13 +134,29 @@ class UploadFileService(object):
     """A service for handling uploads to the server"""
 
     def __init__(self, os_service, artifact_service, logger=None, uploaded_to_stdout=False,
-                 disable_commits=False, upload_dir="."):
+                 disable_commits=False, upload_dir=".", session=None):
         self.os_service = os_service
         self.uploaded_to_stdout = uploaded_to_stdout
         self.disable_commits = disable_commits
         self.upload_dir = upload_dir
         self.logger = logger or logging.getLogger(__name__)
         self.artifact_service = artifact_service
+        self.session = session
+
+    def remove_files(self, file_handle):
+        """Removes all files for the particular file handle.
+
+        Note: The files are not actually removed from the server, only the link to the step.
+        """
+        artifacts = sorted([shared_file for shared_file in self.artifact_service.shared_files()
+                            if shared_file.name == file_handle], key=lambda f: f.id)
+        for artifact in artifacts:
+            for f in artifact.files:
+                # TODO: Add to another service
+                r = requests.delete(f.uri, auth=(self.session.api.username, self.session.api.password))
+                if r.status_code != 204:
+                    raise RemoveFileException("Can't remove file with id {}. Status code was {}".format(
+                        f.id, r.status_code))
 
     def upload_files(self, file_handle, files, stdout_max_lines=50):
         """
@@ -178,6 +195,7 @@ class UploadFileService(object):
         self.logger.info("Uploading local file '{}' to the LIMS placeholder at {}".format(
             local_path, file_handle))
 
+        print("HERE", self.disable_commits)
         if self.disable_commits:
             # When not connected to an actual server, we copy the file to
             # another directory for integration tests
@@ -341,3 +359,7 @@ class OSService(object):
         location = os.path.join(os.getcwd(), new_name)
         shutil.copy(local_file, location)
         return location
+
+
+class RemoveFileException(Exception):
+    pass
