@@ -269,7 +269,6 @@ class ExtensionService(object):
                     instance.errors[e] = list()
         else:
             raise NotImplementedError("Unknown extension type")
-        context.cleanup()
         os.chdir(old_dir)
 
         self.notify(instance.errors, instance.warnings, context.validation_service.error_count,
