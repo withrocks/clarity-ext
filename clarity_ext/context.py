@@ -60,11 +60,11 @@ class ExtensionContext(object):
         self.clarity_service = clarity_service
         self.process_service = process_service
         self.validation_service = validation_service
-
         self.disable_commits = disable_commits
+        self._calls_to_commit = 0
 
     @staticmethod
-    def create(step_id, test_mode=False, uploaded_to_stdout=False, disable_commits=False, upload_files=True):
+    def create(step_id, test_mode=False, uploaded_to_stdout=False, disable_commits=False):
         """
         Creates a context with all required services set up. This is the way
         a context is meant to be created in production and integration tests,
@@ -86,7 +86,7 @@ class ExtensionContext(object):
         dilution_service = DilutionService(validation_service)
         upload_file_service = UploadFileService(OSService(), artifact_service,
                                                 uploaded_to_stdout=uploaded_to_stdout,
-                                                disable_commits=not upload_files,
+                                                disable_commits=disable_commits,
                                                 session=session)
         return ExtensionContext(session, artifact_service, file_service, current_user,
                                 step_logger_service, step_repo, clarity_service,
@@ -96,7 +96,7 @@ class ExtensionContext(object):
 
     @staticmethod
     def create_mocked(session, step_repo, os_service, file_repository, clarity_service,
-                      test_mode=False, uploaded_to_stdout=False, disable_commits=False, upload_files=True):
+                      test_mode=False, uploaded_to_stdout=False, disable_commits=False):
         """
         A convenience method for creating an ExtensionContext that mocks out repos only. Used in integration tests
         that mock external requirements only. Since external data is always fetched through repositories only, this
@@ -119,7 +119,7 @@ class ExtensionContext(object):
         process_service = ProcessService()
         upload_file_service = UploadFileService(os_service, artifact_service,
                                                 uploaded_to_stdout=uploaded_to_stdout,
-                                                disable_commits=not upload_files)
+                                                disable_commits=disable_commits)
         return ExtensionContext(session, artifact_service, file_service, current_user,
                                 step_logger_service, step_repo, clarity_service,
                                 dilution_service, process_service, upload_file_service,
@@ -229,7 +229,11 @@ class ExtensionContext(object):
 
     def commit(self):
         """Commits all objects that have been added via the update method, using batch processing if possible"""
+        self._calls_to_commit += 1
+        if self._calls_to_commit > 1:
+            self.logger.warn("Commit called more than once. It's not necessary to call commit explicitly anymore.")
         self.clarity_service.update(self._update_queue, self.disable_commits)
+        self.upload_file_service.commit(self.disable_commits)
 
     @lazyprop
     def current_process_type(self):

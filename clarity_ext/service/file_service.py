@@ -15,6 +15,7 @@ class FileService:
     Handles downloading files from the LIMS and keeping local copies of them as
     well as cleaning up after a script as run
     """
+    LOCAL_FILES_DIR = "files_download"
 
     def __init__(self, artifact_service, file_repo, should_cache, os_service):
         """
@@ -30,6 +31,8 @@ class FileService:
         self.should_cache = should_cache
         self.file_repo = file_repo
         self.os_service = os_service
+
+        self.os_service.mkdir(self.LOCAL_FILES_DIR)
 
     def parse_xml(self, f):
         """
@@ -63,7 +66,8 @@ class FileService:
             raise ValueError(
                 "File name can only contain alphanumeric characters, underscores and spaces")
         local_file_name = ".".join([file_name.replace(" ", "_"), extension])
-        local_path = os.path.abspath(local_file_name)
+        directory = os.path.join(self.LOCAL_FILES_DIR, local_file_name)
+        local_path = os.path.abspath(directory)
         cache_directory = os.path.abspath(".cache")
         cache_path = os.path.join(cache_directory, local_file_name)
         artifact = None
@@ -132,16 +136,25 @@ class FileService:
 
 class UploadFileService(object):
     """A service for handling uploads to the server"""
+    UPLOAD_FILES_PATH = "files_upload"
+    TEMP_FILES_PATH = "files_temp"
+    SERVER_FILE_NAME_PATTERN = r"(\d+-\d+)_(.+)"
 
     def __init__(self, os_service, artifact_service, logger=None, uploaded_to_stdout=False,
-                 disable_commits=False, upload_dir=".", session=None):
+                 disable_commits=False, session=None):
         self.os_service = os_service
         self.uploaded_to_stdout = uploaded_to_stdout
         self.disable_commits = disable_commits
-        self.upload_dir = upload_dir
         self.logger = logger or logging.getLogger(__name__)
         self.artifact_service = artifact_service
         self.session = session
+
+        # Create a location for all files that should be uploaded. Note that we keep files in a subdirectory because we
+        # wan't full control over what is uploaded. The EPP mechanism automatically uploads all files in the
+        # root directory which are prefixed with a file ID, we are not using that mechanism because it only works
+        # on the server, not on a developer workstation:
+        self.os_service.mkdir(self.UPLOAD_FILES_PATH)
+        self.os_service.mkdir(self.TEMP_FILES_PATH)
 
     def remove_files(self, file_handle):
         """Removes all files for the particular file handle.
@@ -167,7 +180,7 @@ class UploadFileService(object):
                 It might lead to inconsistency and there should at least be a warning
 
         :param file_handle: The name that this should be attached to in Clarity, e.g. "Step Log"
-        :param files: A list of tuples, (file_name, file-like-object)
+        :param files: A list of tuples, (file_name, str)
         """
         artifacts = sorted([shared_file for shared_file in self.artifact_service.shared_files()
                             if shared_file.name == file_handle], key=lambda f: f.id)
@@ -189,51 +202,42 @@ class UploadFileService(object):
                                  if shared_file.name == file_handle])
         self._upload_single(artifact, file_handle, instance_name, content, stdout_max_lines)
 
-    def _upload_single(self, artifact, file_handle, instance_name, content,
-                       stdout_max_lines=50):
+    def _upload_single(self, artifact, file_handle, instance_name, content, stdout_max_lines=50):
+        """Queues the file for update. Call commit to send to the server."""
         local_path = self.save_locally(content, instance_name)
         self.logger.info("Uploading local file '{}' to the LIMS placeholder at {}".format(
             local_path, file_handle))
 
-        print("HERE", self.disable_commits)
-        if self.disable_commits:
-            # When not connected to an actual server, we copy the file to
-            # another directory for integration tests
-            upload_path = os.path.join(self.upload_dir, "uploaded")
-            self.logger.info(
-                "disable_commits is on, copying the file to {}".format(upload_path))
-            if not self.os_service.exists(upload_path):
-                self.os_service.mkdir(upload_path)
-            fake_name = "{}_{}".format(
-                artifact.id, os.path.basename(instance_name))
-            new_file_path = os.path.join(upload_path, fake_name)
-            self.os_service.copy_file(local_path, new_file_path)
-        else:
-            self.logger.info("Uploading to the LIMS server")
-            self.os_service.attach_file_for_epp(local_path, artifact)
+        self.logger.info("Queuing file '{}' for upload to the server".format(local_path))
+        file_name = os.path.basename(local_path)
+        if not file_name.startswith(artifact.id):
+            file_name = "{}_{}".format(artifact.id, file_name)
+        upload_path = os.path.join(self.UPLOAD_FILES_PATH, file_name)
+        self.os_service.copy_file(local_path, upload_path)
 
-        if self.uploaded_to_stdout:
-            print("--- {} => {} ({})".format(local_path, artifact.name, artifact.id))
-            extra = 0
-            with self.os_service.open_file(local_path, 'r') as f:
-                for ix, line in enumerate(f):
-                    if ix < stdout_max_lines:
-                        sys.stdout.write(line)
-                    else:
-                        extra += 1
-            if extra > 0:
-                sys.stdout.write("<{} more lines>\n".format(extra))
-            print("---")
+    def commit(self, disable_commits):
+        """Copies files in UPLOAD_FILES_PATH to the server"""
+        for file_name in os.listdir(self.UPLOAD_FILES_PATH):
+            artifact_id, _ = self._split_file_name(file_name)
+            if disable_commits:
+                print("Uploading (disabled) file: {}".format(os.path.abspath(file_name)))
+            else:
+                self.logger.info("Uploading file {}".format(file_name))
+                artifact = utils.single([shared_file for shared_file in self.artifact_service.shared_files()
+                                         if shared_file.id == artifact_id])
+                self.session.api.upload_new_file(artifact.api_resource, os.path.join(self.UPLOAD_FILES_PATH, file_name))
+
+    def _split_file_name(self, name):
+        m = re.match(self.SERVER_FILE_NAME_PATTERN, name)
+        if not m:
+            raise Exception("The file name {} is not of the expected format <artifact id>_<name>".format(name))
+        return m.groups()
 
     def save_locally(self, content, filename):
         """
         Saves a file locally before uploading it to the server. Content should be a string.
         """
-        if not self.os_service.exists(self.upload_dir):
-            self.logger.debug(
-                "Creating directories {}".format(self.upload_dir))
-            self.os_service.makedirs(self.upload_dir)
-        full_path = os.path.join(self.upload_dir, filename)
+        full_path = os.path.join(self.TEMP_FILES_PATH, filename)
         # The file needs to be opened in binary form to ensure that Windows
         # line endings are used if specified
         with self.os_service.open_file(full_path, 'wb') as f:
