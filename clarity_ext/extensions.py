@@ -272,10 +272,10 @@ class ExtensionService(object):
         context.cleanup()
         os.chdir(old_dir)
 
-        self.notify(instance.errors, instance.warnings,
-                    context.validation_service.error_count, context.validation_service.warning_count, context)
+        self.notify(instance.errors, instance.warnings, context.validation_service.error_count,
+                    context.validation_service.warning_count, context, module)
 
-    def notify(self, user_errors, user_warnings, other_errors_count, other_warnings_count, context):
+    def notify(self, user_errors, user_warnings, other_errors_count, other_warnings_count, context, module):
         """Notifies the user of errors and warnings during execution. user_errors and user_warnings
         should be shown in the UI. The engine itself may have gathered other errors and warnings, which
         are then accessible in the error log.
@@ -286,7 +286,8 @@ class ExtensionService(object):
         if total_error_count > 0 or total_warning_count > 0:
             errors = self._generate_notifications(user_errors)
             warnings = self._generate_notifications(user_warnings)
-            end_user_notification = list()
+            end_user_notification = ["WARNING: {} ran with {} errors, {} warnings".format(
+                module, total_error_count, total_warning_count)]
             # Log the error/warning, but also show it to the user
             if errors:
                 for error in errors:
@@ -297,6 +298,8 @@ class ExtensionService(object):
                     context.logger.warning(warning)
                 end_user_notification.append("Warnings: " + "; ".join(warnings))
             print("; ".join(end_user_notification))
+        else:
+            print("{} ran successfully".format(module))
 
         if total_error_count > 0:
             # Exit with error code 1. This ensures that Clarity shows an error box instead of just a notifaction box.
