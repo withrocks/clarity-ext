@@ -155,9 +155,9 @@ class ArtifactService:
             parent_input_artifacts = list(self.parent_input_artifacts())
             self._parent_input_artifacts_by_sample_id = dict()
             for parent_input_artifact in parent_input_artifacts:
-                for sample in parent_input_artifact.samples:
-                    assert sample.id not in self._parent_input_artifacts_by_sample_id
-                    self._parent_input_artifacts_by_sample_id[sample.id] = parent_input_artifact
+                for current_sample in parent_input_artifact.samples:
+                    assert current_sample.id not in self._parent_input_artifacts_by_sample_id
+                    self._parent_input_artifacts_by_sample_id[current_sample.id] = parent_input_artifact
         return self._parent_input_artifacts_by_sample_id[sample.id]
 
     def all_output_result_files(self):
