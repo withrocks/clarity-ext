@@ -25,6 +25,7 @@ setup(
     entry_points={
         'console_scripts': [
             'clarity-ext = clarity_ext.cli:main',
+            'clarity-data = clarity_ext.data_cli:main',
         ],
     },
     classifiers=[
