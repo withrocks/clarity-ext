@@ -12,5 +12,5 @@ int_tests/
 .virtualenv
 .coverage
 cover/
-process-types.sqlite
+*.sqlite
 
