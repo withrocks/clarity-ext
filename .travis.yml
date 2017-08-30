@@ -1,3 +1,9 @@
+# travis can not handle submodules using ssh
+git:
+    submodules: false
+before_install:
+    - sed -i 's|git@github.com:|https://github.com/|' .gitmodules
+    - git submodule update --init --recursive
 language: python
 python:
     - "2.7"
