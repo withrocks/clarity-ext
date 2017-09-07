@@ -102,7 +102,7 @@ def move_artifacts(artifact_name, unassign_stage_name, assign_workflow_name, ass
 
     def stage_to_detailed_string(stage):
         """Returns a details for the stage. Note that it loads potentially three different resources."""
-        return "'{}'({}) / '{}' / '{}'".format(stage.workflow.name, stage.workflow.status, stage.protocol.name, stage.step.name)
+        return "'{}'({}) / '{}' / '{}'".format(stage.workflow.name, stage.workflow.status, stage.protocol, stage.step.name)
 
     # If there is only one artifact, that's the one we should unqueue, but we're always checking if it's staged
     # before:
@@ -118,11 +118,11 @@ def move_artifacts(artifact_name, unassign_stage_name, assign_workflow_name, ass
                 logging.info("  {}".format(stage_to_detailed_string(stage)))
 
             # Limit to those matching unassign_stage_name
-            if len(queued_stages) > 0:
+            if len(queued_stages) > 0 or True:
                 yield artifact, queued_stages
 
     try:
-        artifacts_and_stages = get_artifacts_queued_for_stage()
+        artifacts_and_stages = list(get_artifacts_queued_for_stage())
     except ValueError:
         logging.error("Can't find a single artifact with name '{}' that's queued for stage with name '{}'".format(
             artifact_name, unassign_stage_name))
@@ -159,7 +159,8 @@ def move_artifacts(artifact_name, unassign_stage_name, assign_workflow_name, ass
 
         for unassign in reroute_info.unassign:
             log_action("Unassign:", reroute_info.artifact, unassign)
-        reroute_infos.append(reroute_info)
+        if reroute_info.artifact.id == "2-109039":
+            reroute_infos.append(reroute_info)
 
     if len(reroute_infos) > 0:
         routing_service = RoutingService(session, commit=commit)
