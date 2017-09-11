@@ -102,7 +102,7 @@ def move_artifacts(artifact_name, unassign_stage_name, assign_workflow_name, ass
 
     def stage_to_detailed_string(stage):
         """Returns a details for the stage. Note that it loads potentially three different resources."""
-        return "'{}'({}) / '{}' / '{}'".format(stage.workflow.name, stage.workflow.status, stage.protocol.name, stage.step.name)
+        return "'{}'({}) / '{}' / '{}'".format(stage.workflow.name, stage.workflow.status, stage.protocol, stage.step.name)
 
     # If there is only one artifact, that's the one we should unqueue, but we're always checking if it's staged
     # before:
