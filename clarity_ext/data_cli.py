@@ -8,6 +8,8 @@ import subprocess
 import sys
 import requests_cache
 import re
+import yaml
+from clarity_ext.service.routing_service import RerouteInfo, RoutingService
 
 
 @click.group()
@@ -84,87 +86,29 @@ def get_stages(workflow_status, workflow_name, protocol_name, stage_name, use_ca
                 print("# ERROR workflow={}: {}".format(workflow.uri, e.message))
 
 
-@main.command("move-artifacts")
-@click.argument("artifact-name")
-@click.argument("unassign-stage-name")
+@main.command("move-artifacts-plan")
+@click.argument("artifact-ids", nargs=-1)
 @click.argument("assign-workflow-name")
 @click.argument("assign-stage-name")
-@click.option("--commit/--no-commit", default=False)
-def move_artifacts(artifact_name, unassign_stage_name, assign_workflow_name, assign_stage_name, commit):
-    """Moves all samples that are in a particular workflow from one workflow to another."""
-    # TODO: Currently removes it from all stages it's currently in and assigns it to only one
-    # TODO: This is a quick fix, so all the logic is currently in the CLI
-    from clarity_ext.service.routing_service import RerouteInfo, RoutingService
-
+def move_artifacts_plan(artifact_ids, assign_workflow_name, assign_stage_name):
+    """Creates a 'plan' for moving the artifact-id, reviewing all parameters etc.
+     This plan can be manually reviewed/edited and then executed by running move-artifacts-commit"""
     session = ClaritySession.create(None)
-    logging.info("Searching for analytes of type '{}'".format(artifact_name))
-    artifacts = session.api.get_artifacts(name=artifact_name, type="Analyte")
+    routing_service = RoutingService(session)
+    plan = routing_service.build_plan(artifact_ids, assign_workflow_name, assign_stage_name)
+    click.echo(yaml.safe_dump(plan, default_flow_style=False))
 
-    def stage_to_detailed_string(stage):
-        """Returns a details for the stage. Note that it loads potentially three different resources."""
-        return "'{}'({}) / '{}' / '{}'".format(stage.workflow.name, stage.workflow.status, stage.protocol, stage.step.name)
 
-    # If there is only one artifact, that's the one we should unqueue, but we're always checking if it's staged
-    # before:
-    if len(artifacts) > 1:
-        logging.info("Found more than one artifact")
-
-    def get_artifacts_queued_for_stage():
-        for artifact in artifacts:
-            queued_stages = [stage for stage, status, name in artifact.workflow_stages_and_statuses
-                             if status == "QUEUED"]  # and name == unassign_stage_name]
-            logging.info("Artifact {} is queued for the following stages:".format(artifact.id))
-            for stage in queued_stages:
-                logging.info("  {}".format(stage_to_detailed_string(stage)))
-
-            # Limit to those matching unassign_stage_name
-            if len(queued_stages) > 0:
-                yield artifact, queued_stages
-
-    try:
-        artifacts_and_stages = get_artifacts_queued_for_stage()
-    except ValueError:
-        logging.error("Can't find a single artifact with name '{}' that's queued for stage with name '{}'".format(
-            artifact_name, unassign_stage_name))
-        return
-
-    def log_action(action, artifact, stage):
-        logging.info("{} {} Stage({})".format(action, artifact.id, stage_to_detailed_string(stage)))
-
-    reroute_infos = list()
-    for artifact, queued_stages in artifacts_and_stages:
-        if len(queued_stages) > 1:
-            # The artifact is queued in several stages because of a bug that has been reported to Illumina
-            logging.info("The artifact is queued in more than one stage. It will be unassigned from all of them.")
-
-        try:
-            assign_workflow = utils.single(session.api.get_workflows(name=assign_workflow_name))
-        except ValueError:
-            logging.error("Not able to find one workflow with name {}".format(assign_workflow_name))
-            return
-
-        try:
-            assign_stage = utils.single([stage for stage in assign_workflow.stages if stage.name == assign_stage_name])
-        except ValueError:
-            logging.error("Not able to find one stage with name {} in {}".format(assign_stage_name, assign_workflow_name))
-
-        # Report for which artifacts to remove. This should be reviewed by an RE and then pushed back into this tool.
-        reroute_info = RerouteInfo(artifact, queued_stages, [assign_stage])
-        # Log the details of the reroute info:
-        # NOTE: This loads a lot of resources, but can be good to have.
-        logging.info("About to reroute artifact {}, '{}'".format(artifact.id, artifact.name))
-
-        for assign in reroute_info.assign:
-            log_action("Assign:", reroute_info.artifact, assign)
-
-        for unassign in reroute_info.unassign:
-            log_action("Unassign:", reroute_info.artifact, unassign)
-        reroute_infos.append(reroute_info)
-
-    if len(reroute_infos) > 0:
-        routing_service = RoutingService(session, commit=commit)
-        routing_service.route(reroute_infos)
-
+@main.command("move-artifacts")
+@click.argument('plan', type=click.File('rb'))
+@click.option("--commit/--no-commit", default=False)
+def move_artifacts(plan, commit):
+    """Reads a plan created by move-artifacts-plan and moves samples accordingly"""
+    plan = yaml.load(plan)
+    reroute_infos = plan["reroutes"]
+    session = ClaritySession.create(None)
+    routing_service = RoutingService(session, commit)
+    routing_service.route(reroute_infos)
 
 if __name__ == "__main__":
     main()
