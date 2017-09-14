@@ -92,7 +92,7 @@ def get_stages(workflow_status, workflow_name, protocol_name, stage_name, use_ca
 @click.argument("assign-stage-name")
 def move_artifacts_plan(artifact_ids, assign_workflow_name, assign_stage_name):
     """Creates a 'plan' for moving the artifact-id, reviewing all parameters etc.
-     This plan can be manually reviewed/edited and then executed by running move-artifacts-commit"""
+     This plan can be manually reviewed/edited and then executed by running `move-artifacts --commit`"""
     session = ClaritySession.create(None)
     routing_service = RoutingService(session)
     plan = routing_service.build_plan(artifact_ids, assign_workflow_name, assign_stage_name)
@@ -103,7 +103,8 @@ def move_artifacts_plan(artifact_ids, assign_workflow_name, assign_stage_name):
 @click.argument('plan', type=click.File('rb'))
 @click.option("--commit/--no-commit", default=False)
 def move_artifacts(plan, commit):
-    """Reads a plan created by move-artifacts-plan and moves samples accordingly"""
+    """Reads a plan created by move-artifacts-plan and moves samples accordingly. Nothing is committed by default,
+    but the side effects are logged. Add the --commit flag to commit the transfer."""
     plan = yaml.load(plan)
     reroute_infos = plan["reroutes"]
     session = ClaritySession.create(None)
