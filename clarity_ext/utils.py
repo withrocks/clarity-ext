@@ -73,7 +73,7 @@ def single(seq):
     if isinstance(seq, types.GeneratorType):
         seq = list(seq)
     if len(seq) != 1:
-        raise ValueError(
+        raise UnexpectedLengthError(
             "Unexpected number of items in the list ({})".format(len(seq)))
     return seq[0]
 
@@ -82,7 +82,7 @@ def single_or_default(seq):
     """Returns the first element in a list or None if the list is empty, raising an exception if
     there are more than one elements in the list"""
     if len(seq) > 1:
-        raise ValueError(
+        raise UnexpectedLengthError(
             "Expecting at most one item in the list. Got ({}).".format(len(seq)))
     elif len(seq) == 0:
         return None
@@ -163,3 +163,7 @@ def get_jinja_template_from_package(package, name):
     for candidate_file in os.listdir(templates_dir):
         if candidate_file == name:
             return os.path.join(templates_dir, candidate_file)
+
+class UnexpectedLengthError(ValueError):
+    pass
+
