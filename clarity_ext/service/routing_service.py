@@ -104,7 +104,7 @@ class RoutingService(object):
 
             for unassign in reroute_info["unassign"]:
                 request.append('<unassign {}="{}">'.format(uri_attribute(unassign["uri"]), unassign["uri"]))
-                request.append('  <artifact uri="' + reroute_info.artifact["uri"] + '"/>')
+                request.append('  <artifact uri="' + reroute_info["artifact"]["uri"] + '"/>')
                 request.append('</unassign>')
 
         request.append('</rt:routing>')
