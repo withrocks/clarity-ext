@@ -28,10 +28,9 @@ class Well(DomainObjectMixin):
         return "{}:{}".format(self.position.row, self.position.col)
 
     def __repr__(self):
-        return "{}{}@{}[{}]".format(self.position.row_letter,
-                                self.position.col,
-                                self.container.id,
-                                self.artifact.id if self.artifact is not None else "None")
+        return "{}{}: [{}]".format(self.position.row_letter,
+                                    self.position.col,
+                                    self.artifact.name if self.artifact is not None else "None")
 
     @property
     def index_down_first(self):
@@ -156,7 +155,7 @@ class Container(DomainObjectMixin):
         """
         rows = list()
         if compressed:
-            rows = [str(well) for well in self if well.artifact is not None]
+            rows.extend([str(well) for well in self if well.artifact is not None])
             empty_count = sum(1 for well in self if well.artifact is None)
             rows.append("... {} empty wells".format(empty_count))
         else:
@@ -168,7 +167,8 @@ class Container(DomainObjectMixin):
                 longest = max(max(len(cell) for cell in rows[-1]), longest)
             for i in range(len(rows)):
                 rows[i] = "|".join([cell.ljust(longest, " ") for cell in rows[i]])
-        return "\n".join(rows)
+        rows.insert(0, self.name)
+        return "\n".join(map(str, rows))
 
     def size_from_container_type(self, container_type):
         if container_type == self.CONTAINER_TYPE_96_WELLS_PLATE:
