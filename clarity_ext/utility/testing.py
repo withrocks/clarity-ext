@@ -227,3 +227,116 @@ class TestExtensionWrapper(object):
     def __init__(self, extension_type):
         self.context_wrapper = TestExtensionContext()
         self.extension = extension_type(self.context_wrapper.context)
+
+
+class StepScenario(object):
+    """Describes a scenario in a step in the application that we want to mock, e.g. place samples."""
+
+    def __init__(self, context_wrapper):
+        self.input_containers = list()
+        self.analytes = list()
+        self.pairs = list()
+        self.analytes = list()
+        self.context_wrapper = context_wrapper
+
+    def create_analyte(self, is_input, name, analyte_id, analyte_type=Analyte, samples=None):
+        project = Project("IntegrationTest")
+        if not samples:
+            samples = [Sample(name, name, project)]
+        ret = analyte_type(api_resource=None, is_input=is_input, id=analyte_id, name=name, samples=samples)
+        self.analytes.append(ret)
+        return ret
+
+
+class PoolSamplesScenario(StepScenario):
+    """A 'scenario' mocks a particular set of actions made in the UI and sets up mock objects accordingly
+
+    Note that some of the methods return this class so that it can be used in a fluent api fashion, but the same
+    methods can also be used referring to previously added objects."""
+
+    def __init__(self, context_wrapper):
+        super(PoolSamplesScenario, self).__init__(context_wrapper)
+        self.pools = list()
+
+    def add_input_container(self, name=None, size=None, container_id=None):
+        if size is None:
+            size = PlateSize(height=8, width=12)
+        if container_id is None:
+            container_id = "incont_{}".format(len(self.input_containers))
+        container = Container(name=name, size=size, container_id=container_id)
+        self.input_containers.append(container)
+        return self
+
+    def add_input_analyte(self, name=None, analyte_id=None, input_container_ref=-1):
+        """Adds an input analyte to the last container added"""
+        last_container = self.input_containers[input_container_ref]
+        if analyte_id is None:
+            analyte_id = "analyte_{}-{}".format(last_container.id, len(last_container.occupied))
+        if name is None:
+            name = analyte_id
+        analyte = self.create_analyte(True, name, analyte_id)
+        last_container.append(analyte)
+        return self
+
+    def create_pool(self, name=None, analyte_id=None):
+        pool = self.create_analyte(False, name, analyte_id)
+        pool.samples = list()  # Emptying it, as the helper creates them by default
+        self.pools.append(pool)
+        return self
+
+    def add_to_pool(self, pool_ref=-1, analyte_ref=-1, input_container_ref=-1):
+        pool = self.pools[pool_ref]
+        input_analyte = self.input_containers[input_container_ref].occupied[analyte_ref].artifact
+        pool.samples.append(input_analyte.sample())
+        pair = pool.pair_as_output(input_analyte)
+        self.pairs.append(pair)
+        self.context_wrapper.add_analyte_pair(pair.input_artifact, pair.output_artifact)
+        return self
+
+    def to_string(self, compressed=True):
+        """Returns a more detailed string representation than __str__"""
+        ret = list()
+        ret.append("Input containers")
+        ret.append("----------------")
+        for container in self.input_containers:
+            ret.append(container.to_string(compressed))
+
+        ret.append("Pools")
+        ret.append("-----")
+
+        for pool in self.pools:
+            ret.append(pool.name)
+        return "\n".join(map(str, ret))
+
+
+class PoolSamplesWithDilutionScenario(PoolSamplesScenario):
+    """A StepScenario that sets a step up for pooling and dilution with the exact UDFs we require at SNP&SEQ"""
+    def __init__(self, context_wrapper, concentration_unit):
+        super(PoolSamplesWithDilutionScenario, self).__init__(context_wrapper)
+        self.concentration_unit = concentration_unit
+
+    def dilution_vals(self, conc, vol, analyte_ref=-1):
+        """Sets the values required for dilution (conc and vol) to the analyte that was added last to the scenario"""
+        analyte = self.analytes[analyte_ref]
+
+        if analyte.is_input:
+            analyte.udf_map = UdfMapping({self.conc_source_udf: conc,
+                                          "Current sample volume (ul)": vol})
+        else:
+            analyte.udf_map = UdfMapping({self.conc_source_udf: conc,
+                                          "Current sample volume (ul)": vol,
+                                          "Target vol. (ul)": vol,
+                                          self.conc_target_udf: conc,
+                                          "Dil. calc target vol": None,
+                                          "Dil. calc target conc.": None,
+                                          "Dil. calc source vol": None})
+        return self
+
+    @property
+    def conc_source_udf(self):
+        return "Conc. Current ({})".format(self.concentration_unit)
+
+    @property
+    def conc_target_udf(self):
+        return "Target conc. ({})".format(self.concentration_unit)
+
