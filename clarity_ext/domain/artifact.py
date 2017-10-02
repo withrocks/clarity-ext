@@ -20,6 +20,26 @@ class Artifact(DomainObjectWithUdfMixin):
         self.generation_type = None  # Set to PER_INPUT or PER_ALL_INPUTS if applicable
         self.name = name
 
+        # NOTE: This is currently only used in tests, so you can't trust that it has been set
+        self.pairings = list()
+
+    def pair_as_output(self, input_artifact):
+        return self.pair_together(input_artifact, self)
+
+    def pair_as_input(self, output_artifact):
+        return self.pair_together(self, output_artifact)
+
+    @staticmethod
+    def pair_together(input_artifact, output_artifact):
+        """Marks two artifacts as input/output, pairs them together in an ArtifactPair object and sets evidence
+        about the pairing on both objects"""
+        input_artifact.is_input = True
+        output_artifact.is_input = False
+        pair = ArtifactPair(input_artifact, output_artifact)
+        input_artifact.pairings.append(pair)
+        output_artifact.pairings.append(pair)
+        return pair
+
 
 class ArtifactPair(object):
     """
