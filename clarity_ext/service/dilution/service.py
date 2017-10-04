@@ -100,7 +100,7 @@ class DilutionSession(object):
             self.map_temporary_container_by_original[target_container.id] = temp_container
         return self.map_temporary_container_by_original[target_container.id]
 
-    def split_transfer(self, transfer, handler):
+    def split_transfer(self, transfer, split_handler):
         """Returns two transfers where the first one will go on a temporary container"""
         temp_transfer = SingleTransfer(transfer.source_conc, transfer.source_vol,
                                        transfer.target_conc, transfer.target_vol, 0, None, None)
@@ -113,7 +113,7 @@ class DilutionSession(object):
         temp_transfer.original = transfer
 
         temp_analyte = copy.copy(transfer.source_location.artifact)
-        tag = handler.tag()
+        tag = split_handler.temp_tag()
         temp_analyte.id += "-" + tag
         temp_analyte.name += "-" + tag
 
@@ -805,11 +805,18 @@ class TransferSplitHandlerBase(TransferHandlerBase):
     def handle_split(self, transfer, temp_transfer, main_transfer):
         pass
 
+    def temp_tag(self):
+        return None
+
+    def main_tag(self):
+        return None
+
     def run(self, transfer_route_node):
         if not self.should_execute(transfer_route_node.transfer):
             return None
         temp_transfer, main_transfer = self.dilution_session.split_transfer(transfer_route_node.transfer, self)
-        temp_transfer.batch = self.tag()
+        temp_transfer.batch = self.temp_tag()
+        main_transfer.batch = self.main_tag()
         self.handle_split(transfer_route_node.transfer, temp_transfer, main_transfer)
         return [TransferRouteNode(temp_transfer), TransferRouteNode(main_transfer)]
 
