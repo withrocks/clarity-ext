@@ -2,6 +2,7 @@ import abc
 import copy
 import logging
 from itertools import groupby
+from itertools import izip_longest
 import collections
 from collections import namedtuple
 from clarity_ext.service.file_service import Csv
@@ -655,6 +656,15 @@ class TransferBatch(object):
         return not a.is_control or a.id.startswith("2-")
 
     @property
+    def container_mappings_for_printout(self):
+        def slot_repr(slot):
+            return "{} ({})".format(slot.name, slot.container.name)
+        sources = self.source_container_slots
+        targets = self.target_container_slots
+        gen = izip_longest(map(slot_repr, sources), map(slot_repr, targets), fillvalue="")
+        return [pair for pair in gen]
+
+    @property
     def container_mappings(self):
         ret = set()
         for transfer in self.transfers:
@@ -668,6 +678,11 @@ class TransferBatch(object):
     def target_container_slots(self):
         return sorted(set(target for source, target in self.container_mappings),
                       key=lambda cont: cont.index)
+
+    @property
+    def source_container_slots(self):
+        return sorted(set(source for source, target in self.container_mappings),
+                      key=lambda source: source.index)
 
     def report(self):
         """Creates a detailed report of what's included in the transfer, for debug and learning purposes."""
