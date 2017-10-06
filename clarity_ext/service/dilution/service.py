@@ -539,8 +539,7 @@ class RobotSettings(object):
         assert transfer.transfer_batch is not None
         assert transfer.source_slot is not None
         assert transfer.source_slot.index is not None
-        return (transfer.source_location.artifact.is_control,
-                transfer.source_slot.index,
+        return (transfer.source_slot.index,
                 transfer.source_location.index_down_first,
                 -transfer.pipette_total_volume)
 
