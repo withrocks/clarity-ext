@@ -100,33 +100,6 @@ class DilutionSession(object):
             self.map_temporary_container_by_original[target_container.id] = temp_container
         return self.map_temporary_container_by_original[target_container.id]
 
-    def split_transfer(self, transfer, handler):
-        """Returns two transfers where the first one will go on a temporary container"""
-        temp_transfer = SingleTransfer(transfer.source_conc, transfer.source_vol,
-                                       transfer.target_conc, transfer.target_vol, 0, None, None)
-        main_transfer = copy.copy(temp_transfer)
-
-        temp_transfer.is_primary = False
-        temp_transfer.split_type = SingleTransfer.SPLIT_BATCH
-        temp_transfer.should_update_target_vol = False
-        temp_transfer.should_update_target_conc = False
-        temp_transfer.original = transfer
-
-        temp_analyte = copy.copy(transfer.source_location.artifact)
-        tag = handler.tag()
-        temp_analyte.id += "-" + tag
-        temp_analyte.name += "-" + tag
-
-        temp_target_container = self.get_temporary_container(transfer.target_location.container, tag)
-        temp_transfer.source_location = transfer.source_location
-        temp_transfer.target_location = temp_target_container.set_well(transfer.target_location.position, temp_analyte)
-
-        # Main:
-        main_transfer.source_location = temp_transfer.target_location
-        main_transfer.target_location = transfer.target_location
-
-        return temp_transfer, main_transfer
-
     def _evaluate_transfer_route_rec(self, current, transfer_handlers, handler_ix):
         if handler_ix == len(transfer_handlers):
             return
@@ -803,11 +776,40 @@ class TransferSplitHandlerBase(TransferHandlerBase):
     def handle_split(self, transfer, temp_transfer, main_transfer):
         pass
 
+    def temp_tag(self):
+        return None
+
+    def main_tag(self):
+        return None
+
+    @abc.abstractmethod
+    def _update_source_target_locations(self, dilute_session, original_transfer,
+                                        temp_transfer, main_transfer):
+        pass
+
+    def _split_transfer(self, dilute_session, transfer):
+        """Returns two transfers where the first one will go on a temporary container"""
+        temp_transfer = SingleTransfer(transfer.source_conc, transfer.source_vol,
+                                       transfer.target_conc, transfer.target_vol, 0, None, None)
+        main_transfer = copy.copy(temp_transfer)
+
+        temp_transfer.is_primary = False
+        temp_transfer.split_type = SingleTransfer.SPLIT_BATCH
+        temp_transfer.should_update_target_vol = False
+        temp_transfer.should_update_target_conc = False
+        temp_transfer.original = transfer
+
+        temp_transfer, main_transfer = self._update_source_target_locations(
+            dilute_session, transfer, temp_transfer, main_transfer)
+
+        return temp_transfer, main_transfer
+
     def run(self, transfer_route_node):
         if not self.should_execute(transfer_route_node.transfer):
             return None
-        temp_transfer, main_transfer = self.dilution_session.split_transfer(transfer_route_node.transfer, self)
-        temp_transfer.batch = self.tag()
+        temp_transfer, main_transfer = self._split_transfer(self.dilution_session, transfer_route_node.transfer)
+        temp_transfer.batch = self.temp_tag()
+        main_transfer.batch = self.main_tag()
         self.handle_split(transfer_route_node.transfer, temp_transfer, main_transfer)
         return [TransferRouteNode(temp_transfer), TransferRouteNode(main_transfer)]
 
