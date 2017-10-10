@@ -590,8 +590,8 @@ class TransferBatch(object):
         self._transfers = transfers
         for transfer in transfers:
             transfer.transfer_batch = self
-        for validation_result in transfer.validation_results:
-            self.validation_results.append(validation_result)
+            for validation_result in transfer.validation_results:
+                self.validation_results.append(validation_result)
 
     @property
     def transfers(self):

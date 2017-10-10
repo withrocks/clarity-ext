@@ -9,6 +9,7 @@ class ValidationService:
         self.step_logger_service = step_logger_service
         self.warning_count = 0
         self.error_count = 0
+        self.messages = set()
 
     def handle_validation(self, results):
         """
@@ -25,6 +26,10 @@ class ValidationService:
 
     def handle_single_validation(self, result):
         msg_row = "{}".format(result)
+        if msg_row in self.messages:
+            # Quick fix: the messages per transfers are often duplicated. Skip adding them several times to the log.
+            return
+        self.messages.add(msg_row)
         self.step_logger_service.log(msg_row)
         self._log_debug("{}".format(msg_row))
 
