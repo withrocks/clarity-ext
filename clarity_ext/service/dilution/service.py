@@ -163,7 +163,7 @@ class DilutionSession(object):
                 transfer_by_batch.setdefault(transfer.batch, list())
                 transfer_by_batch[transfer.batch].append(transfer)
 
-        transfer_batches = TransferBatchCollection()
+        transfer_batches = TransferBatchCollection(robot_settings.transfer_batch_sort_key)
         for key in transfer_by_batch:
             depth = 0 if key == "default" else 1  # TODO Used?
             is_temporary = key != "default"  # and this?
@@ -679,15 +679,16 @@ class TransferBatchCollection(object):
     TransferBatch.
     """
 
-    def __init__(self, *args):
+    def __init__(self, sort_key, *args):
         self._batches = list()
         self._batches.extend(args)
+        self.sort_key = sort_key
 
     def append(self, obj):
         self._batches.append(obj)
 
     def __iter__(self):
-        return iter(self._batches)
+        return iter(sorted(self._batches, key=self.sort_key))
 
     def __len__(self):
         return len(self._batches)
