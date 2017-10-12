@@ -163,7 +163,7 @@ class DilutionSession(object):
                 transfer_by_batch.setdefault(transfer.batch, list())
                 transfer_by_batch[transfer.batch].append(transfer)
 
-        transfer_batches = TransferBatchCollection()
+        transfer_batches = TransferBatchCollection(robot_settings.transfer_batch_sort_key)
         for key in transfer_by_batch:
             depth = 0 if key == "default" else 1  # TODO Used?
             is_temporary = key != "default"  # and this?
@@ -532,17 +532,20 @@ class RobotSettings(object):
     def transfer_sort_key(transfer):
         """
         Sort the transfers based on:
-            - Regular should become before controls
             - source position (container.index)
             - well index (down first)
             - pipette volume (descending)
+            - target position (container.index)
+            - target well index (down first)
         """
         assert transfer.transfer_batch is not None
         assert transfer.source_slot is not None
         assert transfer.source_slot.index is not None
         return (transfer.source_slot.index,
                 transfer.source_location.index_down_first,
-                -transfer.pipette_total_volume)
+                -transfer.pipette_total_volume,
+                transfer.target_slot.index,
+                transfer.target_location.index_down_first)
 
     def __repr__(self):
         return "<RobotSettings {}>".format(self.name)
@@ -638,7 +641,7 @@ class TransferBatch(object):
     def container_mappings(self):
         ret = set()
         for transfer in self.transfers:
-            if self._include_in_container_mappings(transfer):
+            if self._include_in_container_mappings(transfer) or len(self.transfers) == 1:
                 ret.add((transfer.source_slot, transfer.target_slot))
 
         ret = list(sorted(ret, key=lambda t: t[0].index))
@@ -676,15 +679,16 @@ class TransferBatchCollection(object):
     TransferBatch.
     """
 
-    def __init__(self, *args):
+    def __init__(self, sort_key, *args):
         self._batches = list()
         self._batches.extend(args)
+        self.sort_key = sort_key
 
     def append(self, obj):
         self._batches.append(obj)
 
     def __iter__(self):
-        return iter(self._batches)
+        return iter(sorted(self._batches, key=self.sort_key))
 
     def __len__(self):
         return len(self._batches)
