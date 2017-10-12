@@ -641,7 +641,7 @@ class TransferBatch(object):
     def container_mappings(self):
         ret = set()
         for transfer in self.transfers:
-            if self._include_in_container_mappings(transfer):
+            if self._include_in_container_mappings(transfer) or len(self.transfers) == 1:
                 ret.add((transfer.source_slot, transfer.target_slot))
 
         ret = list(sorted(ret, key=lambda t: t[0].index))
