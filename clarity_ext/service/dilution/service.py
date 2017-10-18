@@ -98,6 +98,7 @@ class DilutionSession(object):
             temp_container = Container.create_from_container(target_container)
             temp_container.id = "{}{}".format(prefix, len(self.map_temporary_container_by_original) + 1)
             temp_container.name = temp_container.id
+            temp_container.is_temporary = True
             self.map_temporary_container_by_original[target_container.id] = temp_container
         return self.map_temporary_container_by_original[target_container.id]
 
