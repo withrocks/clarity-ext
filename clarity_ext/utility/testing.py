@@ -259,6 +259,8 @@ class PoolSamplesScenario(StepScenario):
         self.pools = list()
 
     def add_input_container(self, name=None, size=None, container_id=None):
+        if name is None:
+            name = ''
         if size is None:
             size = PlateSize(height=8, width=12)
         if container_id is None:
