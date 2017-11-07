@@ -260,8 +260,8 @@ class ExtensionService(object):
         elif issubclass(extension, GeneralExtension):
             try:
                 instance.execute()
-            except UsageError as e:
                 context.commit()
+            except UsageError as e:
                 # UsageErrors are deferred and handled by the notify method
                 # To support the case (legacy) if someone raises an error without adding it to the defer list,
                 # we add it to the instance too:
