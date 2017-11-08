@@ -131,7 +131,7 @@ class ExtensionService(object):
                 self._prepare_fresh_test(path)
 
             with utils.add_log_file_handler(os.path.join(path, "extensions.log"), False, ExtensionTestLogFilter()):
-                self._run(path, pid, module, artifacts_to_stdout, False, disable_context_commit=not commit, test_mode=True)
+                self._run(path, pid, module, artifacts_to_stdout, disable_context_commit=not commit, test_mode=True)
 
             if validate_against_frozen:
                 try:
@@ -242,7 +242,7 @@ class ExtensionService(object):
         module_obj = importlib.import_module(module)
         return getattr(module_obj, "Extension")
 
-    def _run(self, path, pid, module, artifacts_to_stdout, upload_files, disable_context_commit=False, test_mode=False):
+    def _run(self, path, pid, module, artifacts_to_stdout, disable_context_commit=False, test_mode=False):
         path = os.path.abspath(path)
         self.logger.info("Running extension {module} for pid={pid}, test_mode={test_mode}".format(
             module=module, pid=pid, test_mode=test_mode))
@@ -251,7 +251,7 @@ class ExtensionService(object):
         old_dir = os.getcwd()
         os.chdir(path)
         self.logger.info("Executing at {}".format(path))
-        context = ExtensionContext.create(pid, test_mode=test_mode, upload_files=upload_files,
+        context = ExtensionContext.create(pid, test_mode=test_mode,
                                           disable_commits=disable_context_commit,
                                           uploaded_to_stdout=artifacts_to_stdout)
         instance = extension(context)
@@ -260,16 +260,15 @@ class ExtensionService(object):
         elif issubclass(extension, GeneralExtension):
             try:
                 instance.execute()
+                context.commit()
             except UsageError as e:
                 # UsageErrors are deferred and handled by the notify method
                 # To support the case (legacy) if someone raises an error without adding it to the defer list,
                 # we add it to the instance too:
                 if len(instance.errors) == 0:
                     instance.errors[e] = list()
-                pass
         else:
             raise NotImplementedError("Unknown extension type")
-        context.cleanup()
         os.chdir(old_dir)
 
         self.notify(instance.errors, instance.warnings, context.validation_service.error_count,

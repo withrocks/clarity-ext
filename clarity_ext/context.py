@@ -4,7 +4,7 @@ from clarity_ext.repository import ClarityRepository, FileRepository
 from clarity_ext.utils import lazyprop
 from clarity_ext import ClaritySession
 from clarity_ext.service import (ArtifactService, FileService, StepLoggerService, ClarityService,
-                                 ProcessService, UploadFileService, ValidationService)
+                                 ProcessService, ValidationService)
 from clarity_ext.repository import StepRepository
 from clarity_ext import utils
 from clarity_ext.service.file_service import OSService
@@ -24,7 +24,7 @@ class ExtensionContext(object):
 
     def __init__(self, session, artifact_service, file_service, current_user,
                  step_logger_service, step_repo, clarity_service, dilution_service, process_service,
-                 upload_file_service, validation_service, test_mode=False,
+                 validation_service, test_mode=False,
                  disable_commits=False):
         """
         Initializes the context.
@@ -37,7 +37,6 @@ class ExtensionContext(object):
         :param step_repo: The repository for the current step
         :param clarity_service: General service for working with domain objects
         :param dilution_service: A service for handling dilutions
-        :param upload_file_service: A service for uploading files to the server
         :param test_mode: If set to True, extensions may behave slightly differently when testing, in particular
                           returning a constant time.
         :param disable_commits: True if commits should be ignored, e.g. when uploading files or updating UDFs.
@@ -55,16 +54,15 @@ class ExtensionContext(object):
         self.dilution_scheme = None
         self.disable_commits = False
         self.dilution_service = dilution_service
-        self.upload_file_service = upload_file_service
         self.test_mode = test_mode
         self.clarity_service = clarity_service
         self.process_service = process_service
         self.validation_service = validation_service
-
         self.disable_commits = disable_commits
+        self._calls_to_commit = 0
 
     @staticmethod
-    def create(step_id, test_mode=False, uploaded_to_stdout=False, disable_commits=False, upload_files=True):
+    def create(step_id, test_mode=False, uploaded_to_stdout=False, disable_commits=False):
         """
         Creates a context with all required services set up. This is the way
         a context is meant to be created in production and integration tests,
@@ -76,26 +74,25 @@ class ExtensionContext(object):
         artifact_service = ArtifactService(step_repo)
         current_user = step_repo.current_user()
         file_repository = FileRepository(session)
-        file_service = FileService(
-            artifact_service, file_repository, False, OSService())
+        file_service = FileService(artifact_service, file_repository, False, OSService(),
+                                   uploaded_to_stdout=uploaded_to_stdout,
+                                   disable_commits=disable_commits,
+                                   session=session)
         step_logger_service = StepLoggerService("Step log", file_service)
         validation_service = ValidationService(step_logger_service)
         clarity_service = ClarityService(
             ClarityRepository(), step_repo, clarity_mapper)
         process_service = ProcessService()
         dilution_service = DilutionService(validation_service)
-        upload_file_service = UploadFileService(OSService(), artifact_service,
-                                                uploaded_to_stdout=uploaded_to_stdout,
-                                                disable_commits=not upload_files)
         return ExtensionContext(session, artifact_service, file_service, current_user,
                                 step_logger_service, step_repo, clarity_service,
-                                dilution_service, process_service, upload_file_service,
+                                dilution_service, process_service,
                                 validation_service,
                                 test_mode=test_mode, disable_commits=disable_commits)
 
     @staticmethod
     def create_mocked(session, step_repo, os_service, file_repository, clarity_service,
-                      test_mode=False, uploaded_to_stdout=False, disable_commits=False, upload_files=True):
+                      test_mode=False, uploaded_to_stdout=False, disable_commits=False):
         """
         A convenience method for creating an ExtensionContext that mocks out repos only. Used in integration tests
         that mock external requirements only. Since external data is always fetched through repositories only, this
@@ -111,18 +108,16 @@ class ExtensionContext(object):
         step_repo = step_repo
         artifact_service = ArtifactService(step_repo)
         current_user = step_repo.current_user()
-        file_service = FileService(artifact_service, file_repository, False, os_service)
+        file_service = FileService(artifact_service, file_repository, False, os_service,
+                                   uploaded_to_stdout=uploaded_to_stdout,
+                                    disable_commits=disable_commits)
         step_logger_service = StepLoggerService("Step log", file_service)
         validation_service = ValidationService(step_logger_service)
         dilution_service = DilutionService(validation_service)
         process_service = ProcessService()
-        upload_file_service = UploadFileService(os_service, artifact_service,
-                                                uploaded_to_stdout=uploaded_to_stdout,
-                                                disable_commits=not upload_files)
         return ExtensionContext(session, artifact_service, file_service, current_user,
                                 step_logger_service, step_repo, clarity_service,
-                                dilution_service, process_service, upload_file_service,
-                                validation_service,
+                                dilution_service, process_service, validation_service,
                                 test_mode=test_mode, disable_commits=disable_commits)
 
     @lazyprop
@@ -185,12 +180,6 @@ class ExtensionContext(object):
         """
         return utils.single(self.artifact_service.all_input_containers())
 
-    def cleanup(self):
-        """Cleans up any downloaded resources. This method will be automatically
-        called by the framework and does not need to be called by extensions"""
-        # Clean up:
-        self.file_service.cleanup()
-
     def local_shared_file(self, name, mode="r", is_xml=False, is_csv=False):
         """
         Downloads the file from the current step. The returned file is generally a regular
@@ -228,7 +217,11 @@ class ExtensionContext(object):
 
     def commit(self):
         """Commits all objects that have been added via the update method, using batch processing if possible"""
+        self._calls_to_commit += 1
+        if self._calls_to_commit > 1:
+            self.logger.warn("Commit called more than once. It's not necessary to call commit explicitly anymore.")
         self.clarity_service.update(self._update_queue, self.disable_commits)
+        self.file_service.commit(self.disable_commits)
 
     @lazyprop
     def current_process_type(self):

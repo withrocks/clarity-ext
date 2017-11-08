@@ -5,17 +5,20 @@ import sys
 import shutil
 import logging
 from lxml import objectify
-import collections
 from clarity_ext import utils
+import requests
 
 
 class FileService:
     """
-    Handles downloading files from the LIMS and keeping local copies of them as
+    Handles downloading and uploading files from/to the LIMS and keeping local copies of them as
     well as cleaning up after a script as run
     """
+    CONTEXT_FILES_ROOT = "./context_files"
+    SERVER_FILE_NAME_PATTERN = r"(\d+-\d+)_(.+)"
 
-    def __init__(self, artifact_service, file_repo, should_cache, os_service):
+    def __init__(self, artifact_service, file_repo, should_cache, os_service, uploaded_to_stdout=False,
+                 disable_commits=False, session=None):
         """
         :param artifact_service: An artifact service instance.
         :param should_cache: Set to True if files should be cached in .cache, mainly
@@ -29,6 +32,22 @@ class FileService:
         self.should_cache = should_cache
         self.file_repo = file_repo
         self.os_service = os_service
+
+        self.upload_queue_path = os.path.join(self.CONTEXT_FILES_ROOT, "upload_queue")
+        self.uploaded_path = os.path.join(self.CONTEXT_FILES_ROOT, "uploaded")
+        self.temp_path = os.path.join(self.CONTEXT_FILES_ROOT, "temp")
+        self.downloaded_path = os.path.join(self.CONTEXT_FILES_ROOT, "downloaded")
+        self.session = session
+        self.disable_commits = disable_commits
+        self.uploaded_to_stdout = uploaded_to_stdout
+
+        # Remove all files before starting
+        if self.os_service.exists(self.CONTEXT_FILES_ROOT):
+            self.os_service.rmdir(self.CONTEXT_FILES_ROOT)
+        self.os_service.makedirs(self.upload_queue_path)
+        self.os_service.makedirs(self.uploaded_path)
+        self.os_service.makedirs(self.temp_path)
+        self.os_service.makedirs(self.downloaded_path)
 
     def parse_xml(self, f):
         """
@@ -54,60 +73,58 @@ class FileService:
         that the LIMS will not upload them by accident
         """
 
-        # TODO: Mockable, file system repo
-
         # Ensure that the user is only sending in a "name" (alphanumerical or spaces)
         # File paths are not allowed
         if not re.match(r"[\w ]+", file_name):
             raise ValueError(
                 "File name can only contain alphanumeric characters, underscores and spaces")
-        local_file_name = ".".join([file_name.replace(" ", "_"), extension])
-        local_path = os.path.abspath(local_file_name)
+
+        artifact = self._artifact_by_name(file_name)
+        local_file_name = "{}_{}.{}".format(artifact.id, file_name.replace(" ", "_"), extension)
+        directory = os.path.join(self.downloaded_path, local_file_name)
+        downloaded_path = os.path.abspath(directory)
         cache_directory = os.path.abspath(".cache")
         cache_path = os.path.join(cache_directory, local_file_name)
-        artifact = None
 
         if self.should_cache and os.path.exists(cache_path):
             self.logger.info("Fetching cached artifact from '{}'".format(cache_path))
             # TODO: Mockable, file system repo
             shutil.copy(cache_path, ".")
         else:
-            if not os.path.exists(local_path):
-                artifact = self._artifact_by_name(file_name)
+            if not os.path.exists(downloaded_path):
 
                 if len(artifact.files) == 0:
                     # No file has been uploaded yet
                     if modify_attached:
-                        with self.os_service.open_file(local_path, "w+") as fs:
+                        with self.os_service.open_file(downloaded_path, "w+") as fs:
                             pass
                 else:
                     file = artifact.api_resource.files[0]  # TODO: Hide this logic
                     self.logger.info("Downloading file {} (artifact={} '{}')"
                                      .format(file.id, artifact.id, artifact.name))
-                    self.file_repo.copy_remote_file(file.id, local_path)
-                    self.logger.info("Download completed, path='{}'".format(os.path.relpath(local_path)))
+                    self.file_repo.copy_remote_file(file.id, downloaded_path)
+                    self.logger.info("Download completed, path='{}'".format(os.path.relpath(downloaded_path)))
 
                     if self.should_cache:
                         if not os.path.exists(cache_directory):
                             os.mkdir(cache_directory)
                         self.logger.info("Copying artifact to cache directory, {}=>{}".format(
-                            local_path, cache_directory))
-                        shutil.copy(local_path, cache_directory)
-
-        # Add to this to the cleanup list
-        if local_path not in self._local_shared_files:
-            self._local_shared_files.append(local_path)
+                            downloaded_path, cache_directory))
+                        shutil.copy(downloaded_path, cache_directory)
 
         if modify_attached:
-            if artifact is None:
-                artifact = self._artifact_by_name(file_name)
-            # After this, the caller will be able to modify the file with the prefix that ensures
-            # that this will be uploaded afterwards. We don't want that in the case of files that are
-            # not to be modified, since then they would be automatically uploaded afterwards.
-            attached_name = self.os_service.attach_file_for_epp(local_file_name, artifact)
-            local_path = attached_name
+            # Move the file to the upload directory and refer to it by that path afterwards. This way the local shared
+            # file can be modified by the caller.
+            fname = os.path.basename(downloaded_path)
+            upload_queue_path = os.path.join(self.upload_queue_path, fname)
+            self.os_service.copy_file(downloaded_path, upload_queue_path)
+            local_path = upload_queue_path
+        else:
+            local_path = downloaded_path
 
-        return self.file_repo.open_local_file(local_path, mode)
+        f = self.file_repo.open_local_file(local_path, mode)
+        self._local_shared_files.append(f)
+        return f
 
     def _artifact_by_name(self, file_name):
         shared_files = self.artifact_service.shared_files()
@@ -120,26 +137,20 @@ class FileService:
         artifact = by_name[0]
         return artifact
 
-    def cleanup(self):
-        for path in self._local_shared_files:
-            if os.path.exists(path):
-                self.logger.info("Local shared file '{}' will be removed to ensure "
-                                 "that it won't be uploaded again".format(os.path.relpath(path)))
-                # TODO: Handle exception
-                os.remove(path)
+    def remove_files(self, file_handle):
+        """Removes all files for the particular file handle.
 
-
-class UploadFileService(object):
-    """A service for handling uploads to the server"""
-
-    def __init__(self, os_service, artifact_service, logger=None, uploaded_to_stdout=False,
-                 disable_commits=False, upload_dir="."):
-        self.os_service = os_service
-        self.uploaded_to_stdout = uploaded_to_stdout
-        self.disable_commits = disable_commits
-        self.upload_dir = upload_dir
-        self.logger = logger or logging.getLogger(__name__)
-        self.artifact_service = artifact_service
+        Note: The files are not actually removed from the server, only the link to the step.
+        """
+        artifacts = sorted([shared_file for shared_file in self.artifact_service.shared_files()
+                            if shared_file.name == file_handle], key=lambda f: f.id)
+        for artifact in artifacts:
+            for f in artifact.files:
+                # TODO: Add to another service
+                r = requests.delete(f.uri, auth=(self.session.api.username, self.session.api.password))
+                if r.status_code != 204:
+                    raise RemoveFileException("Can't remove file with id {}. Status code was {}".format(
+                        f.id, r.status_code))
 
     def upload_files(self, file_handle, files, stdout_max_lines=50):
         """
@@ -150,7 +161,7 @@ class UploadFileService(object):
                 It might lead to inconsistency and there should at least be a warning
 
         :param file_handle: The name that this should be attached to in Clarity, e.g. "Step Log"
-        :param files: A list of tuples, (file_name, file-like-object)
+        :param files: A list of tuples, (file_name, str)
         """
         artifacts = sorted([shared_file for shared_file in self.artifact_service.shared_files()
                             if shared_file.name == file_handle], key=lambda f: f.id)
@@ -160,9 +171,9 @@ class UploadFileService(object):
 
         for artifact, file_and_name in zip(artifacts, files):
             instance_name, content = file_and_name
-            self._upload_single(artifact, file_handle, instance_name, content, stdout_max_lines=stdout_max_lines)
+            self._upload_single(artifact, file_handle, instance_name, content)
 
-    def upload(self, file_handle, instance_name, content, stdout_max_lines=50):
+    def upload(self, file_handle, instance_name, content):
         """
         :param file_handle: The handle of the file in the Clarity UI
         :param instance_name: The name of this particular file
@@ -170,52 +181,51 @@ class UploadFileService(object):
         """
         artifact = utils.single([shared_file for shared_file in self.artifact_service.shared_files()
                                  if shared_file.name == file_handle])
-        self._upload_single(artifact, file_handle, instance_name, content, stdout_max_lines)
+        self._upload_single(artifact, file_handle, instance_name, content)
 
-    def _upload_single(self, artifact, file_handle, instance_name, content,
-                       stdout_max_lines=50):
+    def _upload_single(self, artifact, file_handle, instance_name, content):
+        """Queues the file for update. Call commit to send to the server."""
         local_path = self.save_locally(content, instance_name)
         self.logger.info("Uploading local file '{}' to the LIMS placeholder at {}".format(
             local_path, file_handle))
 
-        if self.disable_commits:
-            # When not connected to an actual server, we copy the file to
-            # another directory for integration tests
-            upload_path = os.path.join(self.upload_dir, "uploaded")
-            self.logger.info(
-                "disable_commits is on, copying the file to {}".format(upload_path))
-            if not self.os_service.exists(upload_path):
-                self.os_service.mkdir(upload_path)
-            fake_name = "{}_{}".format(
-                artifact.id, os.path.basename(instance_name))
-            new_file_path = os.path.join(upload_path, fake_name)
-            self.os_service.copy_file(local_path, new_file_path)
-        else:
-            self.logger.info("Uploading to the LIMS server")
-            self.os_service.attach_file_for_epp(local_path, artifact)
+        self.logger.info("Queuing file '{}' for upload to the server".format(local_path))
+        file_name = os.path.basename(local_path)
+        if not file_name.startswith(artifact.id):
+            file_name = "{}_{}".format(artifact.id, file_name)
+        upload_path = os.path.join(self.upload_queue_path, file_name)
+        self.os_service.copy_file(local_path, upload_path)
 
-        if self.uploaded_to_stdout:
-            print("--- {} => {} ({})".format(local_path, artifact.name, artifact.id))
-            extra = 0
-            with self.os_service.open_file(local_path, 'r') as f:
-                for ix, line in enumerate(f):
-                    if ix < stdout_max_lines:
-                        sys.stdout.write(line)
-                    else:
-                        extra += 1
-            if extra > 0:
-                sys.stdout.write("<{} more lines>\n".format(extra))
-            print("---")
+    def close_local_shared_files(self):
+        for f in self._local_shared_files:
+            f.close()
+
+    def commit(self, disable_commits):
+        """Copies files in the upload queue to the server"""
+        self.close_local_shared_files()
+
+        for file_name in os.listdir(self.upload_queue_path):
+            artifact_id, _ = self._split_file_name(file_name)
+            if disable_commits:
+                print("Uploading (disabled) file: {}".format(os.path.abspath(file_name)))
+            else:
+                self.logger.info("Uploading file {}".format(file_name))
+                artifact = utils.single([shared_file for shared_file in self.artifact_service.shared_files()
+                                         if shared_file.id == artifact_id])
+
+                self.session.api.upload_new_file(artifact.api_resource, os.path.join(self.upload_queue_path, file_name))
+
+    def _split_file_name(self, name):
+        m = re.match(self.SERVER_FILE_NAME_PATTERN, name)
+        if not m:
+            raise Exception("The file name {} is not of the expected format <artifact id>_<name>".format(name))
+        return m.groups()
 
     def save_locally(self, content, filename):
         """
         Saves a file locally before uploading it to the server. Content should be a string.
         """
-        if not self.os_service.exists(self.upload_dir):
-            self.logger.debug(
-                "Creating directories {}".format(self.upload_dir))
-            self.os_service.makedirs(self.upload_dir)
-        full_path = os.path.join(self.upload_dir, filename)
+        full_path = os.path.join(self.temp_path, filename)
         # The file needs to be opened in binary form to ensure that Windows
         # line endings are used if specified
         with self.os_service.open_file(full_path, 'wb') as f:
@@ -341,3 +351,7 @@ class OSService(object):
         location = os.path.join(os.getcwd(), new_name)
         shutil.copy(local_file, location)
         return location
+
+
+class RemoveFileException(Exception):
+    pass

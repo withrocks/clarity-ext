@@ -185,7 +185,6 @@ def mock_context(artifact_service=None, step_repo=None):
                             clarity_service=MagicMock(),
                             dilution_service=MagicMock(),
                             process_service=MagicMock(),
-                            upload_file_service=MagicMock(),
                             validation_service=MagicMock())
 
 
