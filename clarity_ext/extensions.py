@@ -255,20 +255,20 @@ class ExtensionService(object):
                                           disable_commits=disable_context_commit,
                                           uploaded_to_stdout=artifacts_to_stdout)
         instance = extension(context)
-        if issubclass(extension, DriverFileExtension):
-            context.upload_file_service.upload(instance.shared_file(), instance.filename(), instance.to_string())
-        elif issubclass(extension, GeneralExtension):
-            try:
+        try:
+            if issubclass(extension, DriverFileExtension):
+                context.file_service.upload(instance.shared_file(), instance.filename(), instance.to_string())
+            elif issubclass(extension, GeneralExtension):
                 instance.execute()
-                context.commit()
-            except UsageError as e:
-                # UsageErrors are deferred and handled by the notify method
-                # To support the case (legacy) if someone raises an error without adding it to the defer list,
-                # we add it to the instance too:
-                if len(instance.errors) == 0:
-                    instance.errors[e] = list()
-        else:
-            raise NotImplementedError("Unknown extension type")
+            else:
+                raise NotImplementedError("Unknown extension type")
+            context.commit()
+        except UsageError as e:
+            # UsageErrors are deferred and handled by the notify method
+            # To support the case (legacy) if someone raises an error without adding it to the defer list,
+            # we add it to the instance too:
+            if len(instance.errors) == 0:
+                instance.errors[e] = list()
         os.chdir(old_dir)
 
         self.notify(instance.errors, instance.warnings, context.validation_service.error_count,
