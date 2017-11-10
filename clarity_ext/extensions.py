@@ -12,9 +12,8 @@ import difflib
 from clarity_ext.utils import lazyprop
 from clarity_ext import ClaritySession
 from clarity_ext.repository import StepRepository
-from clarity_ext.service import ArtifactService
+from clarity_ext.service import ArtifactService, FileService
 from clarity_ext.utility.integration_test_service import IntegrationTest
-from clarity_ext.service.validation_service import UsageError
 from jinja2 import Template
 import time
 import random
@@ -257,7 +256,8 @@ class ExtensionService(object):
         instance = extension(context)
         try:
             if issubclass(extension, DriverFileExtension):
-                context.file_service.upload(instance.shared_file(), instance.filename(), instance.to_string())
+                context.file_service.upload(instance.shared_file(), instance.filename(), instance.to_string(),
+                                            instance.file_prefix())
             elif issubclass(extension, GeneralExtension):
                 instance.execute()
             else:
@@ -614,6 +614,9 @@ class TemplateExtension(DriverFileExtension):
             template = Template(text, newline_sequence=newline_sequence)
             rendered = template.render(ext=self)
             return rendered
+
+    def file_prefix(self):
+        return FileService.FILE_PREFIX_ARTIFACT_ID
 
 
 class ExtensionTest(object):

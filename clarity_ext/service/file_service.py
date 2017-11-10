@@ -17,6 +17,10 @@ class FileService:
     CONTEXT_FILES_ROOT = "./context_files"
     SERVER_FILE_NAME_PATTERN = r"(\d+-\d+)_(.+)"
 
+    FILE_PREFIX_NONE = 0
+    FILE_PREFIX_ARTIFACT_ID = 1
+    FILE_PREFIX_RUNNING_NUMBER = 2
+
     def __init__(self, artifact_service, file_repo, should_cache, os_service, uploaded_to_stdout=False,
                  disable_commits=False, session=None):
         """
@@ -173,27 +177,38 @@ class FileService:
             instance_name, content = file_and_name
             self._upload_single(artifact, file_handle, instance_name, content)
 
-    def upload(self, file_handle, instance_name, content):
+    def upload(self, file_handle, instance_name, content, file_prefix):
         """
         :param file_handle: The handle of the file in the Clarity UI
         :param instance_name: The name of this particular file
         :param content: The content of the file. Should be a string.
+        :param file_prefix: Any of the FILE_PREFIX_* values
         """
-        artifact = utils.single([shared_file for shared_file in self.artifact_service.shared_files()
-                                 if shared_file.name == file_handle])
-        self._upload_single(artifact, file_handle, instance_name, content)
+        artifacts = sorted([shared_file for shared_file in self.artifact_service.shared_files()
+                     if shared_file.name == file_handle], key=lambda x: x.id)
+        self._upload_single(artifacts[0], file_handle, instance_name, content, file_prefix)
 
-    def _upload_single(self, artifact, file_handle, instance_name, content):
+    def _upload_single(self, artifact, file_handle, instance_name, content, file_prefix):
         """Queues the file for update. Call commit to send to the server."""
+
         local_path = self.save_locally(content, instance_name)
         self.logger.info("Uploading local file '{}' to the LIMS placeholder at {}".format(
             local_path, file_handle))
 
         self.logger.info("Queuing file '{}' for upload to the server".format(local_path))
         file_name = os.path.basename(local_path)
-        if not file_name.startswith(artifact.id):
+        if file_prefix == FileService.FILE_PREFIX_ARTIFACT_ID and not file_name.startswith(artifact.id):
             file_name = "{}_{}".format(artifact.id, file_name)
-        upload_path = os.path.join(self.upload_queue_path, file_name)
+        elif file_prefix == FileService.FILE_PREFIX_RUNNING_NUMBER:
+            # Prefix with the index of the shared file
+            artifact_ids = sorted([tuple(map(int, shared_file.id.split("-")) + [shared_file.id])
+                                   for shared_file in self.artifact_service.shared_files()])
+            running_numbers = {artifact_id[2]: ix + 1 for ix, artifact_id in enumerate(artifact_ids)}
+            file_name = "{}_{}".format(running_numbers[artifact.id], file_name)
+
+        upload_dir = os.path.join(self.upload_queue_path, artifact.id)
+        self.os_service.makedirs(upload_dir)
+        upload_path = os.path.join(upload_dir, file_name)
         self.os_service.copy_file(local_path, upload_path)
 
     def close_local_shared_files(self):
@@ -204,16 +219,16 @@ class FileService:
         """Copies files in the upload queue to the server"""
         self.close_local_shared_files()
 
-        for file_name in os.listdir(self.upload_queue_path):
-            artifact_id, _ = self._split_file_name(file_name)
-            if disable_commits:
-                print("Uploading (disabled) file: {}".format(os.path.abspath(file_name)))
-            else:
-                self.logger.info("Uploading file {}".format(file_name))
-                artifact = utils.single([shared_file for shared_file in self.artifact_service.shared_files()
-                                         if shared_file.id == artifact_id])
-
-                self.session.api.upload_new_file(artifact.api_resource, os.path.join(self.upload_queue_path, file_name))
+        for artifact_id in os.listdir(self.upload_queue_path):
+            for file_name in os.listdir(os.path.join(self.upload_queue_path, artifact_id)):
+                if disable_commits:
+                    print("Uploading (disabled) file: {}".format(os.path.abspath(file_name)))
+                else:
+                    artifact = utils.single([shared_file for shared_file in self.artifact_service.shared_files()
+                                             if shared_file.id == artifact_id])
+                    local_file = os.path.join(self.upload_queue_path, artifact_id, file_name)
+                    self.logger.info("Uploading file {}".format(local_file))
+                    self.session.api.upload_new_file(artifact.api_resource, local_file)
 
     def _split_file_name(self, name):
         m = re.match(self.SERVER_FILE_NAME_PATTERN, name)

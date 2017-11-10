@@ -16,10 +16,10 @@ class TestUploadFileService(unittest.TestCase):
                                    uploaded_to_stdout=False,
                                    disable_commits=False,
                                    session=session)
-        file_service.upload("Handle Name 2", "file2.txt", "content")
+        file_service.upload("Handle Name 2", "file2.txt", "content", FileService.FILE_PREFIX_ARTIFACT_ID)
         # Assert that the file was copied to the upload path
         os_service.copy_file.assert_called_with(
-            "./context_files/temp/file2.txt", "./context_files/upload_queue/art2_file2.txt")
+            "./context_files/temp/file2.txt", "./context_files/upload_queue/art2/art2_file2.txt")
 
 
 def fake_artifact(artifact_id, name):
