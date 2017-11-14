@@ -526,13 +526,9 @@ class GeneralExtension(object):
     def copy_from_input_to_output(self, exceptions=[]):
         self.copy_all_udfs(lambda pair: (pair.input_artifact, [pair.output_artifact]), exceptions)
 
-    def copy_from_output_to_submitted(self, exceptions=[]):
-        """Copies all UDFs from the output analyte to each submitted sample. If the submitted samples are a pool,
-        the pool is also updated."""
-        self.copy_all_udfs(
-            lambda pair: (pair.output_artifact,
-                          pair.output_artifact.samples + ([pair.input_artifact]
-                                                          if pair.input_artifact.is_pool else [])), exceptions)
+    def copy_from_output_to_submitted_sample(self, exceptions=[]):
+        """Copies all UDFs from the output analyte to each submitted sample."""
+        self.copy_all_udfs(lambda pair: (pair.output_artifact, pair.output_artifact.samples), exceptions)
 
     def copy_all_udfs(self, source_target_fn, exceptions):
         for pair in self.context.artifact_service.all_aliquot_pairs():
