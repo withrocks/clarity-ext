@@ -14,13 +14,13 @@ from clarity_ext import ClaritySession
 from clarity_ext.repository import StepRepository
 from clarity_ext.service import ArtifactService
 from clarity_ext.utility.integration_test_service import IntegrationTest
-from clarity_ext.service.validation_service import UsageError
 from jinja2 import Template
 import time
 import random
 import logging.handlers
 import lxml.objectify
 from clarity_ext.service.validation_service import UsageError
+import re
 
 
 # Defines all classes that are expected to be extended. These are
@@ -65,12 +65,13 @@ class ExtensionService(object):
                 rotating_log_dir = os.path.abspath(".")
             self.rotating_file_path = os.path.join(rotating_log_dir, rotating_log_name)
             rotating_handler = logging.handlers.RotatingFileHandler(
-                self.rotating_file_path, maxBytes=10 * (2**20), backupCount=5)
+                self.rotating_file_path, maxBytes=10 * (2 ** 20), backupCount=5)
             rotating_handler.setFormatter(formatter)
             root_logger.addHandler(rotating_handler)
 
             if warn_dir_missing:
-                logging.warn("The rotating log directory {} doesn't exist. Logging to ./ instead".format(rotating_log_dir))
+                logging.warn(
+                    "The rotating log directory {} doesn't exist. Logging to ./ instead".format(rotating_log_dir))
 
     def _get_run_path(self, pid, module, mode, config):
         """Fetches the run path based on different modes of execution"""
@@ -193,7 +194,7 @@ class ExtensionService(object):
 
         frozen_root_path = config.get("frozen_root_path", ".")
         self.msg("Freezing data (requests, responses and result files/hashes) to {}"
-              .format(frozen_root_path))
+                 .format(frozen_root_path))
 
         for run_arguments in run_arguments_list:
             pid = run_arguments["pid"]
@@ -341,6 +342,7 @@ class RunDirectoryInfo(object):
 
     Used to compare two different runs, e.g. a current test and a frozen test
     """
+
     def __init__(self, path):
         self.path = path
         self.uploaded_path = os.path.join(self.path, "uploaded")
@@ -512,6 +514,43 @@ class GeneralExtension(object):
     def float(self, val):
         self.parse(float, val)
 
+    def copy_udf(self, key, source, target):
+        """Moves a udf value from the output_artifact to the input_artifact"""
+        value = source.udf_map[key].value
+        setattr(target, key, value)
+        self.context.update(target)
+
+    def copy_from_output_to_input(self, exceptions=[]):
+        self.copy_all_udfs(lambda pair: (pair.output_artifact, [pair.input_artifact]), exceptions)
+
+    def copy_from_input_to_output(self, exceptions=[]):
+        self.copy_all_udfs(lambda pair: (pair.input_artifact, [pair.output_artifact]), exceptions)
+
+    def copy_from_output_to_submitted(self, exceptions=[]):
+        """Copies all UDFs from the output analyte to each submitted sample. If the submitted samples are a pool,
+        the pool is also updated."""
+        self.copy_all_udfs(
+            lambda pair: (pair.output_artifact,
+                          pair.output_artifact.samples + ([pair.input_artifact]
+                                                          if pair.input_artifact.is_pool else [])), exceptions)
+
+    def copy_all_udfs(self, source_target_fn, exceptions):
+        for pair in self.context.artifact_service.all_aliquot_pairs():
+            source, targets = source_target_fn(pair)
+            self.logger.info("Updating UDF values. source: {}".format(source))
+            for target in targets:
+                self.logger.info(" - target: {}".format(target))
+                common_udfs = target.udf_map.py_names.intersection(source.udf_map.py_names)
+                for udf in common_udfs:
+                    if any(re.match(pattern, udf) for pattern in exceptions):
+                        continue
+                    value = source.udf_map[udf].value
+                    self.logger.info("  - {}: {}".format(udf, value))
+                    if value is None:
+                        continue
+                    target.udf_map[udf] = value
+                    self.context.update(target)
+
 
 class DriverFileExtension(GeneralExtension):
     __metaclass__ = ABCMeta
@@ -631,6 +670,7 @@ class NoFrozenDataFoundException(Exception):
 
 class ExtensionTestLogFilter(logging.Filter):
     """A filter applied to log handlers used during testing. Filters to only the namespaces required."""
+
     def filter(self, record):
         if not record.name.startswith("clarity_"):
             return False
