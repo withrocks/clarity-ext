@@ -1,3 +1,3 @@
 [submodule "genologics"]
 	path = genologics
-	url = git@github.com:molmed/genologics.git
+	url = https://github.com/molmed/genologics.git
