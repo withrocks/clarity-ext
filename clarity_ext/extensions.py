@@ -97,7 +97,7 @@ class ExtensionService(object):
         for run_arguments in run_arguments_list:
             pid = run_arguments["pid"]
             path = self._get_run_path(pid, module, self.RUN_MODE_EXEC, config)
-            self._run(path, pid, module, False, True)
+            self._run(path, pid, module, False, False)
 
     def run_test(self, config, run_arguments_list, module, artifacts_to_stdout, use_cache, validate_against_frozen):
         self.msg("To execute from Clarity:")
