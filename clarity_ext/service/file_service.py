@@ -47,7 +47,7 @@ class FileService:
 
         # Remove all files before starting
         if self.os_service.exists(self.CONTEXT_FILES_ROOT):
-            self.os_service.rmdir(self.CONTEXT_FILES_ROOT)
+            self.os_service.rmtree(self.CONTEXT_FILES_ROOT)
         self.os_service.makedirs(self.upload_queue_path)
         self.os_service.makedirs(self.uploaded_path)
         self.os_service.makedirs(self.temp_path)
@@ -352,6 +352,9 @@ class OSService(object):
 
     def rmdir(self, path):
         os.rmdir(path)
+
+    def rmtree(self, path):
+        shutil.rmtree(path)
 
     def mkdir(self, path):
         os.mkdir(path)
