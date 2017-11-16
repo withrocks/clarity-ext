@@ -119,16 +119,33 @@ class FileService:
         if modify_attached:
             # Move the file to the upload directory and refer to it by that path afterwards. This way the local shared
             # file can be modified by the caller.
-            fname = os.path.basename(downloaded_path)
-            upload_queue_path = os.path.join(self.upload_queue_path, fname)
-            self.os_service.copy_file(downloaded_path, upload_queue_path)
-            local_path = upload_queue_path
+            local_path = self._queue(downloaded_path, artifact, FileService.FILE_PREFIX_NONE)
         else:
             local_path = downloaded_path
 
         f = self.file_repo.open_local_file(local_path, mode)
         self._local_shared_files.append(f)
         return f
+
+    def _queue(self, downloaded_path, artifact, file_prefix):
+        file_name = os.path.basename(downloaded_path)
+        if file_prefix == FileService.FILE_PREFIX_ARTIFACT_ID and not file_name.startswith(artifact.id):
+            file_name = "{}_{}".format(artifact.id, file_name)
+        elif file_prefix == FileService.FILE_PREFIX_NONE:
+            if file_name.startswith(artifact.id):
+                file_name = file_name.split("_", 1)[1]
+        elif file_prefix == FileService.FILE_PREFIX_RUNNING_NUMBER:
+            # Prefix with the index of the shared file
+            artifact_ids = sorted([tuple(map(int, shared_file.id.split("-")) + [shared_file.id])
+                                   for shared_file in self.artifact_service.shared_files()])
+            running_numbers = {artifact_id[2]: ix + 1 for ix, artifact_id in enumerate(artifact_ids)}
+            file_name = "{}_{}".format(running_numbers[artifact.id], file_name)
+
+        upload_dir = os.path.join(self.upload_queue_path, artifact.id)
+        self.os_service.makedirs(upload_dir)
+        upload_path = os.path.join(upload_dir, file_name)
+        self.os_service.copy_file(downloaded_path, upload_path)
+        return upload_path
 
     def _artifact_by_name(self, file_name):
         shared_files = self.artifact_service.shared_files()
@@ -175,7 +192,7 @@ class FileService:
 
         for artifact, file_and_name in zip(artifacts, files):
             instance_name, content = file_and_name
-            self._upload_single(artifact, file_handle, instance_name, content)
+            self._upload_single(artifact, file_handle, instance_name, content, FileService.FILE_PREFIX_ARTIFACT_ID)
 
     def upload(self, file_handle, instance_name, content, file_prefix):
         """
@@ -190,26 +207,9 @@ class FileService:
 
     def _upload_single(self, artifact, file_handle, instance_name, content, file_prefix):
         """Queues the file for update. Call commit to send to the server."""
-
         local_path = self.save_locally(content, instance_name)
-        self.logger.info("Uploading local file '{}' to the LIMS placeholder at {}".format(
-            local_path, file_handle))
-
-        self.logger.info("Queuing file '{}' for upload to the server".format(local_path))
-        file_name = os.path.basename(local_path)
-        if file_prefix == FileService.FILE_PREFIX_ARTIFACT_ID and not file_name.startswith(artifact.id):
-            file_name = "{}_{}".format(artifact.id, file_name)
-        elif file_prefix == FileService.FILE_PREFIX_RUNNING_NUMBER:
-            # Prefix with the index of the shared file
-            artifact_ids = sorted([tuple(map(int, shared_file.id.split("-")) + [shared_file.id])
-                                   for shared_file in self.artifact_service.shared_files()])
-            running_numbers = {artifact_id[2]: ix + 1 for ix, artifact_id in enumerate(artifact_ids)}
-            file_name = "{}_{}".format(running_numbers[artifact.id], file_name)
-
-        upload_dir = os.path.join(self.upload_queue_path, artifact.id)
-        self.os_service.makedirs(upload_dir)
-        upload_path = os.path.join(upload_dir, file_name)
-        self.os_service.copy_file(local_path, upload_path)
+        self.logger.info("Queuing file '{}' for upload to the server, file handle {}".format(local_path, file_handle))
+        self._queue(local_path, artifact, file_prefix)
 
     def close_local_shared_files(self):
         for f in self._local_shared_files:
