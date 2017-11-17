@@ -41,10 +41,14 @@ class StepLoggerService:
         msg = "{} - {}".format(time_str, msg)
         if self.step_log:
             # TODO: Get formatting from the core logging framework
-            if level:
-                self.step_log.write("{} - {}".format(logging.getLevelName(level), msg + self.NEW_LINE))
-            else:
-                self.step_log.write("{}".format(msg + self.NEW_LINE))
+            try:
+                if level:
+                    self.step_log.write("{} - {}".format(logging.getLevelName(level), msg + self.NEW_LINE))
+                else:
+                    self.step_log.write("{}".format(msg + self.NEW_LINE))
+            except ValueError:
+                # Temporary error handling for when we try to write to the step log and it has already been closed
+                pass
 
         # Forward to the core logger:
         if level:
