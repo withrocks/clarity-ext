@@ -574,6 +574,9 @@ class DriverFileExtension(GeneralExtension):
         else:
             return self.newline().join(content)
 
+    def file_prefix(self):
+        return FileService.FILE_PREFIX_ARTIFACT_ID
+
 
 class SampleSheetExtension(DriverFileExtension):
     """
@@ -650,9 +653,6 @@ class TemplateExtension(DriverFileExtension):
             template = Template(text, newline_sequence=newline_sequence)
             rendered = template.render(ext=self)
             return rendered
-
-    def file_prefix(self):
-        return FileService.FILE_PREFIX_ARTIFACT_ID
 
 
 class ExtensionTest(object):
