@@ -74,7 +74,7 @@ def single(seq):
         seq = list(seq)
     if len(seq) != 1:
         raise UnexpectedLengthError(
-            "Unexpected number of items in the list ({})".format(len(seq)))
+            "Unexpected number of items in the list ({})".format(seq))
     return seq[0]
 
 

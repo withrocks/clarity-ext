@@ -327,6 +327,7 @@ class SingleTransfer(object):
 
     def __init__(self, source_conc, source_vol, target_conc, target_vol, dilute_factor,
                  source_location, target_location):
+
         self.source_conc = source_conc
         self.source_vol = source_vol
         self.target_conc = target_conc
@@ -589,6 +590,13 @@ class TransferBatch(object):
         # Set to True if the transfer batch was split
         self.split = False
 
+    def append(self, transfer):
+        """
+        NOTE: This method does currently not update validation results
+        """
+        self._transfers.append(transfer)
+        transfer.transfer_batch = self
+
     def _set_transfers(self, transfers):
         self._transfers_by_output_dict = None
         self._transfers = transfers
@@ -658,6 +666,9 @@ class TransferBatch(object):
         return sorted(set(source for source, target in self.container_mappings),
                       key=lambda source: source.index)
 
+    def output_pools(self):
+        pass
+
     def report(self):
         """Creates a detailed report of what's included in the transfer, for debug and learning purposes."""
         report = list()
@@ -670,8 +681,75 @@ class TransferBatch(object):
             report.append("{}".format(transfer))
         return "\n".join(report)
 
+    def pooled_transfers(self):
+        """Returns a list of all pools. Makes sense if this batch represents pooled samples"""
+        unique_output = set()
+        for transfer in self.transfers:
+            unique_output.add(transfer.target_location.artifact.id)
+
+        for artifact_id in unique_output:
+            yield PooledTransfer(self.transfers_by_output[artifact_id])
+
     def __iter__(self):
         return iter(self.transfers)
+
+
+class TransferEndpoint(object):
+    """Represents one endpoint in a transfer. Can be from multiple (source) artifacts (pooling) or
+    from one."""
+
+    def __init__(self, conc, vol, location):
+        """Location is either a Well or a LocationGroup"""
+        self.conc = conc
+        self.vol = vol
+        self.location = location
+
+
+class LocationGroup(object):
+    """Represents several artifacts that have been joined together to build a pool"""
+    def __init__(self, locations):
+        self.locations = locations
+
+    def get_single_sample_udf(self, udf):
+        """Fetches a single value from the UDFs on the sample. The UDF can be not defined in some samples
+        but if it's defined in more than one, it needs to be the same in all"""
+        values = set()
+        for location in self.locations:
+            for sample in location.artifact.samples:
+                if udf in sample.udf_map.raw_map:
+                    values.add(sample.udf_map[udf].value)
+        if len(values) == 0:
+            return None
+        return utils.single(list(values))
+
+
+class PooledTransfer(object):
+    """Represents a transfer where we're pooling."""
+
+    def __init__(self, pooled_transfers):
+        # TODO: This is getting rather unclean
+        source_location_group = LocationGroup([t.source_location for t in pooled_transfers])
+        target_location = pooled_transfers[0].target_location
+        self.original_transfers = sorted(pooled_transfers,
+                                         key=lambda t: (t.source_location.container.id, t.source_location.get_key()))
+        transfers_without_control = [t for t in self.original_transfers if not t.source_location.artifact.is_control]
+
+        source_conc = utils.single(list({t.source_conc for t in transfers_without_control}))
+        source_vol = utils.single(list({t.source_vol for t in transfers_without_control}))
+        # TODO: Send in the locations
+        self.source = TransferEndpoint(source_conc, source_vol, source_location_group)
+
+        target_conc = utils.single(list({t.target_conc for t in transfers_without_control}))
+        target_vol = utils.single(list({t.target_vol for t in transfers_without_control}))
+        self.target = TransferEndpoint(target_conc, target_vol, target_location)
+
+    def __repr__(self):
+        def location_str(loc):
+            return "{}@{}".format(loc.alpha_num_key, loc.container.id)
+        inputs = ", ".join([location_str(t.source_location) for t in self.transfers])
+        output = utils.single(list({repr(t.target_location) for t in self.transfers}))
+        return "{}({}, {}) => {}({}, {})".format(inputs, self.source_conc, self.source_vol,
+                                                 output, self.target_conc, self.target_vol)
 
 
 class TransferBatchCollection(object):

@@ -27,10 +27,12 @@ class Well(DomainObjectMixin):
     def get_key(self):
         return "{}:{}".format(self.position.row, self.position.col)
 
+    @property
+    def alpha_num_key(self):
+        return "{}{}".format(self.position.row_letter, self.position.col)
+
     def __repr__(self):
-        return "{}{}: [{}]".format(self.position.row_letter,
-                                    self.position.col,
-                                    self.artifact.name if self.artifact is not None else "None")
+        return "{}: [{}]".format(self.alpha_num_key, self.artifact.name if self.artifact is not None else "None")
 
     @property
     def index_down_first(self):
