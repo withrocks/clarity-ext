@@ -104,7 +104,7 @@ class Container(DomainObjectMixin):
     CONTAINER_TYPE_96_WELLS_PLATE = "96 well plate"
 
     def __init__(self, mapping=None, size=None, container_type=None,
-                 container_id=None, name=None, is_source=None, append_order=DOWN_FIRST):
+                 container_id=None, name=None, is_source=None, append_order=DOWN_FIRST, sort_number=0):
         """
         :param mapping: A dictionary-like object containing mapping from well
         position to content. It can be non-complete.
@@ -130,6 +130,8 @@ class Container(DomainObjectMixin):
         self.size = size
         self._append_iterator = None
         self.append_order = append_order
+        self.sort_number = sort_number
+        self.fixed_slot = None
 
     def append(self, artifact):
         """Adds this artifact to the next free position"""
