@@ -126,9 +126,36 @@ class DilutionSession(object):
         self._evaluate_transfer_route_rec(root, transfer_handlers, 0)
         return TransferRoute(root, transfer_handlers)
 
+    # TODO: We have this same method in the batch.
+    def transfers_by_output(self, transfers):
+        def group_key(transfer):
+            return transfer.target_location.artifact.id
+
+        transfers = sorted(transfers, key=group_key)
+        return {k: list(t) for k, t in groupby(transfers, key=group_key)}
+
+    def get_pooled_transfers(self, transfers):
+        """Returns a list of all pools. Makes sense if this batch represents pooled samples"""
+        ret = dict()
+        for key, transfers in self.transfers_by_output(transfers).items():
+            pooled = PooledTransfer(transfers)
+            ret[key] = pooled
+        return ret
+
     def create_batches(self, pairs, robot_settings):
         # Create the original "virtual" transfers. These represent what we would like to happen:
         transfers = self.create_transfers_from_pairs(pairs)
+
+        # For each transfer, add an object that groups all transfers together that should go to the same location.
+        # This makes handling pools easier. Note that even non-pooled transfers will have such an object.
+        # TODO: When row-splitting, the split row should get that same object.
+        # It's assumed that pools should not change in the handlers, i.e. if n analytes were meant to go into 1 well
+        # that will always be the case. The handlers can though break it down further, e.g. doing it in more than
+        # one transaction on the robot.
+        pooled_transfers = self.get_pooled_transfers(transfers)
+        for transfer in transfers:
+            transfer.pool = pooled_transfers[transfer.target_location.artifact.id]
+
         virtual_batch = TransferBatch(transfers, robot_settings)
 
         # Now evaluate the actual transfer route we need to take for each transfer in order
@@ -432,6 +459,55 @@ class SingleTransfer(object):
             tuple(self.update_info))
 
 
+class PooledTransfer(object):
+    """Represents transfers when we're pooling."""
+
+    def __init__(self, pooled_transfers):
+        self.transfers = pooled_transfers
+        transfers_without_control = [t for t in self.transfers if not t.source_location.artifact.is_control]
+        self.len_without_controls = len(transfers_without_control)
+
+        self.source = LocationGroup(t.source_location for t in self.transfers)
+        self.target = self.transfers[0].target_location
+        return
+
+        source_location_group = LocationGroup([t.source_location for t in pooled_transfers])
+        target_location = pooled_transfers[0].target_location
+        # TODO: This is getting rather unclean
+        self.original_transfers = sorted(pooled_transfers,
+                                         key=lambda t: (t.source_location.container.id, t.source_location.get_key()))
+
+        source_concs = list({t.source_conc for t in transfers_without_control})
+        source_vols = list({t.source_vol for t in transfers_without_control})
+        target_concs = list({t.target_conc for t in transfers_without_control})
+        target_vols = list({t.target_vol for t in transfers_without_control})
+        single_vals = list()
+        self.divers_measurements = list()
+        from clarity_ext.utils import UnexpectedLengthError
+        for l in [source_concs, source_vols, target_concs, target_vols]:
+            try:
+                single_vals.append(utils.single(l))
+            except UnexpectedLengthError:
+                single_vals.append(None)
+                self.divers_measurements.append(l)
+
+        self.has_divers_measurements = len(self.divers_measurements) > 0
+
+        source_conc, source_vol, target_conc, target_vol = single_vals
+        self.source = TransferEndpoint(source_conc, source_vol, source_location_group)
+        self.target = TransferEndpoint(target_conc, target_vol, target_location)
+
+    def __len__(self):
+        return len(self.transfers)
+
+    def __repr__(self):
+        def location_str(loc):
+            return "{}@{}".format(loc.alpha_num_key, loc.container.id)
+        inputs = ", ".join([location_str(t.source_location) for t in self.transfers])
+        output = utils.single(list({location_str(t.target_location) for t in self.transfers}))
+        return "{} => {}".format(inputs, output)
+
+
 # Represents source conc/vol, target conc/vol as one unit. TODO: Better name
 DilutionMeasurements = namedtuple('DilutionMeasurements', ['source_conc', 'source_vol', 'target_conc', 'target_vol'])
 UpdateInfo = namedtuple("UpdateInfo", ['target_conc', 'target_vol', 'source_vol_delta'])
@@ -628,14 +704,14 @@ class TransferBatch(object):
         transfers = sorted(self.transfers, key=group_key)
         return {k: list(t) for k, t in groupby(transfers, key=group_key)}
 
-    # TODO: site-specific?
+    # TODO: site-specific
     def _include_in_container_mappings(self, transfer):
         """
         Exclude negative controls which is added in current step.
         Do not exclude negative controls added in previous step.
         """
         a = transfer.source_location.artifact
-        return not a.is_control or a.id.startswith("2-")
+        return not a.is_control or a.id.startswith("2-") or a.name == "phix-spike"
 
     @property
     def container_mappings_for_printout(self):
@@ -643,11 +719,12 @@ class TransferBatch(object):
             return "{} ({})".format(slot.name, slot.container.name)
         sources = self.source_container_slots
         targets = self.target_container_slots
-        gen = izip_longest(map(slot_repr, sources), map(slot_repr, targets), fillvalue="")
+        gen = list(izip_longest(map(slot_repr, sources), map(slot_repr, targets), fillvalue=""))
         return [pair for pair in gen]
 
     @property
     def container_mappings(self):
+        # TODO: These container mappings are very site-specific. Move to clarity-snpseq
         ret = set()
         for transfer in self.transfers:
             if self._include_in_container_mappings(transfer) or len(self.transfers) == 1:
@@ -721,35 +798,6 @@ class LocationGroup(object):
         if len(values) == 0:
             return None
         return utils.single(list(values))
-
-
-class PooledTransfer(object):
-    """Represents a transfer where we're pooling."""
-
-    def __init__(self, pooled_transfers):
-        # TODO: This is getting rather unclean
-        source_location_group = LocationGroup([t.source_location for t in pooled_transfers])
-        target_location = pooled_transfers[0].target_location
-        self.original_transfers = sorted(pooled_transfers,
-                                         key=lambda t: (t.source_location.container.id, t.source_location.get_key()))
-        transfers_without_control = [t for t in self.original_transfers if not t.source_location.artifact.is_control]
-
-        source_conc = utils.single(list({t.source_conc for t in transfers_without_control}))
-        source_vol = utils.single(list({t.source_vol for t in transfers_without_control}))
-        # TODO: Send in the locations
-        self.source = TransferEndpoint(source_conc, source_vol, source_location_group)
-
-        target_conc = utils.single(list({t.target_conc for t in transfers_without_control}))
-        target_vol = utils.single(list({t.target_vol for t in transfers_without_control}))
-        self.target = TransferEndpoint(target_conc, target_vol, target_location)
-
-    def __repr__(self):
-        def location_str(loc):
-            return "{}@{}".format(loc.alpha_num_key, loc.container.id)
-        inputs = ", ".join([location_str(t.source_location) for t in self.transfers])
-        output = utils.single(list({repr(t.target_location) for t in self.transfers}))
-        return "{}({}, {}) => {}({}, {})".format(inputs, self.source_conc, self.source_vol,
-                                                 output, self.target_conc, self.target_vol)
 
 
 class TransferBatchCollection(object):
@@ -832,7 +880,7 @@ class TransferHandlerBase(object):
         ret = self.handle_transfer(transfer_route_node.transfer)
         transfer_route_node.handler_executed = True
         if ret is None:
-            # When nothing is returned, we continue with the same values, but a shallow copy for debuggingb
+            # When nothing is returned, we continue with the same values, but a shallow copy for debugging
             return [TransferRouteNode(copy.copy(transfer_route_node.transfer))]
         else:
             # Otherwise (when splitting) we return a list of new transfer route nodes:

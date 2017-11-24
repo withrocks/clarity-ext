@@ -131,6 +131,7 @@ class Container(DomainObjectMixin):
         self._append_iterator = None
         self.append_order = append_order
         self.sort_number = sort_number
+        self.fixed_slot = None
 
     def append(self, artifact):
         """Adds this artifact to the next free position"""
