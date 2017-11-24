@@ -129,7 +129,7 @@ class DilutionSession(object):
     def create_batches(self, pairs, robot_settings):
         # Create the original "virtual" transfers. These represent what we would like to happen:
         transfers = self.create_transfers_from_pairs(pairs)
-        virtual_batch = TransferBatch(transfers, robot_settings)
+        virtual_batch = VirtualTransferBatch(transfers)
 
         # Now evaluate the actual transfer route we need to take for each transfer in order
         # to create the "virtual batch". These will depend on the actual values, which robot this will run on
@@ -377,6 +377,15 @@ class SingleTransfer(object):
         self.source_slot = None
         self.target_slot = None
 
+        # The original virtual batch this transfer belongs to. Is set by the engine.
+        self.virtual_batch = None
+
+    @property
+    def virtual_transfer(self):
+        if self.virtual_batch is None:
+            raise ValueError("The virtual_batch hasn't been set yet for this transfer")
+        return self.virtual_batch[self]
+
     @property
     def pipette_total_volume(self):
         return self.pipette_buffer_volume + self.pipette_sample_volume
@@ -429,6 +438,54 @@ class SingleTransfer(object):
             self.target_vol,
             "primary" if self.is_primary else "secondary ({})".format(self.split_type_string()),
             tuple(self.update_info))
+
+
+class VirtualTransferBatch(object):
+    """Contains the original "virtual" transfers we want performed. These will translate into
+    a series of actual SingleTransfer objects."""
+
+    def __init__(self, transfers):
+        """Creates a virtual batch and updates each transfer so it has a pointer to the it"""
+        self.virtual_transfers = VirtualTransferBatch.transfers_by_output(transfers)
+        self._transfers = transfers
+
+        for transfer in transfers:
+            transfer.virtual_batch = self
+
+    def __getitem__(self, transfer):
+        """Returns the virtual transfer by the transfer"""
+        return self.virtual_transfers[transfer.target_location.artifact.id]
+
+    @staticmethod
+    def transfers_by_output(transfers):
+        def group():
+            def group_key(transfer):
+                return transfer.target_location.artifact.id
+            s = sorted(transfers, key=group_key)
+            return {k: list(t) for k, t in groupby(s, key=group_key)}
+        return {k: VirtualTransfer(t) for k, t in group().items()}
+
+
+class VirtualTransfer(object):
+    """Represents transfers when we're pooling."""
+
+    def __init__(self, virtual_transfers):
+        self.transfers = virtual_transfers
+        transfers_without_control = [t for t in self.transfers if not t.source_location.artifact.is_control]
+        self.len_without_controls = len(transfers_without_control)
+
+        self.source = LocationGroup([t.source_location for t in self.transfers])
+        self.target = self.transfers[0].target_location
+
+    def __len__(self):
+        return len(self.transfers)
+
+    def __repr__(self):
+        def location_str(loc):
+            return "{}@{}".format(loc.alpha_num_key, loc.container.id)
+        inputs = ", ".join([location_str(t.source_location) for t in self.transfers])
+        output = utils.single(list({location_str(t.target_location) for t in self.transfers}))
+        return "{} => {}".format(inputs, output)
 
 
 # Represents source conc/vol, target conc/vol as one unit. TODO: Better name
@@ -589,6 +646,13 @@ class TransferBatch(object):
         # Set to True if the transfer batch was split
         self.split = False
 
+    def append(self, transfer):
+        """
+        NOTE: This method does currently not update validation results
+        """
+        self._transfers.append(transfer)
+        transfer.transfer_batch = self
+
     def _set_transfers(self, transfers):
         self._transfers_by_output_dict = None
         self._transfers = transfers
@@ -620,14 +684,14 @@ class TransferBatch(object):
         transfers = sorted(self.transfers, key=group_key)
         return {k: list(t) for k, t in groupby(transfers, key=group_key)}
 
-    # TODO: site-specific?
+    # TODO: site-specific
     def _include_in_container_mappings(self, transfer):
         """
         Exclude negative controls which is added in current step.
         Do not exclude negative controls added in previous step.
         """
         a = transfer.source_location.artifact
-        return not a.is_control or a.id.startswith("2-")
+        return not a.is_control or a.id.startswith("2-") or a.name == "phix-spike"
 
     @property
     def container_mappings_for_printout(self):
@@ -635,11 +699,12 @@ class TransferBatch(object):
             return "{} ({})".format(slot.name, slot.container.name)
         sources = self.source_container_slots
         targets = self.target_container_slots
-        gen = izip_longest(map(slot_repr, sources), map(slot_repr, targets), fillvalue="")
+        gen = list(izip_longest(map(slot_repr, sources), map(slot_repr, targets), fillvalue=""))
         return [pair for pair in gen]
 
     @property
     def container_mappings(self):
+        # TODO: These container mappings are very site-specific. Move to clarity-snpseq
         ret = set()
         for transfer in self.transfers:
             if self._include_in_container_mappings(transfer) or len(self.transfers) == 1:
@@ -670,8 +735,35 @@ class TransferBatch(object):
             report.append("{}".format(transfer))
         return "\n".join(report)
 
+    def virtual_transfers(self):
+        """Returns a list of all pools. Makes sense if this batch represents pooled samples"""
+        unique_output = set()
+        for transfer in self.transfers:
+            unique_output.add(transfer.target_location.artifact.id)
+
+        for artifact_id in unique_output:
+            yield VirtualTransfer(self.transfers_by_output[artifact_id])
+
     def __iter__(self):
         return iter(self.transfers)
+
+
+class LocationGroup(object):
+    """Represents several artifacts that have been joined together to build a pool"""
+    def __init__(self, locations):
+        self.locations = locations
+
+    def get_single_sample_udf(self, udf):
+        """Fetches a single value from the UDFs on the sample. The UDF can be not defined in some samples
+        but if it's defined in more than one, it needs to be the same in all"""
+        values = set()
+        for location in self.locations:
+            for sample in location.artifact.samples:
+                if udf in sample.udf_map.raw_map:
+                    values.add(sample.udf_map[udf].value)
+        if len(values) == 0:
+            return None
+        return utils.single(list(values))
 
 
 class TransferBatchCollection(object):
@@ -754,7 +846,7 @@ class TransferHandlerBase(object):
         ret = self.handle_transfer(transfer_route_node.transfer)
         transfer_route_node.handler_executed = True
         if ret is None:
-            # When nothing is returned, we continue with the same values, but a shallow copy for debuggingb
+            # When nothing is returned, we continue with the same values, but a shallow copy for debugging
             return [TransferRouteNode(copy.copy(transfer_route_node.transfer))]
         else:
             # Otherwise (when splitting) we return a list of new transfer route nodes:

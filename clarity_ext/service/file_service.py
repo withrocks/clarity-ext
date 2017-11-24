@@ -218,9 +218,8 @@ class FileService:
     def commit(self, disable_commits):
         """Copies files in the upload queue to the server"""
         self.close_local_shared_files()
-
-        for artifact_id in os.listdir(self.upload_queue_path):
-            for file_name in os.listdir(os.path.join(self.upload_queue_path, artifact_id)):
+        for artifact_id in self.os_service.listdir(self.upload_queue_path):
+            for file_name in self.os_service.listdir(os.path.join(self.upload_queue_path, artifact_id)):
                 if disable_commits:
                     print("Uploading (disabled) file: {}".format(os.path.abspath(file_name)))
                 else:
@@ -361,6 +360,9 @@ class OSService(object):
 
     def copy_file(self, source, dest):
         shutil.copyfile(source, dest)
+
+    def listdir(self, path):
+        return os.listdir(path)
 
     def attach_file_for_epp(self, local_file, artifact):
         # TODO: Remove epp from the name
