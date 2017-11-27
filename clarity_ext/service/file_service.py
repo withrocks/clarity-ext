@@ -158,7 +158,7 @@ class FileService:
         artifact = by_name[0]
         return artifact
 
-    def remove_files(self, file_handle):
+    def remove_files(self, file_handle, disabled):
         """Removes all files for the particular file handle.
 
         Note: The files are not actually removed from the server, only the link to the step.
@@ -167,6 +167,9 @@ class FileService:
                             if shared_file.name == file_handle], key=lambda f: f.id)
         for artifact in artifacts:
             for f in artifact.files:
+                if disabled:
+                    self.logger.info("Removing (disabled) file: {}".format(f.uri))
+                    continue
                 # TODO: Add to another service
                 r = requests.delete(f.uri, auth=(self.session.api.username, self.session.api.password))
                 if r.status_code != 204:
