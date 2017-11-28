@@ -694,17 +694,8 @@ class TransferBatch(object):
         return not a.is_control or a.id.startswith("2-") or a.name == "phix-spike"
 
     @property
-    def container_mappings_for_printout(self):
-        def slot_repr(slot):
-            return "{} ({})".format(slot.name, slot.container.name)
-        sources = self.source_container_slots
-        targets = self.target_container_slots
-        gen = list(izip_longest(map(slot_repr, sources), map(slot_repr, targets), fillvalue=""))
-        return [pair for pair in gen]
-
-    @property
     def container_mappings(self):
-        # TODO: These container mappings are very site-specific. Move to clarity-snpseq
+        """Returns a mapping between all source/target containers in the batch"""
         ret = set()
         for transfer in self.transfers:
             if self._include_in_container_mappings(transfer) or len(self.transfers) == 1:
