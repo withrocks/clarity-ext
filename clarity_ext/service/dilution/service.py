@@ -808,6 +808,7 @@ class ContainerSlot(object):
         self.index = index
         self.name = name
         self.is_source = is_source
+        self.include_in_metadata = False
 
     def __repr__(self):
         return "{} ({}): [{}]".format(self.name, "source" if self.is_source else "target", self.container)
