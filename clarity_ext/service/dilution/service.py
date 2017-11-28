@@ -691,7 +691,7 @@ class TransferBatch(object):
         Do not exclude negative controls added in previous step.
         """
         a = transfer.source_location.artifact
-        return not a.is_control or a.id.startswith("2-") or a.name == "phix-spike"
+        return not a.is_control or a.id.startswith("2-") or a.id == "phix-spike"
 
     @property
     def container_mappings(self):
