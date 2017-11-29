@@ -158,7 +158,7 @@ class FileService:
         artifact = by_name[0]
         return artifact
 
-    def remove_files(self, file_handle):
+    def remove_files(self, file_handle, disabled):
         """Removes all files for the particular file handle.
 
         Note: The files are not actually removed from the server, only the link to the step.
@@ -167,6 +167,9 @@ class FileService:
                             if shared_file.name == file_handle], key=lambda f: f.id)
         for artifact in artifacts:
             for f in artifact.files:
+                if disabled:
+                    self.logger.info("Removing (disabled) file: {}".format(f.uri))
+                    continue
                 # TODO: Add to another service
                 r = requests.delete(f.uri, auth=(self.session.api.username, self.session.api.password))
                 if r.status_code != 204:
@@ -208,7 +211,7 @@ class FileService:
     def _upload_single(self, artifact, file_handle, instance_name, content, file_prefix):
         """Queues the file for update. Call commit to send to the server."""
         local_path = self.save_locally(content, instance_name)
-        self.logger.info("Queuing file '{}' for upload to the server, file handle {}".format(local_path, file_handle))
+        self.logger.info("Queuing file '{}' for upload to the server, file handle '{}'".format(local_path, file_handle))
         self._queue(local_path, artifact, file_prefix)
 
     def close_local_shared_files(self):
@@ -218,11 +221,10 @@ class FileService:
     def commit(self, disable_commits):
         """Copies files in the upload queue to the server"""
         self.close_local_shared_files()
-
-        for artifact_id in os.listdir(self.upload_queue_path):
-            for file_name in os.listdir(os.path.join(self.upload_queue_path, artifact_id)):
+        for artifact_id in self.os_service.listdir(self.upload_queue_path):
+            for file_name in self.os_service.listdir(os.path.join(self.upload_queue_path, artifact_id)):
                 if disable_commits:
-                    print("Uploading (disabled) file: {}".format(os.path.abspath(file_name)))
+                    self.logger.info("Uploading (disabled) file: {}".format(os.path.abspath(file_name)))
                 else:
                     artifact = utils.single([shared_file for shared_file in self.artifact_service.shared_files()
                                              if shared_file.id == artifact_id])
@@ -361,6 +363,9 @@ class OSService(object):
 
     def copy_file(self, source, dest):
         shutil.copyfile(source, dest)
+
+    def listdir(self, path):
+        return os.listdir(path)
 
     def attach_file_for_epp(self, local_file, artifact):
         # TODO: Remove epp from the name

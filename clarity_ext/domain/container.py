@@ -27,10 +27,12 @@ class Well(DomainObjectMixin):
     def get_key(self):
         return "{}:{}".format(self.position.row, self.position.col)
 
+    @property
+    def alpha_num_key(self):
+        return "{}{}".format(self.position.row_letter, self.position.col)
+
     def __repr__(self):
-        return "{}{}: [{}]".format(self.position.row_letter,
-                                    self.position.col,
-                                    self.artifact.name if self.artifact is not None else "None")
+        return "{}: [{}]".format(self.alpha_num_key, self.artifact.name if self.artifact is not None else "None")
 
     @property
     def index_down_first(self):
@@ -102,7 +104,7 @@ class Container(DomainObjectMixin):
     CONTAINER_TYPE_96_WELLS_PLATE = "96 well plate"
 
     def __init__(self, mapping=None, size=None, container_type=None,
-                 container_id=None, name=None, is_source=None, append_order=DOWN_FIRST):
+                 container_id=None, name=None, is_source=None, append_order=DOWN_FIRST, sort_weight=0):
         """
         :param mapping: A dictionary-like object containing mapping from well
         position to content. It can be non-complete.
@@ -128,6 +130,8 @@ class Container(DomainObjectMixin):
         self.size = size
         self._append_iterator = None
         self.append_order = append_order
+        self.sort_weight = sort_weight
+        self.fixed_slot = None
 
     def append(self, artifact):
         """Adds this artifact to the next free position"""
