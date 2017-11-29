@@ -622,11 +622,12 @@ class TransferValidationException(ValidationException):
         self.transfer = transfer
 
     def __repr__(self):
-        return "{}: {} transfer ({}@{} => {}@{}) - {}".format(
+        return "{}: {} Transfer for {} ({}@{} => {}@{}) - {}".format(
             self._repr_type(),
             self.transfer.transfer_batch.name if self.transfer.transfer_batch else "",
-            self.transfer.source_location.position, self.transfer.source_location.container.id,
-            self.transfer.target_location.position, self.transfer.target_location.container.id,
+            self.transfer.source_location.artifact.name,
+            self.transfer.source_location.position, self.transfer.source_location.container.name,
+            self.transfer.target_location.position, self.transfer.target_location.container.name,
             self.msg)
 
 
@@ -869,7 +870,6 @@ class TransferBatchHandlerBase(TransferHandlerBase):
 
     def warning(self, msg, batch):
         batch.validation_results.append(ValidationException(msg, ValidationType.WARNING))
-
 
 class TransferSplitHandlerBase(TransferHandlerBase):
     """Base class for handlers that can split one transfer into more"""
