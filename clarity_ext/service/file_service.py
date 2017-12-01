@@ -36,6 +36,7 @@ class FileService:
         self.should_cache = should_cache
         self.file_repo = file_repo
         self.os_service = os_service
+        self.artifactid_by_filename = dict() # key=filename, value=artifact-id
 
         self.upload_queue_path = os.path.join(self.CONTEXT_FILES_ROOT, "upload_queue")
         self.uploaded_path = os.path.join(self.CONTEXT_FILES_ROOT, "uploaded")
@@ -210,6 +211,7 @@ class FileService:
 
     def _upload_single(self, artifact, file_handle, instance_name, content, file_prefix):
         """Queues the file for update. Call commit to send to the server."""
+        self.artifactid_by_filename[instance_name] = artifact.id
         local_path = self.save_locally(content, instance_name)
         self.logger.info("Queuing file '{}' for upload to the server, file handle '{}'".format(local_path, file_handle))
         self._queue(local_path, artifact, file_prefix)
