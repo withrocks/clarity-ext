@@ -506,7 +506,7 @@ class DilutionSettings:
     }
 
     def __init__(self, scale_up_low_volumes=False, concentration_ref=None, include_blanks=False,
-                 volume_calc_method=None, make_pools=False, fixed_sample_volume=None):
+                 volume_calc_method=None, make_pools=False, fixed_sample_volume=None, fixed_buffer_volume=None):
         """
         :param dilution_waste_volume: Extra volume that should be subtracted from the sample volume
         to account for waste during dilution
@@ -524,6 +524,7 @@ class DilutionSettings:
         self.make_pools = make_pools
         self.include_control = True
         self.fixed_sample_volume = fixed_sample_volume
+        self.fixed_buffer_volume = fixed_buffer_volume
 
         # NOTE: This is part of a quick-fix (used in one particular corner case)
         self.is_pooled = False
