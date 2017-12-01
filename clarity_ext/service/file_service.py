@@ -66,7 +66,7 @@ class FileService:
         with f:
             return Csv(f)
 
-    def local_shared_file(self, file_name, mode='r', extension="", modify_attached=False):
+    def local_shared_file(self, file_handle, mode='r', extension="", modify_attached=False, file_name_contains=None):
         """
         Downloads the local shared file and returns an open file-like object.
 
@@ -79,12 +79,12 @@ class FileService:
 
         # Ensure that the user is only sending in a "name" (alphanumerical or spaces)
         # File paths are not allowed
-        if not re.match(r"[\w ]+", file_name):
+        if not re.match(r"^[\w ]+$", file_handle):
             raise ValueError(
                 "File name can only contain alphanumeric characters, underscores and spaces")
 
-        artifact = self._artifact_by_name(file_name)
-        local_file_name = "{}_{}.{}".format(artifact.id, file_name.replace(" ", "_"), extension)
+        artifact = self._artifact_by_name(file_handle, file_name_contains)
+        local_file_name = "{}_{}.{}".format(artifact.id, file_handle.replace(" ", "_"), extension)
         directory = os.path.join(self.downloaded_path, local_file_name)
         downloaded_path = os.path.abspath(directory)
         cache_directory = os.path.abspath(".cache")
@@ -147,15 +147,20 @@ class FileService:
         self.os_service.copy_file(downloaded_path, upload_path)
         return upload_path
 
-    def _artifact_by_name(self, file_name):
+    def _artifact_by_name(self, file_handle, file_name_contains=None):
         shared_files = self.artifact_service.shared_files()
-        by_name = [shared_file for shared_file in shared_files
-                   if shared_file.name == file_name]
-        if len(by_name) != 1:
+        by_handle = [shared_file for shared_file in shared_files
+                     if shared_file.name == file_handle]
+
+        # Further filter
+        if file_name_contains is not None:
+            by_handle = [a for a in by_handle if file_name_contains in a.files[0].original_location]
+
+        if len(by_handle) != 1:
             files = ", ".join(map(lambda x: x.name, shared_files))
             raise SharedFileNotFound("Expected a shared file called '{}', got {}.\nFile: '{}'\nFiles: {}".format(
-                file_name, len(by_name), file_name, files))
-        artifact = by_name[0]
+                file_handle, len(by_handle), file_handle, files))
+        artifact = by_handle[0]
         return artifact
 
     def remove_files(self, file_handle, disabled):
