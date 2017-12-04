@@ -138,7 +138,7 @@ class Container(DomainObjectMixin):
         if self._append_iterator is None:
             self._append_iterator = self._traverse(order=self.append_order)
         well_pos = next(self._append_iterator)
-        self.set_well(well_pos, artifact)
+        self.set_well_update_artifact(well_pos, artifact)
 
     def to_table(self):
         """Returns the wells in a list of lists"""
@@ -212,7 +212,7 @@ class Container(DomainObjectMixin):
         ret.name = resource.name
         ret.size = size
         for artifact in api_artifacts:
-            ret.set_well(artifact.location[1], artifact)
+            ret.set_well_update_artifact(artifact.location[1], artifact)
         ret.api_resource = resource
         return ret
 
@@ -257,11 +257,15 @@ class Container(DomainObjectMixin):
                 "Well id {} is not available in this container (type={})".format(well_pos, self))
 
         self.wells[well_pos].artifact = artifact
+        return self.wells[well_pos]
+
+    def set_well_update_artifact(self, well_pos, artifact=None):
+        updated_well = self.set_well(well_pos, artifact)
         if artifact:
             artifact.container = self
 
-        artifact.well = self.wells[well_pos]
-        return self.wells[well_pos]
+        artifact.well = updated_well
+        return updated_well
 
     @property
     def occupied(self):
@@ -272,7 +276,7 @@ class Container(DomainObjectMixin):
         return self.enumerate_wells(order=self.DOWN_FIRST)
 
     def __setitem__(self, key, value):
-        self.set_well(key, artifact=value)
+        self.set_well_update_artifact(key, artifact=value)
 
     def __contains__(self, item):
         return item in self.wells

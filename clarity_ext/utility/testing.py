@@ -100,8 +100,8 @@ class DilutionTestDataHelper:
         name = "FROM:{}".format(pos_from)
         pair = ArtifactPair(self._create_analyte(True, name, source_type),
                             self._create_analyte(False, name, target_type))
-        source_container.set_well(pos_from, artifact=pair.input_artifact)
-        target_container.set_well(pos_to, artifact=pair.output_artifact)
+        source_container.set_well_update_artifact(pos_from, artifact=pair.input_artifact)
+        target_container.set_well_update_artifact(pos_to, artifact=pair.output_artifact)
         self.pairs.append(pair)
         return pair
 
