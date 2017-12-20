@@ -78,12 +78,6 @@ class FileService:
         that the LIMS will not upload them by accident
         """
 
-        # Ensure that the user is only sending in a "name" (alphanumerical or spaces)
-        # File paths are not allowed
-        if not re.match(r"^[\w ]+$", file_handle):
-            raise ValueError(
-                "File name can only contain alphanumeric characters, underscores and spaces")
-
         artifact = self._artifact_by_name(file_handle, file_name_contains)
         local_file_name = "{}_{}.{}".format(artifact.id, file_handle.replace(" ", "_"), extension)
         directory = os.path.join(self.downloaded_path, local_file_name)
