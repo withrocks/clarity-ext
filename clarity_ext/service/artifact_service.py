@@ -64,11 +64,11 @@ class ArtifactService:
         """Returns a unique list of output artifacts"""
         return utils.unique(self._filter_artifact(False, Artifact), lambda item: item.id)
 
-    def _filter_artifact(self, input, type):
+    def _filter_artifact(self, is_input, atype):
         # Fetches all input analytes in the step, unique
-        pair_index = 0 if input else 1
+        pair_index = 0 if is_input else 1
         for pair in self.all_artifacts():
-            if isinstance(pair[pair_index], type):
+            if isinstance(pair[pair_index], atype):
                 yield pair[pair_index]
 
     def all_input_analytes(self):
@@ -141,8 +141,8 @@ class ArtifactService:
             parent_step_repo = StepRepository(ClaritySession.create(process.id),
                                               self.step_repository.clarity_mapper)
             parent_artifact_service = ArtifactService(parent_step_repo)
-            for input in parent_artifact_service.all_input_artifacts():
-                yield input
+            for input_artifact in parent_artifact_service.all_input_artifacts():
+                yield input_artifact
 
     def get_parent_input_artifact(self, sample):
         """
