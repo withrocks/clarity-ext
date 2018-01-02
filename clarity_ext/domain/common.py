@@ -2,6 +2,12 @@ import copy
 
 
 class DomainObjectMixin(object):
+    def __hash__(self):
+        """The hash is based on the id attribute of the domain object, which should be a string. The hash can never change, so one
+        should not change the value of the id field."""
+
+        # TODO: Enforce that the id can't be changed
+        return hash(self.id)
 
     def __eq__(self, other):
         if isinstance(other, self.__class__):
@@ -39,9 +45,6 @@ class DomainObjectMixin(object):
             elif not self._eq_rec(a[key], b[key], cache):
                 return False
         return True
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
 
     def differing_fields(self, other):
         if isinstance(other, self.__class__):
