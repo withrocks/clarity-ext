@@ -4,7 +4,7 @@ import os
 import sys
 import codecs
 import shutil
-from context import ExtensionContext
+from clarity_ext.context import ExtensionContext
 import clarity_ext.utils as utils
 from abc import ABCMeta, abstractmethod
 import logging

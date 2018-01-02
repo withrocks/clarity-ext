@@ -2,7 +2,7 @@ import abc
 import copy
 import logging
 from itertools import groupby
-from itertools import izip_longest
+from itertools import zip_longest
 import collections
 from collections import namedtuple
 from clarity_ext.service.file_service import Csv

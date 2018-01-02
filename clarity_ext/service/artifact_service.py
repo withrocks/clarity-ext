@@ -2,7 +2,7 @@ import logging
 from clarity_ext.domain import *
 from clarity_ext.domain.shared_result_file import SharedResultFile
 from clarity_ext.repository import StepRepository
-from clarity_ext import ClaritySession
+from clarity_ext.clarity import ClaritySession
 
 
 class ArtifactService:
