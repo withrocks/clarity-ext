@@ -3,13 +3,13 @@ import click
 import logging
 from clarity_ext.service import ProcessService
 from clarity_ext import ClaritySession
-from clarity_ext import utils
 import subprocess
 import sys
 import requests_cache
 import re
 import yaml
 from clarity_ext.service.routing_service import RerouteInfo, RoutingService
+from clarity_ext.reporting.reporting_service import ReportingService
 
 
 @click.group()
@@ -110,6 +110,16 @@ def move_artifacts(plan, commit):
     session = ClaritySession.create(None)
     routing_service = RoutingService(session, commit)
     routing_service.route(reroute_infos)
+
+@main.command("project-report")
+@click.option("--ignore-udf", multiple=True)
+@click.option("--ignore-project", multiple=True)
+def project_report(ignore_udf, ignore_project):
+    """Creates a report of all projects and associated UDFs"""
+    session = ClaritySession.create(None)
+    svc = ReportingService(session, True)
+    svc.create_project_report(ignore_udf, ignore_project)
+
 
 if __name__ == "__main__":
     main()
