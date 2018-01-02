@@ -42,7 +42,7 @@ class TestUdfMappingInfo(unittest.TestCase):
 
         # Try to fetch by the udf:
         with self.assertRaises(UdfMappingNotUniqueException):
-            print result_file.udf_total
+            print(result_file.udf_total)
 
         # Try to set using the same UDF
         with self.assertRaises(UdfMappingNotUniqueException):

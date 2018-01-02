@@ -13,10 +13,10 @@ class TestContext(unittest.TestCase):
         context = mock_context()
 
         def input_should_raise():
-            print context.input_container
+            print(context.input_container)
 
         def output_should_raise():
-            print context.output_container
+            print(context.output_container)
 
         # Fetching a single output_container should throw in this case
         self.assertRaises(ValueError, input_should_raise)
