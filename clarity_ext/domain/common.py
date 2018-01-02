@@ -1,4 +1,3 @@
-from __builtin__ import isinstance
 import copy
 
 
