@@ -16,7 +16,7 @@ class Analyte(Aliquot):
         """
         Creates an analyte
         """
-        super(self.__class__, self).__init__(api_resource, is_input=is_input, id=id,
+        super(Analyte, self).__init__(api_resource, is_input=is_input, id=id,
                                              samples=samples, name=name, well=well,
                                              udf_map=udf_map)
         self.is_control = is_control
