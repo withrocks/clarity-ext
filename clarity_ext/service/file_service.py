@@ -272,7 +272,7 @@ class Csv:
         if file_stream:
             if isinstance(file_stream, basestring):
                 with open(file_stream, "r") as fs:
-                    self._init_from_file_stream(fs, delim)
+                    self._init_from_file_stream(fs, delim, None)
             else:
                 self._init_from_file_stream(file_stream, delim, header)
         self.file_name = file_name
