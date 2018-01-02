@@ -52,7 +52,7 @@ class ReportingService(object):
             for header in unique_headers:
                 if header in project.udf:
                     value = project.udf[header]
-                    if isinstance(value, basestring):
+                    if isinstance(value, str):
                         value = value.replace("\t", r"\t")
                         value = value.replace("\n", r"\n")
                     row.append(value)

@@ -63,7 +63,7 @@ class ContainerPosition(namedtuple("ContainerPosition", ["row", "col"])):
             (<row>, <col>) where both are integers
             (<row>, <col>) where column is a string (e.g. A)
         """
-        if isinstance(repr, basestring):
+        if isinstance(repr, str):
             row, col = repr.split(":")
             if row.isalpha():
                 row = ord(row.upper()) - 64
@@ -72,7 +72,7 @@ class ContainerPosition(namedtuple("ContainerPosition", ["row", "col"])):
             col = int(col)
         else:
             row, col = repr
-            if isinstance(row, basestring):
+            if isinstance(row, str):
                 row = ContainerPosition.letter_to_index(row)
         return ContainerPosition(row=row, col=col)
 

@@ -531,7 +531,7 @@ class DilutionSettings:
 
     @staticmethod
     def _parse_conc_ref(concentration_ref):
-        if isinstance(concentration_ref, basestring):
+        if isinstance(concentration_ref, str):
             for key, value in DilutionSettings.CONCENTRATION_REF_TO_STR.items():
                 if value.lower() == concentration_ref.lower():
                     return key

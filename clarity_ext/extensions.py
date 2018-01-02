@@ -215,7 +215,7 @@ class ExtensionService(object):
             # The run argument can be either an IntegrationTest or just a string (pid)
             if isinstance(in_argument, IntegrationTest):
                 test = in_argument
-            elif isinstance(in_argument, basestring):
+            elif isinstance(in_argument, str):
                 test = IntegrationTest(pid=in_argument)
             else:
                 raise ValueError("Unexpected run argument type")
@@ -569,7 +569,7 @@ class DriverFileExtension(GeneralExtension):
         content = self.content()
         # Support that the content can be a list of strings. This supports an older version of the DriverFileExtension
         # which was not template based. Consider removing this usage of the DriverFileExtension.
-        if isinstance(content, basestring):
+        if isinstance(content, str):
             return content
         else:
             return self.newline().join(content)
