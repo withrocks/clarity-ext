@@ -1,6 +1,5 @@
 from clarity_ext.domain.aliquot import Aliquot, Sample
 from clarity_ext import utils
-from clarity_ext.domain.udf import UdfMapping
 
 
 class Analyte(Aliquot):
@@ -17,8 +16,8 @@ class Analyte(Aliquot):
         Creates an analyte
         """
         super(Analyte, self).__init__(api_resource, is_input=is_input, id=id,
-                                             samples=samples, name=name, well=well,
-                                             udf_map=udf_map)
+                                      samples=samples, name=name, well=well,
+                                      udf_map=udf_map)
         self.is_control = is_control
         self.is_output_from_previous = is_from_original
 

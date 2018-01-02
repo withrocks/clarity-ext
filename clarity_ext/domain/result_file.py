@@ -18,7 +18,7 @@ class ResultFile(Aliquot):
         """
         # TODO: Get rid of the api_resource
         super(ResultFile, self).__init__(api_resource, is_input=is_input, id=id,
-                samples=samples, name=name, well=well, udf_map=udf_map)
+                                         samples=samples, name=name, well=well, udf_map=udf_map)
         self.is_control = False
 
     @property
