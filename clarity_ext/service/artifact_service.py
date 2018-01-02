@@ -35,7 +35,7 @@ class ArtifactService:
         shared_files = (
             outp for outp in outputs if isinstance(outp, SharedResultFile))
         ret = list(utils.unique(shared_files, lambda f: f.id))
-        assert len(ret) == 0 or isinstance(ret[0], SharedResultFile)
+        assert ret or isinstance(ret[0], SharedResultFile)
         return ret
 
     def all_aliquot_pairs(self):
@@ -112,7 +112,7 @@ class ArtifactService:
         files = (outp for outp in outputs
                  if outp.output_type == Artifact.OUTPUT_TYPE_SHARED_RESULT_FILE)
         ret = list(utils.unique(files, lambda f: f.id))
-        assert len(ret) == 0 or isinstance(ret[0], ResultFile)
+        assert ret or isinstance(ret[0], ResultFile)
         return ret
 
     def parent_input_artifacts(self):
