@@ -222,7 +222,7 @@ class ExtensionService(object):
             return test
 
         instance = self._get_extension(module)(None)
-        ret = map(parse_run_argument, instance.integration_tests())
+        ret = list(map(parse_run_argument, instance.integration_tests()))
         if require_tests and len(ret) == 0:
             raise NoTestsFoundException()
         return ret

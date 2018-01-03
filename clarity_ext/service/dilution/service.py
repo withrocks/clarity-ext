@@ -270,7 +270,7 @@ class DilutionSession(object):
         the updated_source_vol is the same on both. This supports the use case where the
         user doesn't have to tell us which robot driver file they used, because the results will be the same.
         """
-        all_robots = self.transfer_batches_by_robot.items()
+        all_robots = list(self.transfer_batches_by_robot.items())
         candidate_name, candidate_batches = all_robots[0]
         candidate_update_infos = {key: value for key, value in self.update_infos_by_target_analyte(candidate_batches)}
 
