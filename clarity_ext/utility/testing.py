@@ -92,7 +92,7 @@ class DilutionTestDataHelper:
         target_container = self.get_container_by_name(target_container_name, False)
 
         if pos_from is None:
-            well = self.well_enumerator.next()
+            well = next(self.well_enumerator)
             pos_from = well.position
         if pos_to is None:
             pos_to = pos_from
