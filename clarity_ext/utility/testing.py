@@ -257,16 +257,21 @@ class PoolSamplesScenario(StepScenario):
     def __init__(self, context_wrapper):
         super(PoolSamplesScenario, self).__init__(context_wrapper)
         self.pools = list()
+        self.pool_containers = list()
 
-    def add_input_container(self, name=None, size=None, container_id=None):
-        if name is None:
-            name = ''
+    def add_container(self, containers_group, containers, name=None, size=None, container_id=None):
         if size is None:
             size = PlateSize(height=8, width=12)
         if container_id is None:
-            container_id = "incont_{}".format(len(self.input_containers))
-        container = Container(name=name, size=size, container_id=container_id)
-        self.input_containers.append(container)
+            container_id = "{}_{}".format(containers_group, len(self.input_containers))
+        if name is None:
+            name = container_id
+        ret = Container(name=name, size=size, container_id=container_id)
+        containers.append(ret)
+        return ret
+
+    def add_input_container(self, name=None, size=None, container_id=None):
+        self.add_container("incont", self.input_containers, name, size, container_id)
         return self
 
     def add_input_analyte(self, name=None, analyte_id=None, input_container_ref=-1):
@@ -282,6 +287,8 @@ class PoolSamplesScenario(StepScenario):
 
     def create_pool(self, name=None, analyte_id=None):
         pool = self.create_analyte(False, name, analyte_id)
+        container = self.add_container("pool_container", self.pool_containers)
+        container.append(pool)
         pool.samples = list()  # Emptying it, as the helper creates them by default
         self.pools.append(pool)
         return self
@@ -320,6 +327,8 @@ class PoolSamplesWithDilutionScenario(PoolSamplesScenario):
     def dilution_vals(self, conc, vol, analyte_ref=-1):
         """Sets the values required for dilution (conc and vol) to the analyte that was added last to the scenario"""
         analyte = self.analytes[analyte_ref]
+        analyte.name = "name"
+        analyte.id = "id"
 
         if analyte.is_input:
             analyte.udf_map = UdfMapping({self.conc_source_udf: conc,
