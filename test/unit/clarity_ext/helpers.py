@@ -59,7 +59,7 @@ def fake_result_file(artifact_id=None, name=None, container_id=None, well_key=No
                      name=name, well=well)
 
     if container:
-        container.set_well(well.position, artifact=ret)
+        container.set_well_update_artifact(well.position, artifact=ret)
     return ret
 
 

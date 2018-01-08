@@ -645,6 +645,8 @@ class TransferBatch(object):
         self._set_transfers(transfers)
         self.name = name
         self._transfers_by_output_dict = None
+        # Target containers may be adjusted with number samples according to when batch is performed
+        self.target_containers = None
         # Set to True if the transfer batch was split
         self.split = False
 
