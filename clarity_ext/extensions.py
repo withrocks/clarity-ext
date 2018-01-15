@@ -266,6 +266,10 @@ class ExtensionService(object):
                 raise NotImplementedError("Unknown extension type")
             context.commit()
         except UsageError as e:
+            # Commit in order to upload step log
+            # Ordinary files and objects shouldn't have been moved to upload queue,
+            # since the scipt have been interrupted by the usage error.
+            context.commit()
             # UsageErrors are deferred and handled by the notify method
             # To support the case (legacy) if someone raises an error without adding it to the defer list,
             # we add it to the instance too:
