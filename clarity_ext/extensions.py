@@ -578,7 +578,7 @@ class DriverFileExtension(GeneralExtension):
         return FileService.FILE_PREFIX_ARTIFACT_ID
 
 
-class SampleSheetExtension(DriverFileExtension):
+class SampleSheetExtension(GeneralExtension):
     """
     Provides helper methods for creating a CSV
     """
