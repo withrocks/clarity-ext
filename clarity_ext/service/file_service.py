@@ -4,6 +4,7 @@ import os
 import sys
 import shutil
 import logging
+from zipfile import ZipFile
 from lxml import objectify
 from clarity_ext import utils
 import requests
@@ -176,7 +177,7 @@ class FileService:
                     raise RemoveFileException("Can't remove file with id {}. Status code was {}".format(
                         f.id, r.status_code))
 
-    def upload_files(self, file_handle, files, stdout_max_lines=50):
+    def upload_files(self, file_handle, files, stdout_max_lines=50, zip_files=False):
         """
         Uploads one or more files to the particular file handle. The file handle must support
         at least the same number of files.
@@ -189,13 +190,46 @@ class FileService:
         """
         artifacts = sorted([shared_file for shared_file in self.artifact_service.shared_files()
                             if shared_file.name == file_handle], key=lambda f: f.id)
-        if len(files) > len(artifacts):
-            raise SharedFileNotFound("Trying to upload {} files to '{}', but only {} are supported".format(
-                            len(files), file_handle, len(artifacts)))
 
-        for artifact, file_and_name in zip(artifacts, files):
-            instance_name, content = file_and_name
-            self._upload_single(artifact, file_handle, instance_name, content, FileService.FILE_PREFIX_ARTIFACT_ID)
+        if zip_files:
+            # We are only interested in the first file handle artifact when zipping:
+            artifact = artifacts[0]
+
+            # Zipped files should be prefixed with the artifact ID:
+            files = [("{}_{}".format(artifact.id, file_name), content) for file_name, content in files]
+
+            zip_file_name = "sample_sheet.zip"
+            self.compress_files(zip_file_name, files)
+            self._queue(os.path.join(self.temp_path, zip_file_name), artifact,
+                        FileService.FILE_PREFIX_ARTIFACT_ID)
+        else:
+            if len(files) > len(artifacts):
+                raise SharedFileNotFound("Trying to upload {} files to '{}', but only {} are supported".format(
+                    len(files), file_handle, len(artifacts)))
+
+            for artifact, file_and_name in zip(artifacts, files):
+                instance_name, content = file_and_name
+                self._upload_single(artifact, file_handle, instance_name, content, FileService.FILE_PREFIX_ARTIFACT_ID)
+
+    def compress_files(self, out_name, files):
+        """
+        :param out_name: The name of the zipped file
+        :param files: A list of (file_name, content) tuples
+        :return: None
+        """
+        files_to_zip = list()
+        for instance_name, content in files:
+            local_path = self.save_locally(content, instance_name)
+            files_to_zip.append(os.path.basename(local_path))
+
+        old_dir = os.getcwd()
+        try:
+            os.chdir(self.temp_path)
+            with ZipFile(out_name, 'w') as zipfile:
+                for path in files_to_zip:
+                    zipfile.write(path)
+        finally:
+            os.chdir(old_dir)
 
     def upload(self, file_handle, instance_name, content, file_prefix):
         """
