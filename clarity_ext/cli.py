@@ -9,6 +9,7 @@ import os
 import yaml
 import time
 from clarity_ext.extensions import ResultsDifferFromFrozenData
+import genologics
 
 config = None
 logger = logging.getLogger(__name__)
@@ -57,23 +58,92 @@ def validate(module):
         sys.exit(validation_exceptions)
 
 
+
+@main.command("get-processtypes")
+@click.argument("environment")
+@click.option("--refresh", type=bool)
+def get_processtypes(environment, refresh):
+    """Refreshes the list of running processes in the environment. The environment must be one of the
+    environments listed in .clarity-ext.config"""
+    # TODO: Implement the .clarity-ext.config stuff. Would contain:
+    # In clarity-snpseq, this would be something like:
+    #
+    # script_packages:
+    #   - clarity_ext_scripts
+    # environments:
+    #   - dev
+    #       server: https://lims-dev.snpseq.medsci.uu.se
+    #       role: dev
+    #       default: True
+    #   - staging...
+    #   - prod...
+
+    if environment != "dev":
+        raise NotImplementedError()
+
+    # TODO: Fetch this from the config. The config would be checked in.
+    dev = {"server": "https://lims-dev.snpseq.medsci.uu.se",
+           "role": "dev",
+           "default": True}
+
+    print(dev)
+
+    ret = dict()
+
+    # # TODO: Ensure that we use the cookie to login to each environment
+    from clarity_ext.service import ProcessService
+    process_svc = ProcessService(use_cache=True)
+    for process_type in process_svc.list_process_types(None):
+        if process_type.id == "240":
+            ret["name"] = process_type.name
+            ext = ret["extensions"] = list()
+
+            for p in process_type.parameters:
+                print(p.name, p.string)
+                {"name": p.name, "cmd": p.string, }
+                ext.append()
+
+            import pprint
+            pprint.pprint(ret)
+            break
+
+
+
+# def list_process_types(contains, list_procs, ui_links):
+#     """Lists all process types in the lims. Uses a cache file (process-type.sqlite)."""
+#     for process_type in process_svc.list_process_types(contains):
+#         click.echo("{name}: {uri}".format(name=process_type.name, uri=process_type.uri))
+#
+#         if list_procs is not None:
+#             if list_procs not in ["all", "active"]:
+#                 raise ValueError("Proc status not supported: {}".format(list_procs))
+#             for process in process_svc.list_processes_by_process_type(process_type):
+#                 if list_procs == "active" and process.date_run is not None:
+#                     continue
+#                 uri = process.uri if not ui_links else process_svc.ui_link_process(process)
+#                 click.echo(u" - {}: date_run={}, technician={}".format(uri,
+#                                                                        process.date_run, process.technician.name))
+
+
+
+
+
 @main.command()
 @click.argument("module")
-@click.argument("mode")
+@click.argument("mode", required=False)
 @click.option("--args")
 @click.option("--cache", type=bool)
 def extension(module, mode, args, cache):
     """Loads the extension and executes the integration tests.
 
-    :param mode: One of
-        exec: Execute the code in normal mode
-        test: Test the code locally
-        freeze: Freeze an already created test (move from test-run to test-frozen)
-        validate: Test the code locally, then compare with the frozen directory
     :param args: Dynamic parameters to the extension
     """
     global config
     default_logging()
+
+    if mode != "exec":
+        click.echo("WARNING: All modes except exec will be deprecated in a future version")
+
     try:
         if not config:
             config = {
