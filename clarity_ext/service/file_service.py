@@ -265,7 +265,13 @@ class FileService:
                                              if shared_file.id == artifact_id])
                     local_file = os.path.join(self.upload_queue_path, artifact_id, file_name)
                     self.logger.info("Uploading file {}".format(local_file))
-                    self.session.api.upload_new_file(artifact.api_resource, local_file)
+                    try:
+                        self.session.api.upload_new_file(artifact.api_resource, local_file)
+                    except requests.HTTPError as e:
+                        if "UNDER_REVIEW" in str(e):
+                            self.logger.error("Not able to upload step log as some of the samples are in review")
+                        else:
+                            raise e
 
     def _split_file_name(self, name):
         m = re.match(self.SERVER_FILE_NAME_PATTERN, name)
