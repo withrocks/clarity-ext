@@ -7,15 +7,18 @@ import re
 
 class ProcessService(object):
     """Provides access to information about processes and process types"""
-    def __init__(self, logger=None, use_cache=False):
+    def __init__(self, logger=None, use_cache=False, session=None):
         self.logger = logger or logging.getLogger(__name__)
+        # If no session is provided, we create one with no credentials, in which case the file ~/.genologicsrc is used
+        if not session:
+            session = clarity_ext.ClaritySession.create(None)
+        self.session = session
         if use_cache:
             cache_name = "process-types"
             requests_cache.configure(cache_name)
 
     def list_process_types(self, filter_contains_pattern):
-        session = clarity_ext.ClaritySession.create(None)
-        for process_type in session.api.get_process_types():
+        for process_type in self.session.api.get_process_types():
             process_type.get()
             if filter_contains_pattern is not None:
                 xml_string = ET.tostring(process_type.root)
@@ -25,8 +28,7 @@ class ProcessService(object):
                 yield process_type
 
     def list_processes_by_process_type(self, process_type):
-        session = clarity_ext.ClaritySession.create(None)
-        return session.api.get_processes(type=process_type.name)
+        return self.session.api.get_processes(type=process_type.name)
 
     def ui_link_process(self, process):
         """

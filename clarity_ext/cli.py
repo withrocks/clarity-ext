@@ -1,19 +1,24 @@
 from __future__ import print_function
-import sys
 import click
 import logging
 from clarity_ext.integration import IntegrationTestService
 from clarity_ext.extensions import ExtensionService
+from clarity_ext.service.metadata import ExtensionMetadataService
 from clarity_ext.tool.template_generator import TemplateNotFoundException, TemplateGenerator
-import os
+from clarity_ext import ClaritySession
 import yaml
 import time
 from clarity_ext.extensions import ResultsDifferFromFrozenData
-import genologics
 
+USER_CONFIG_PATH = "~/.clarity-ext.user.config"
 config = None
 logger = logging.getLogger(__name__)
 log_level = None
+
+metadata_svc = ExtensionMetadataService()
+
+# TODO: These will probably be in sqlite later, but for a quick prototype, we'll keep it in a regular file
+CACHE_PATH = ".cache.sqlite3"
 
 
 @click.group()
@@ -30,15 +35,28 @@ def main(level):
     global log_level
     log_level = level
 
-    if os.path.exists("clarity-ext.config"):
-        with open("clarity-ext.config", "r") as f:
-            config = yaml.load(f)
-
 
 def default_logging():
     global log_level
     logging.basicConfig(level=log_level)
 
+
+@main.command()
+@click.argument("environment")
+def logout(environment):
+    pass
+
+
+@main.command()
+@click.argument("environment")
+@click.argument("username", required=False)
+@click.argument("password", required=False)
+def login(environment, username, password):
+    """Log into a clarity environment. This will write login session IDs (cookies) to ~/.clarity-login
+    The file will only be readable by the owner. You can log out with logout.
+    """
+    clarity_session = ClaritySession() 
+    clarity_session.login(environment, username, password)
 
 @main.command()
 @click.argument("module")
@@ -57,75 +75,63 @@ def validate(module):
     else:
         sys.exit(validation_exceptions)
 
-
-
 @main.command("get-processtypes")
 @click.argument("environment")
 @click.option("--refresh", type=bool)
 def get_processtypes(environment, refresh):
     """Refreshes the list of running processes in the environment. The environment must be one of the
     environments listed in .clarity-ext.config"""
-    # TODO: Implement the .clarity-ext.config stuff. Would contain:
-    # In clarity-snpseq, this would be something like:
-    #
-    # script_packages:
-    #   - clarity_ext_scripts
-    # environments:
-    #   - dev
-    #       server: https://lims-dev.snpseq.medsci.uu.se
-    #       role: dev
-    #       default: True
-    #   - staging...
-    #   - prod...
 
-    if environment != "dev":
-        raise NotImplementedError()
+    session = ClaritySession()
+    session.login_with_user_config(environment)
 
-    # TODO: Fetch this from the config. The config would be checked in.
-    dev = {"server": "https://lims-dev.snpseq.medsci.uu.se",
-           "role": "dev",
-           "default": True}
+    return
+    conf.update(config["environments"][environment])
 
-    print(dev)
-
-    ret = dict()
-
-    # # TODO: Ensure that we use the cookie to login to each environment
     from clarity_ext.service import ProcessService
-    process_svc = ProcessService(use_cache=True)
-    for process_type in process_svc.list_process_types(None):
-        if process_type.id == "240":
-            ret["name"] = process_type.name
-            ext = ret["extensions"] = list()
 
+    process_svc = ProcessService(use_cache=True, session=session)
+
+    #cache = load_cache()
+
+    # if environment not in cache:
+    #     cache[environment] = dict() 
+    # cached = cache[environment]
+
+    cache = _fetch_cache()
+
+    if True:  #not cached.get("fetched", False):
+        for process_type in process_svc.list_process_types(None):
+            key = process_type.name
+            entry = dict()
+            ext = entry["extensions"] = list()
+            #cached[key] = entry
+
+            entity = ProcessType(name=process_type.name, environment=environment)
+            cache.add(entity)
+            cache.commit()
+         
             for p in process_type.parameters:
-                print(p.name, p.string)
-                {"name": p.name, "cmd": p.string, }
-                ext.append()
+                ext = Extension(name=p.name, command=p.string, process_type=entity)
+                cache.add(ext)
+                cache.commit()
 
-            import pprint
-            pprint.pprint(ret)
-            break
+                import re
+                matches = re.findall(r"clarity-ext extension --args 'pid={processLuid}' ([\w.]+)", p.string)
+                if matches:
+                    #extension["scripts"].append(m.group(1))
+                    #extension["scripts"] = matches
+                    pass
+                    #clarity-ext extension --args 'pid={processLuid}' clarity_ext_scripts.general.rename_pools_rml
 
-
-
-# def list_process_types(contains, list_procs, ui_links):
-#     """Lists all process types in the lims. Uses a cache file (process-type.sqlite)."""
-#     for process_type in process_svc.list_process_types(contains):
-#         click.echo("{name}: {uri}".format(name=process_type.name, uri=process_type.uri))
-#
-#         if list_procs is not None:
-#             if list_procs not in ["all", "active"]:
-#                 raise ValueError("Proc status not supported: {}".format(list_procs))
-#             for process in process_svc.list_processes_by_process_type(process_type):
-#                 if list_procs == "active" and process.date_run is not None:
-#                     continue
-#                 uri = process.uri if not ui_links else process_svc.ui_link_process(process)
-#                 click.echo(u" - {}: date_run={}, technician={}".format(uri,
-#                                                                        process.date_run, process.technician.name))
-
-
-
+            if len(process_type.parameters) > 0:
+                break
+    else:
+        print("Already fetched, hurray!")
+    import pprint
+    #pprint.pprint(cached)
+    #print(yaml.safe_dump(cache, default_flow_style=False))
+    return
 
 
 @main.command()
@@ -226,7 +232,6 @@ def create(template, package):
 def fix_pycharm(package):
     template_generator = TemplateGenerator()
     template_generator.fix_pycharm(package)
-
 
 if __name__ == "__main__":
     main()
