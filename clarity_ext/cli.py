@@ -102,7 +102,7 @@ def ls(path, refresh):
         clarity-ext ls --processes active "/dev/SNP&SEQ Aggregate QC (DNA) v1"
     This will list all the extensions with all the active processes.
 
-    All queries are cached in .cache.py.sqlite3
+    All queries are cached in .cache.sqlite3
     """
     svc = ExtensionMetadataService(config)
     svc.ls(path)

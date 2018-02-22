@@ -7,7 +7,7 @@ class ReportingService(object):
     def __init__(self, session, use_cache):
         self.session = session
         if use_cache:
-            # TODO: The cache is being ignored 
+            # TODO: The cache is being ignored
             cache_name = "reporting-svc-cache"
             requests_cache.configure(cache_name)
 
