@@ -6,19 +6,15 @@ from clarity_ext.extensions import ExtensionService
 from clarity_ext.service.metadata import ExtensionMetadataService
 from clarity_ext.tool.template_generator import TemplateNotFoundException, TemplateGenerator
 from clarity_ext import ClaritySession
-import yaml
+import sys
 import time
 from clarity_ext.extensions import ResultsDifferFromFrozenData
+from clarity_ext.clarity import Configuration
 
-USER_CONFIG_PATH = "~/.clarity-ext.user.config"
-config = None
+
 logger = logging.getLogger(__name__)
 log_level = None
-
-metadata_svc = ExtensionMetadataService()
-
-# TODO: These will probably be in sqlite later, but for a quick prototype, we'll keep it in a regular file
-CACHE_PATH = ".cache.sqlite3"
+config = Configuration()
 
 
 @click.group()
@@ -30,7 +26,6 @@ def main(level):
                   This is used to ensure reproducible and fast integration tests
     :return:
     """
-    global config
     global logger
     global log_level
     log_level = level
@@ -44,7 +39,8 @@ def default_logging():
 @main.command()
 @click.argument("environment")
 def logout(environment):
-    pass
+    clarity_session = ClaritySession()
+    clarity_session.logout(environment)
 
 
 @main.command()
@@ -55,8 +51,21 @@ def login(environment, username, password):
     """Log into a clarity environment. This will write login session IDs (cookies) to ~/.clarity-login
     The file will only be readable by the owner. You can log out with logout.
     """
-    clarity_session = ClaritySession() 
+    clarity_session = ClaritySession()
     clarity_session.login(environment, username, password)
+    click.echo("Successfully logged in and saved auth token to ~/.clarity-ext.user.config")
+
+
+@main.command("add-environment")
+@click.argument("name")
+@click.argument("server")
+@click.argument("default", type=click.BOOL)
+@click.argument("role", type=click.Choice(['dev', 'staging', 'prod']))
+def add_environment(name, server, default, role):
+    clarity_session = ClaritySession()
+    clarity_session.config.set_environment(name, server, default, role)
+    clarity_session.config.save()
+
 
 @main.command()
 @click.argument("module")
@@ -75,63 +84,29 @@ def validate(module):
     else:
         sys.exit(validation_exceptions)
 
+
 @main.command("get-processtypes")
-@click.argument("environment")
+@click.argument("path")
 @click.option("--refresh", type=bool)
-def get_processtypes(environment, refresh):
+def ls(path, refresh):
     """Refreshes the list of running processes in the environment. The environment must be one of the
-    environments listed in .clarity-ext.config"""
+    environments listed in ./.clarity-ext.config. The path should look like this:
 
-    session = ClaritySession()
-    session.login_with_user_config(environment)
+    To list available items for querying:
+        clarity-ext ls /<environment>
 
-    return
-    conf.update(config["environments"][environment])
+    To list extensions in a process type:
+        clarity-ext ls "/dev/SNP&SEQ Aggregate QC (DNA) v1"
 
-    from clarity_ext.service import ProcessService
+    You can furthermore, for each of those, list all active processes for each of those programs:
+        clarity-ext ls --processes active "/dev/SNP&SEQ Aggregate QC (DNA) v1"
+    This will list all the extensions with all the active processes.
 
-    process_svc = ProcessService(use_cache=True, session=session)
+    All queries are cached in .cache.py.sqlite3
+    """
+    svc = ExtensionMetadataService(config)
+    svc.ls(path)
 
-    #cache = load_cache()
-
-    # if environment not in cache:
-    #     cache[environment] = dict() 
-    # cached = cache[environment]
-
-    cache = _fetch_cache()
-
-    if True:  #not cached.get("fetched", False):
-        for process_type in process_svc.list_process_types(None):
-            key = process_type.name
-            entry = dict()
-            ext = entry["extensions"] = list()
-            #cached[key] = entry
-
-            entity = ProcessType(name=process_type.name, environment=environment)
-            cache.add(entity)
-            cache.commit()
-         
-            for p in process_type.parameters:
-                ext = Extension(name=p.name, command=p.string, process_type=entity)
-                cache.add(ext)
-                cache.commit()
-
-                import re
-                matches = re.findall(r"clarity-ext extension --args 'pid={processLuid}' ([\w.]+)", p.string)
-                if matches:
-                    #extension["scripts"].append(m.group(1))
-                    #extension["scripts"] = matches
-                    pass
-                    #clarity-ext extension --args 'pid={processLuid}' clarity_ext_scripts.general.rename_pools_rml
-
-            if len(process_type.parameters) > 0:
-                break
-    else:
-        print("Already fetched, hurray!")
-    import pprint
-    #pprint.pprint(cached)
-    #print(yaml.safe_dump(cache, default_flow_style=False))
-    return
 
 
 @main.command()

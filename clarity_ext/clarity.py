@@ -10,34 +10,46 @@ from requests.auth import _basic_auth_str
 
 
 class ClaritySession(object):
-    """
-    A wrapper around connections to Clarity.
+    """A wrapper around connections to Clarity."""
 
-    :param api: A proxy for the REST API, looking like Lims from the genologics package.
-    :param current_step_id: The step we're currently in.
-    """
-    def __init__(self, user_config_path="~/.clarity-ext.user.config", server_config_path=".clarity-ext.config"):
-        self.server_config_path = server_config_path
-        self.server_config = self.fetch_server_config()
-        self.user_config_path = user_config_path
-        self.user_config = self.fetch_user_config()
-        self.current_step = None 
+    # TODO: use default server by default, then set up default servers on dev, staging and prod. This
+    # means we don't have to change the configured extensions (as they don't have to specify env)
+    # TODO: discontinue genologicsrc in favor of this (probably needs to be available though)
+    # TODO: first search in .clarity-ext.config then in /etc/clarity-ext.config
 
-    # TODO: test all of these, mostly broken 
-    def login_with_user_config(self, environment, current_step_id=None):
-        token = self.user_config[environment]["token"]
-        username = self.user_config[environment]["username"]
-        baseuri = self.server_config["environments"][environment]["server"]
-        return ClaritySession(Lims(baseuri, username, None, auth_token=token), current_step_id)
+    def __init__(self, config):
+        self.config = config
+        self.current_step = None
+        self.current_step_id = None
+        self.environment = None
+        self._api = None  # TODO: Error when the user tries to access api when it hasn't been set
 
-    def login_with_genologics_config(current_step_id=None):
-        """Uses the default password file configured for pip/genologics"""
-        self.api = Lims(BASEURI, USERNAME, PASSWORD)
+    @property
+    def api(self):
+        if self._api is None:
+            raise Exception("The underlying api hasn't been initialized, you must call one of the login methods")
+        return self._api
 
-    def set_current_step(current_step_id):
+    def login_with_user_config(self, environment=None, current_step_id=None):
+        environment = environment or self.config.default
+        token = self.config.auth_token(environment)["token"]
+        username = self.config.user_config["environments"][environment]["username"]
+        baseuri = self.config.global_config["environments"][environment]["server"]
+        self._api = Lims(baseuri, username, None, auth_token=token)
+        self.set_current_step(current_step_id)
+        self.current_step_id = None
+        self.environment = environment
+
+    # def login_with_genologics_config(self, current_step_id=None):
+    #     """Uses the default password file configured for pip/genologics"""
+    #     self._api = Lims(BASEURI, USERNAME, PASSWORD)
+    #     self.set_current_step(current_step_id)
+
+    def set_current_step(self, current_step_id):
         self.current_step_id = current_step_id  # TODO: refactor
-        process_api_resource = genologics.entities.Process(self.api, id=self.current_step_id)
-        self.current_step = Process.create_from_rest_resource(process_api_resource)
+        if self.current_step_id:
+            process_api_resource = genologics.entities.Process(self.api, id=self.current_step_id)
+            self.current_step = Process.create_from_rest_resource(process_api_resource)
 
     def get(self, endpoint):
         """
@@ -47,19 +59,11 @@ class ClaritySession(object):
         url = "{}/api/v2/{}".format(BASEURI, endpoint)
         return requests.get(url, auth=(USERNAME, PASSWORD))
 
-    def fetch_server_config(self):
-        print(self.server_config_path)
-        if os.path.exists(self.server_config_path):
-            with open(self.server_config_path, "r") as f:
-                return yaml.load(f)
-        else:
-            return dict()
-
     def login(self, environment, username, password):
         """Logs the user in to the specified environment and saves the credentials in the file system.
 
         Interactively asks for username and password if they are not provided"""
-        env = self.server_config["environments"][environment]
+        env = self.config.global_config[environment]
 
         if not username:
             # TODO: py3!
@@ -72,25 +76,63 @@ class ClaritySession(object):
         resp = requests.get("{}/api/v2/".format(env["server"]), headers=headers)
 
         if resp.status_code == 200:
-            self.user_config[environment] = {"token": auth, "username": username}
-            self.save_user_config(self.user_config)
-            print("Wrote user config to {}".format(self.user_config_path))
-        else:
-            print("Login unsuccessful")
+            self.config.user_config["environments"][environment] = {"token": auth, "username": username}
+            self.config.save()
 
-    def fetch_user_config(self):
-        fpath = os.path.expanduser(self.user_config_path)
+
+class Configuration(object):
+    """Configuration for clarity-ext. Wraps the user specific configuration as well as server configuration."""
+    def __init__(self, user_config_path="~/.clarity-ext.user.config", server_config_path=".clarity-ext.config"):
+        self.global_config_path = os.path.expanduser(server_config_path)
+        self.global_config = self._fetch_config(self.global_config_path)
+        self.user_config_path = os.path.expanduser(user_config_path)
+        self.user_config = self._fetch_config(self.user_config_path)
+
+        default = [k for k, v in self.global_config["environments"].items() if v["default"]]
+        if len(default) > 1:
+            raise Exception("More than one environment configured as default: {}".format(default))
+        self.default = default[0]
+
+    def set_environment(self, name, server, default, role):
+        self.global_config["environments"][name] = {"server": server, "default": default, "role": role}
+
+    def _fetch_config(self, fpath):
+        """Fetches the user or env config, returning a default config skeleton if it's not available in the
+        file system"""
         if os.path.exists(fpath):
             with open(fpath, "r") as fs:
                 return yaml.load(fs)
         else:
-            return dict()
+            return dict(environments=dict())
 
-    def save_user_config(self, user_config):
-        fpath = os.path.expanduser(self.user_config_path)
+    def get_environment_config(self, environment):
+        if environment not in self.user_config:
+            raise EnvironmentNotConfiguredException(environment)
+        return self.user_config[environment]
+
+    def auth_token(self, environment):
+        try:
+            return self.user_config["environments"][environment]
+        except KeyError:
+            raise NoAuthTokenConfigured("No auth token available for {}".format(environment))
+
+    def save(self):
+        self._save(self.global_config, self.global_config_path)
+        self._save(self.user_config, self.user_config_path, mode=0600)
+
+    def _save(self, config_obj, path, mode=None):
+        fpath = os.path.expanduser(path)
         with open(fpath, "w") as fs:
-            yaml.safe_dump(user_config, fs, default_flow_style=False)
-        os.chmod(fpath, 0600)
+            yaml.safe_dump(config_obj, fs, default_flow_style=False)
+        if mode:
+            os.chmod(fpath, mode)
+
+
+class EnvironmentNotConfiguredException(Exception):
+    pass
+
+class NoAuthTokenConfigured(Exception):
+    pass
 
 
 class SessionException(Exception):
