@@ -34,8 +34,8 @@ class ClaritySession(object):
         environment = environment or self.config.default
         token = self.config.auth_token(environment)["token"]
         username = self.config.user_config["environments"][environment]["username"]
-        baseuri = self.config.global_config["environments"][environment]["server"]
-        self._api = Lims(baseuri, username, None, auth_token=token)
+        self.baseuri = self.config.global_config["environments"][environment]["server"]
+        self._api = Lims(self.baseuri, username, None, auth_token=token)
         self.set_current_step(current_step_id)
         self.current_step_id = None
         self.environment = environment
@@ -78,6 +78,9 @@ class ClaritySession(object):
         if resp.status_code == 200:
             self.config.user_config["environments"][environment] = {"token": auth, "username": username}
             self.config.save()
+
+    def __repr__(self):
+        return "<Session name='{}' uri='{}'>".format(self.environment, self.baseuri)
 
 
 class Configuration(object):

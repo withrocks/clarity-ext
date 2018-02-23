@@ -85,7 +85,7 @@ def validate(module):
         sys.exit(validation_exceptions)
 
 
-@main.command("get-processtypes")
+@main.command("ls")
 @click.argument("path")
 @click.option("--refresh", type=bool)
 def ls(path, refresh):
@@ -106,7 +106,6 @@ def ls(path, refresh):
     """
     svc = ExtensionMetadataService(config)
     svc.ls(path)
-
 
 
 @main.command()

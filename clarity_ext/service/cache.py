@@ -57,4 +57,3 @@ class Entity(Base):
     key = Column(String(), nullable=False)
     environment = Column(String(20), nullable=False)
     xml = Column(String(), nullable=False)
-
