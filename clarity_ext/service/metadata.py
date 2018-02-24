@@ -81,6 +81,10 @@ class ExtensionMetadataService(object):
     def _get_property(self, provider):
         pass
 
+    def cat(self, path):
+        pass
+
+
     def ls(self, path, refresh=False):
         """
         Lists entities in Clarity with clarity-ext specific extensions. The listing is always from a local cache
@@ -100,7 +104,7 @@ class ExtensionMetadataService(object):
             """Given a split path, returns the text/pattern at that position and None if it's empty or not available"""
             if len(parts) > pos:
                 part = parts[pos]
-                return part if len(part) > pos else None
+                return part if len(part) > 0 else None
 
         env_pattern = get_part(0)
         environments = self._ls_environment(env_pattern)
@@ -130,56 +134,20 @@ class ExtensionMetadataService(object):
             else:
                 raise Exception()
 
-        # TODO: Check for the rest
         if not entity_pattern:
             return entities
 
-        property_pattern = get_part(3)
-        print("TODO", property_pattern)
+        files_pattern = get_part(3)
+        files = list()
+        for env, provider, entity in entities:
+            for f in self._ls_files(env, provider, entity, files_pattern):
+                files.append((env, provider, entity, f))
 
-        return list()
+        # TODO: ls'ing something that doesn't exist returns nothing without printing an error msg
+        return files
 
-
-        parts = path.split("/")[1:]
-        #import pprint; pprint.pprint(self.directory_structure)
-
-        # TODO: There is certainly a generic algorithm for this, mapping the parts to the structure dict
-        # Empty means it's a wildcard, i.e. list all. Otherwise, show only related to the env
-        env = parts[0]
-        args = parts[1:]
-        results = list()
-        self._ls_environment(env, args, results)
-
-        for result in results:
-            print("/" + result)
-
-
-        exit()
-        m = re.match(r"^/(?P<environment>[^/]+)(/(?P<processtype>[^/]+))?$", path)
-        if m:
-            environment = m.groupdict().get("environment", None)
-            processtype = m.groupdict().get("processtype", None)
-        else:
-            raise PathException("Can't parse path {}".format(path))
-
-        if not environment:
-            raise PathException("No environment specified in path {}".format(path))
-
-        # We should always fetch all process types, even if one is specified in the path. We
-        # will usually fetch them only once (if refresh is not specified). Refresh does only apply to the
-        # leaf in the path though.
-        from clarity_ext.clarity import ClaritySession
-        session = ClaritySession(self.config)
-        session.login_with_user_config(environment)
-        for process_type in self.fetch_process_types(session):
-            from xml.etree import ElementTree
-            # xml = ElementTree.tostring(process_type.root, encoding="utf-8")
-            # entity = Entity(uri=process_type.uri, key=process_type.name, environment=environment, xml=xml)
-            print(process_type.name)
-            for parameter in process_type.parameters:
-                print(parameter.name)
-                print(parameter.string)
-        pass
+    def _ls_files(self, env, provider, entity, files_pattern):
+        return ["entity", "ext"]
 
     def fetch_process_types(self, session=None):
         """Fetches the process types from the cache if available, otherwise from the service."""

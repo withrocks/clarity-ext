@@ -85,6 +85,13 @@ def validate(module):
         sys.exit(validation_exceptions)
 
 
+@main.command("cat")
+@click.argument("path")
+def cat(path):
+    """Prints out a virtual file listed by the ls command"""
+    pass
+
+
 @main.command("ls")
 @click.argument("path")
 @click.option("--refresh", type=bool)
@@ -108,10 +115,11 @@ def ls(path, refresh):
     try:
         svc = ExtensionMetadataService(config)
         for item in svc.ls(path):
-            print("\"/" + "/".join(item) + "\"")
+            print('"/{}"'.format("/".join(item)))
     except NoAuthTokenConfigured as e:
         click.echo("No auth token has been configured for '{0}'.\n - Run `clarity-ext login {0}` to configure it."
                    .format(e.environment))
+
 
 
 @main.command()
