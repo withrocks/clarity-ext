@@ -36,7 +36,7 @@ class ProcessService(object):
             self.cache.add(env)
             self.cache.commit()
 
-        q = self.cache.query(Entity)
+        q = self.cache.query(Entity).filter(Entity.environment == self.session.environment)
         if filter:
             q = q.filter(Entity.key.like(filter))
 

@@ -52,8 +52,6 @@ class Entity(Base):
     """An entity from the Clarity REST API"""
 
     __tablename__ = 'entity'
-
-    #id = Column(Integer, primary_key=True)
     uri = Column(String(), primary_key=True)
 
     # A human readable key for the object. May change over the life of an object. This
@@ -61,3 +59,14 @@ class Entity(Base):
     key = Column(String(), nullable=False)
     environment = Column(String(20), nullable=False)
     xml = Column(String(), nullable=False)
+
+
+class Expanded(Base):
+    """Contains additional information about the entity that's particular to clarity-ext, e.g. a list of
+    extensions that haven't been pushed to Clarity"""
+    __tablename__ = 'expanded'
+
+    # The uri of the entity
+    uri = Column(String(), primary_key=True)
+    doc = Column(String(), nullable=True)
+

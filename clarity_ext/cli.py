@@ -89,7 +89,9 @@ def validate(module):
 @click.argument("path")
 def cat(path):
     """Prints out a virtual file listed by the ls command"""
-    pass
+    svc = ExtensionMetadataService(config)
+    ret = svc.cat(path)
+    print(ret)
 
 
 @main.command("ls")
