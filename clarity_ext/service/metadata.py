@@ -19,11 +19,10 @@ class ExtensionMetadataService(object):
     def __init__(self, config=None, session=None, cache_path=".cache.sqlite3"):
         # TODO: cache_path into config
         from clarity_ext.service.cache import CacheService
-        cache_svc = CacheService(cache_path)
+        self.cache_svc = CacheService(cache_path, config)
         self.config = config
         self.session = session
         self.cache_path = cache_path
-        self.cache = cache_svc.fetch_cache(True)
         self.directory_structure = {
             "environment": {
                 "processtypes": {
@@ -32,6 +31,8 @@ class ExtensionMetadataService(object):
                 }
             }
         }
+
+
 
         # This service may need to connect to one or more systems, so we have one session per environment:
         # It might make sense to have one "app" object which has all sessions as well as the current session
@@ -48,45 +49,97 @@ class ExtensionMetadataService(object):
     def list_environments(self):
         pass
 
-    def _ls_processtypes(self, env, process_type_pattern, args, results):
-        print("I know im a process type filter", process_type_pattern, "in env", env, "having args", args)
-        if process_type_pattern == "" and len(args) == 0:
+    def _ls_processtypes(self, env, process_type_pattern):
+        # Find the process types matching pattern in this environment
+
+        if process_type_pattern is None:
             process_type_pattern = "*"
 
-        # Find the process types matching pattern in this environment
         session = self.get_environment_session(env)
 
         from clarity_ext.service import ProcessService
-        process_svc = ProcessService(cache=self.cache, session=session)
-        for process_type in process_svc.list_process_types():
-            key = (env, process_type.name)
+        process_svc = ProcessService(cache_svc=self.cache_svc, session=session)
+        # TODO: What if there is a '%' in the column?
+        for process_type in process_svc.list_process_types(process_type_pattern.replace("*", "%")):
+            yield process_type
 
-            if len(args) == 0:
-                results.append("/".join(key))
-            else:
-                raise NotImplementedError()  # Go further here ;)
-
-    def _ls_environment(self, env_pattern, args, results):
+    def _ls_environment(self, env_pattern):
         # The semantics of ls are that if you specify a directory (e.g. ls /) it means "show everything under this, i.e.
         # /* (slash glob)"
         import fnmatch
-        if env_pattern == "" and len(args) == 0:
+        if env_pattern is None:
             env_pattern = "*"
 
         all_environments = [key for key in self.config.global_config["environments"]]
         for env in all_environments:
             if fnmatch.fnmatch(env, env_pattern):
-                print("I know im an env", env, "having args", args)
-                if len(args) == 0:
-                    results.append(env)
-                else:
-                    # Yeah, there is probably a better way to solve this recursively, #prototype
-                    self._ls_processtypes(env, args[0], args[1:], results)
+                yield env
+
+    def _get_providers(self, env):
+        return ["processtypes"]
+
+    def _get_property(self, provider):
+        pass
 
     def ls(self, path, refresh=False):
-        # TODO: Support looking for any kind of data through this same mechanism
-        # TODO: Escape /
-        # TODO: For now, there must be a trailing /
+        """
+        Lists entities in Clarity with clarity-ext specific extensions. The listing is always from a local cache
+        which can be overwritten by setting refresh to True.
+        """
+
+        # Save entities in a process cache if they might be needed later in this method
+        proc_cache = dict()
+
+        if not path.startswith("/"):
+            raise Exception("Paths must be absolute, e.g. `/dev`")
+
+        # TODO: Allow escaping / with \
+        parts = path.split("/")[1:]
+
+        def get_part(pos):
+            """Given a split path, returns the text/pattern at that position and None if it's empty or not available"""
+            if len(parts) > pos:
+                part = parts[pos]
+                return part if len(part) > pos else None
+
+        env_pattern = get_part(0)
+        environments = self._ls_environment(env_pattern)
+
+        if not env_pattern:
+            return [(env,) for env in environments]
+
+        # If we haven't exited, we should list providers too:
+        provider_pattern = get_part(1)
+
+        providers = list()
+        for env in environments:
+            for provider in self._get_providers(env):
+                providers.append((env, provider))
+
+        if not provider_pattern:
+            return providers
+
+        entity_pattern = get_part(2)
+
+        entities = list()
+        # If we haven't exited, we should list all entities in each environment and provider:
+        for env, provider in providers:
+            if provider == "processtypes":
+                for entity in self._ls_processtypes(env, entity_pattern):
+                    entities.append((env, provider, entity.name))
+            else:
+                raise Exception()
+
+        # TODO: Check for the rest
+        if not entity_pattern:
+            return entities
+
+        property_pattern = get_part(3)
+        print("TODO", property_pattern)
+
+        return list()
+
+
         parts = path.split("/")[1:]
         #import pprint; pprint.pprint(self.directory_structure)
 

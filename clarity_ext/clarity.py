@@ -63,7 +63,7 @@ class ClaritySession(object):
         """Logs the user in to the specified environment and saves the credentials in the file system.
 
         Interactively asks for username and password if they are not provided"""
-        env = self.config.global_config[environment]
+        env = self.config.global_config["environments"][environment]
 
         if not username:
             # TODO: py3!
@@ -117,7 +117,7 @@ class Configuration(object):
         try:
             return self.user_config["environments"][environment]
         except KeyError:
-            raise NoAuthTokenConfigured("No auth token available for {}".format(environment))
+            raise NoAuthTokenConfigured(environment)
 
     def save(self):
         self._save(self.global_config, self.global_config_path)
@@ -134,8 +134,11 @@ class Configuration(object):
 class EnvironmentNotConfiguredException(Exception):
     pass
 
+
 class NoAuthTokenConfigured(Exception):
-    pass
+    def __init__(self, environment):
+        super(NoAuthTokenConfigured, self).__init__("No auth token configured for {}".format(environment))
+        self.environment = environment
 
 
 class SessionException(Exception):

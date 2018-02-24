@@ -51,7 +51,7 @@ def login(environment, username, password):
     """Log into a clarity environment. This will write login session IDs (cookies) to ~/.clarity-login
     The file will only be readable by the owner. You can log out with logout.
     """
-    clarity_session = ClaritySession()
+    clarity_session = ClaritySession(config)
     clarity_session.login(environment, username, password)
     click.echo("Successfully logged in and saved auth token to ~/.clarity-ext.user.config")
 
@@ -104,8 +104,14 @@ def ls(path, refresh):
 
     All queries are cached in .cache.sqlite3
     """
-    svc = ExtensionMetadataService(config)
-    svc.ls(path)
+    from clarity_ext.clarity import NoAuthTokenConfigured
+    try:
+        svc = ExtensionMetadataService(config)
+        for item in svc.ls(path):
+            print("\"/" + "/".join(item) + "\"")
+    except NoAuthTokenConfigured as e:
+        click.echo("No auth token has been configured for '{0}'.\n - Run `clarity-ext login {0}` to configure it."
+                   .format(e.environment))
 
 
 @main.command()

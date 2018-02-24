@@ -6,36 +6,43 @@ import re
 
 class ProcessService(object):
     """Provides access to information about processes and process types"""
-    def __init__(self, logger=None, cache=None, session=None):
+    def __init__(self, logger=None, cache_svc=None, session=None):
         self.logger = logger or logging.getLogger(__name__)
-
-        if not session:
-            session = clarity_ext.ClaritySession.create(None)
         self.session = session
-        self.cache = cache
+        assert self.session
+        self.cache = cache_svc.cache
 
-    def list_process_types(self, refresh=False):
+    def list_process_types(self, filter=None, refresh=False):
         from xml.etree import ElementTree
-        # TODO: Don't fetch at all if the flag "fetched" is set, this saves the one call to the
-        # overview page
-        for process_type in self.session.api.get_process_types():
-            # Fetch from the entity cache if available
-            from clarity_ext.service.cache import Entity
-            cached = self.cache.query(Entity).filter(Entity.uri == process_type.uri).one_or_none()
-            if not cached or refresh:
-                process_type.get()
-                s = ElementTree.tostring(process_type.root, encoding="UTF-8")
-                xml = unicode(s, encoding="UTF-8")
-                if not cached:
-                    cached = Entity(uri=process_type.uri, environment=self.session.environment)
-                cached.key = process_type.name
-                cached.xml = xml
-                self.cache.add(cached)
-                self.cache.commit()
+        from clarity_ext.service.cache import Entity, Environment
+        env = self.cache.query(Environment).filter(Environment.name == self.session.environment).one()
 
-        for entity in self.cache.query(Entity).all():
+        if not env.last_fetched_process_types or refresh:
+            for process_type in self.session.api.get_process_types():
+                # Fetch from the entity cache if available
+                cached = self.cache.query(Entity).filter(Entity.uri == process_type.uri).one_or_none()
+                if not cached or refresh:
+                    process_type.get()
+                    s = ElementTree.tostring(process_type.root, encoding="UTF-8")
+                    xml = unicode(s, encoding="UTF-8")
+                    if not cached:
+                        cached = Entity(uri=process_type.uri, environment=self.session.environment)
+                    cached.key = process_type.name
+                    cached.xml = xml
+                    self.cache.add(cached)
+                    self.cache.commit()
+            import datetime
+            env.last_fetched_process_types = datetime.datetime.now()
+            self.cache.add(env)
+            self.cache.commit()
+
+        q = self.cache.query(Entity)
+        if filter:
+            q = q.filter(Entity.key.like(filter))
+
+        for entity in q.all():
             from genologics.entities import Processtype
-            pt = Processtype(lims=self.session.api, _create_new=True)  # TODO: this logic should be moved to the cache service
+            pt = Processtype(lims=self.session.api, _create_new=True)
             pt.root = ElementTree.fromstring(entity.xml.encode('utf-8'))
             pt._uri = entity.uri
             yield pt
