@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -61,12 +61,55 @@ class Entity(Base):
     xml = Column(String(), nullable=False)
 
 
-class Expanded(Base):
-    """Contains additional information about the entity that's particular to clarity-ext, e.g. a list of
-    extensions that haven't been pushed to Clarity"""
-    __tablename__ = 'expanded'
+class ExtensionPoint(Base):
+    """
+    Contains information about an extension point in Clarity. Clarity represents the action that should happen
+    as zero or more lines of bash. In the processtype contract, this is called "string", here it's called "action".
 
-    # The uri of the entity
-    uri = Column(String(), primary_key=True)
-    doc = Column(String(), nullable=True)
+    Examples:
+
+    Here the user is usign the "lab logic toolkit". In clarity-ext, the idea is not to use these, as they are one-liners
+    that are not easy to debug, so it's recommended to rewrite them as a clarity-ext extension.
+
+        name:   'Populate pooling, instrument, special information',
+        source: 'bash -c "/opt/gls/clarity/bin/java
+                -jar /opt/gls/clarity/extensions/ngs-common/v5/EPP/ngs-extensions.jar -i {stepURI:v2:http}
+                -u {username} -p {password} script:evaluateDynamicExpression -t true -h false -exp \'input.::Number
+                of lanes::=submittedSample.::Number of lanes:: ; input.::Pooling::=submittedSample.::Pooling:: ;
+                input.::conc FC::=submittedSample.::conc FC:: ;if (submittedSample.hasValue(::Special info seq::))
+                {input.::Special info seq:: =submittedSample.::Special info seq:: } ;
+                input.::Sequencing instrument::=submittedSample.::Sequencing instrument:: ;
+                input.::PhiX %::=submittedSample.::PhiX %::\' -log {compoundOutputFileLuid1}"'
+        state: 0 (clean)  # can be: 0 clean/ 1 dirty
+    """
+    __tablename__ = 'extension_point'
+    __table_args__ = (
+        UniqueConstraint('processtype_uri', 'name'),
+    )
+
+    id = Column(Integer, primary_key=True)
+    processtype_uri = Column(String(), nullable=False)
+    name = Column(String(), nullable=False)
+    # The actual source in Clarity. We may have different source waiting to be uploaded locally:
+    remote = Column(String(), nullable=True)
+    # The local source code we've contructed by joining together all clarity-ext extensions we have. If this differs from
+    # the remote source code, we should report that to the users so they can upload new source accordingly. In that case,
+    # state is 1
+    local = Column(String(), nullable=True)
+    is_dirty = Column(Boolean, nullable=False)
+
+
+class ExtensionInfo(Base):
+    """
+    Lists all extensions for an extension point. These don't have to be available remotely yet. From these
+    we calculate the local field in the ExtensionPoint table and push it up to the remote when applicable.
+    """
+    __tablename__ = 'extension_info'
+
+    extension_point_id = Column(Integer, primary_key=True)
+    script = Column(String(), primary_key=True)
+    seq = Column(Integer, nullable=False)  # Position of this script if more than one should run at the extension point
+
+    def __repr__(self):
+        return "<ExtensionInfo #{}: {}>".format(self.seq, self.script)
 

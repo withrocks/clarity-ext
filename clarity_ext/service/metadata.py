@@ -2,8 +2,12 @@ from clarity_ext.service.cache import CacheService
 from clarity_ext.clarity import ClaritySession
 from clarity_ext.service import ProcessService
 import fnmatch
+from clarity_ext.service.cache import ExtensionPoint, ExtensionInfo
 from xml.etree import ElementTree
 
+
+# The command for executing clarity_ext extensions via Clarity (TODO: This is available somewhere else)
+CLARITY_EXT_COMMAND = "clarity-ext extension --args 'pid={processLuid}' (.+) exec"
 
 class ExtensionMetadataService(object):
     """Maintains the state of metadata about extensions. This metadata comes partly from Clarity and partly from
@@ -57,8 +61,9 @@ class ExtensionMetadataService(object):
             else:
                 print(file)
 
-    def _get_path(self, path):
+    def _get_path(self, path, synch_local_file=True):
         """Fetches the path info of a virtual directory or file, as well as the files. Used by both cat and ls"""
+        # TODO: synch_local_file should be set to False - it's for development only
         # Save entities in a process cache if they might be needed later in this method
         proc_cache = dict()
 
@@ -121,8 +126,8 @@ class ExtensionMetadataService(object):
                 if fname == "entity":
                     f = ElementTree.tostring(entity_obj.root, encoding="UTF-8")
                 elif fname == "ext":
-                    f = self.synch_ext_file(entity_obj)
-                    print(f)
+                    if synch_local_file:
+                        self.synch_extension_data(entity_obj)
                     f = None
                 else:
                     raise Exception("Unexpected fname {}".format(fname))
@@ -142,11 +147,67 @@ class ExtensionMetadataService(object):
         # TODO: processes is actually a directory
         return [f for f in ["entity", "ext", "processes"] if fnmatch.fnmatch(f, files_pattern)]
 
-    def synch_ext_file(self, entity):
+    def _extensions_from_remote(self, remote):
+        """Returns one or more extensions based on the remote data. Note that if there is more data in the string, it's
+        ignored (e.g. if the user currently is executing something else than clarity-ext extensions). But the user
+        will be prompted before pushing this data over to the server"""
+        import re
+        pattern = CLARITY_EXT_COMMAND
+        return re.findall(pattern, remote)
+
+    def update_dirty_state(self, processtype):
+        """Checks the local state of the scripts and generates a local bash command to be potentially updated
+        in Clarity. This would be called every time the user updates the extension_infos.
+
+        This does not commit the local settings to the remote, but can be used to report if there are things to be
+        uploaded"""
+        for p in processtype.parameters:
+            ext_point = self.cache_svc.cache.query(ExtensionPoint) \
+                .filter(ExtensionPoint.processtype_uri == processtype.uri, ExtensionPoint.name == p.name).one_or_none()
+            extensions_in_db = self.cache_svc.cache.query(ExtensionInfo) \
+                .filter(ExtensionInfo.extension_point_id == ext_point.id).order_by(ExtensionInfo.seq).all()
+            new_script = " && ".join([CLARITY_EXT_COMMAND.replace("(.+)", e.script) for e in extensions_in_db])
+            ext_point.local = new_script
+            ext_point.is_dirty = ext_point.local != ext_point.remote
+            self.cache_svc.cache.add(ext_point)
+            self.cache_svc.cache.commit()
+
+    def synch_extension_data(self, processtype):
+        """Given an entity, refreshes all the data we have on each of the extension point it has, as well as
+        each extension we've defined for it. It may automatically clean up the Extension table if an extension point
+        doesn't exist anymore, otherwise, the extension table will remain unchanged."""
+        # TODO: Call this method only when refreshing a process type entity from clarity or if a specific refresh-local
+        # parameter is set
+
         # Ensures we have an ext file based on the entity. If we already have one in the db, it will not be refreshed
         # TODO: Ensure we refresh if we fetch latest (but don't overwrite...)
-        from clarity_ext.service.cache import Expanded
-        cached = self.cache_svc.cache.query(Expanded).filter(Expanded.uri == entity.uri).one_or_none()
+
+        # Ensure we have one parameter per each entity:
+        for p in processtype.parameters:
+            ext_point = self.cache_svc.cache.query(ExtensionPoint)\
+                .filter(ExtensionPoint.processtype_uri == processtype.uri,
+                        ExtensionPoint.name == p.name).one_or_none()
+            # TODO: Cleanup extension points that don't exist anymore (if they've been removed from the entity)
+            if not ext_point:
+                ext_point = ExtensionPoint(processtype_uri=processtype.uri, name=p.name,
+                                           remote=p.string, local=None, is_dirty=False)
+                self.cache_svc.cache.add(ext_point)
+                self.cache_svc.cache.commit()
+
+            # Now auto generate clarity-ext extensions from this data, only if we have none already.
+            # This is only for convenience in the cases where the user starts using clarity-ext on a clarity instance
+            # where there are already extensions
+            extensions_in_db = self.cache_svc.cache.query(ExtensionInfo) \
+                .filter(ExtensionInfo.extension_point_id == ext_point.id).all()
+            if len(extensions_in_db) == 0:
+                for ix, script in enumerate(self._extensions_from_remote(p.string)):
+                    ext_info = ExtensionInfo(extension_point_id=ext_point.id, script=script, seq=ix)
+                    self.cache_svc.cache.add(ext_info)
+                    self.cache_svc.cache.commit()
+        self.update_dirty_state(processtype)
+        return
+        # return
+        cached = self.cache_svc.cache.query(ExtensionPoint).filter(Expanded.uri == entity.uri).one_or_none()
         print ("got", entity)
 
         if cached is None:
@@ -154,11 +215,13 @@ class ExtensionMetadataService(object):
             # TODO: Makes only sense for the processtype, cleanup
             for p in entity.parameters:
                 extension = {
-                    "name": p.name
+                    "name": p.name,
+                    "source": p.string
                 }
                 ext_file["extensions"].append(extension)
 
-            print("gonna save", ext_file)
+            import pprint
+            pprint.pprint(ext_file)
         return None
 
     def fetch_process_types(self, session=None):
